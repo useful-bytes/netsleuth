@@ -1,0 +1,29 @@
+{
+  "name": "netsleuth",
+  "version": "0.0.1",
+  "description": "Use Chrome's Network Inspector with anything",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "snode": "./bin/snode.js",
+    "netsleuth": "./bin/netsleuth.js"
+  },
+  "author": "daguej",
+  "license": "Proprietary",
+  "dependencies": {
+    "body-parser": "^1.18.0",
+    "clipboardy": "^1.1.4",
+    "content-type-parser": "^1.0.1",
+    "dialog": "^0.3.1",
+    "express": "^4.15.3",
+    "iconv": "^2.3.0",
+    "iltorb": "^1.3.6",
+    "jquery": "^3.2.1",
+    "opn": "^5.1.0",
+    "request": "^2.81.0",
+    "ws": "^3.1.0",
+    "yargs": "^8.0.2"
+  }
+}

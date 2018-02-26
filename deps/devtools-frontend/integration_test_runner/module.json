@@ -1,0 +1,10 @@
+{
+  "dependencies": [
+    "test_runner",
+    "sdk",
+    "network_log"
+  ],
+  "scripts": [
+    "IntegrationTestRunner.js"
+  ]
+}

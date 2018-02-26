@@ -1,0 +1,63 @@
+{
+	"dependencies": ["sdk"],
+	"scripts": ["Overrides.js"],
+	"extensions": [
+		{
+		    "type": "setting",
+		    "category": "Sources",
+		    "title": "Enable JavaScript source maps",
+		    "settingName": "jsSourceMapsEnabled",
+		    "settingType": "boolean",
+		    "defaultValue": false
+		},
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Enable CSS source maps",
+            "settingName": "cssSourceMapsEnabled",
+            "settingType": "boolean",
+            "defaultValue": false
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Bracket matching",
+            "settingName": "textEditorBracketMatching",
+            "settingType": "boolean",
+            "defaultValue": true
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Detect indentation",
+            "settingName": "textEditorAutoDetectIndent",
+            "settingType": "boolean",
+            "defaultValue": true
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Show whitespace characters:",
+            "settingName": "showWhitespacesInEditor",
+            "settingType": "enum",
+            "defaultValue": "original",
+            "options": [
+                {
+                    "title": "Do not show whitespace characters",
+                    "text": "None",
+                    "value": "none"
+                },
+                {
+                    "title": "Show all whitespace characters",
+                    "text": "All",
+                    "value": "all"
+                },
+                {
+                    "title": "Show trailing whitespace characters",
+                    "text": "Trailing",
+                    "value": "trailing"
+                }
+            ]
+        }
+	]
+}
