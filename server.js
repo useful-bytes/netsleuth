@@ -825,7 +825,7 @@ function InspectionServer(opts) {
 
 	app.use('/inspect', express.static(path.join(__dirname, 'overrides')));
 	app.use('/inspect', express.static(DEVTOOLS));
-	app.use('/jq', express.static(__dirname + '/node_modules/jquery/dist'));
+	app.use('/jq', express.static(path.dirname(require.resolve('jquery'))));
 	app.use(express.static(__dirname + '/www'));
 
 
@@ -854,8 +854,10 @@ function InspectionServer(opts) {
 
 
 	function onupgrade(req, socket, head) {
-		if (req.headers.origin != 'http://localhost:9000' &&
-			req.headers.origin != 'http://127.0.0.1:9000') return rawRespond(socket, 403, 'Forbidden', 'This request must be made from an allowed origin.');
+		var origin = req.headers.origin || '';
+		if (origin.substr(0,10) != 'netsleuth:' &&
+			origin != 'http://localhost:9000' &&
+			origin != 'http://127.0.0.1:9000') return rawRespond(socket, 403, 'Forbidden', 'This request must be made from an allowed origin.');
 
 		ws.handleUpgrade(req, socket, head, function(client) {
 			if (req.url == '/targets') {

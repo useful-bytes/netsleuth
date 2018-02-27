@@ -23,7 +23,7 @@ function getrcfile(from) {
 		rc = fs.readFileSync(path.join(from, '.sleuthrc'));
 		rc = JSON.parse(rc);
 	} catch (ex) {
-		if (ex.code == 'ENOENT') rc = null;
+		if (ex.code == 'ENOENT' || ex.code == 'ENOTDIR') rc = null;
 		else throw ex;
 	}
 
@@ -302,13 +302,14 @@ function attach(opts, readyCb) {
 		ws = new WebSocket(opts.server + '/inproc/' + opts.name, [], {
 			agent: agent,
 			headers: {
+				Origin: 'netsleuth:api',
 				PID: process.argv0 + '.' + process.pid,
 				'Sleuth-Transient': !!opts.transient
 			}
 		});
 
 		ws.on('open', function() {
-			ws._socket.unref();
+			if (ws._socket) ws._socket.unref();
 			if (pending.length) {
 				var ops = pending;
 				pending = [];

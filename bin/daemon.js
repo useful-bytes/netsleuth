@@ -133,7 +133,7 @@ server.app.post('/ipc/project', isLocal, function(req, res) {
 	var project = req.body || {}
 
 	var gw = project.gateway || 'netsleuth.io';
-	if (!config.gateways[gw]) {
+	if (!config.gateways || !config.gateways[gw]) {
 		browserLogin.login({
 			gateway: gw,
 			google: project.googleAuth,
