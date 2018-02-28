@@ -21,7 +21,8 @@ var http = require('http'),
 	InprocInspector = require('./inproc-inspector'),
 	RemoteConsole = require('./remote-console'),
 	ResponseBody = require('./response-body'),
-	GatewayServer = require('./gateway')
+	GatewayServer = require('./gateway'),
+	rawRespond = require('./lib/raw-respond'),
 	version = require('./package.json').version;
 
 var argv = require('yargs').argv;
@@ -845,13 +846,13 @@ function InspectionServer(opts) {
 				if (info.req.url == '/targets') return cb(true);
 
 				var host = getInspectorId(info.req.url);
-				if (host.type == 'inproc') {
+				if (host && host.type == 'inproc') {
 					var existing = self.inspectors[host.name];
 					if (!existing) cb(true);
 					else if (existing instanceof InprocInspector) cb(true);
 					else cb(false, 409, 'Conflict');
 				}
-				else if (self.inspectors[host.name]) cb(true);
+				else if (host && self.inspectors[host.name]) cb(true);
 				else cb(false, 404, 'Not Found');
 			}
 		});
@@ -1095,19 +1096,4 @@ InspectionServer.prototype.close = function() {
 function getInspectorId(url) {
 	var path = url.split('/');
 	if (path[1] == 'inspect' || path[1] == 'inproc') return { type: path[1], name: path[2] };
-}
-
-function rawRespond(socket, code, status, message, extraHeaders) {
-	if (socket) {
-		var msg = new Buffer(message);
-		if (extraHeaders) {
-			var r = '';
-			for (var k in extraHeaders) {
-				r += k + ': ' + extraHeaders[k] + '\r\n';
-			}
-			extraHeaders = r;
-		} else extraHeaders = '';
-		socket.write('HTTP/1.1 ' + code + ' ' + status + '\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ' + msg.length + '\r\n' + extraHeaders + '\r\n');
-		socket.end(msg);
-	}
 }
