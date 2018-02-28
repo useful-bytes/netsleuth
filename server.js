@@ -770,6 +770,10 @@ Inspector.prototype.connection = function(ws, req) {
 		}
 	});
 
+	ws.on('error', function(err) {
+		console.error('inspector connection error', err);
+	});
+
 	ws.on('close', function() {
 		for (var i = 0; i < self.clients.length; i++) {
 			if (self.clients[i] == ws) return self.clients.splice(i, 1);
