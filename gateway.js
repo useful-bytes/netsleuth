@@ -19,6 +19,7 @@ function GatewayServer(opts) {
 	self.blocks = [];
 	self.uaOverride = '';
 	self.throttle = {};
+	self.silenceTimeout = opts.silenceTimeout || (1000 * 60 * 2);
 
 	var wss = self.wss = new WebSocket.Server({
 		noServer: true
@@ -98,9 +99,17 @@ function GatewayServer(opts) {
 
 
 	function handleMsg(host, ws, msg, originalMsg) {
+		var now = Date.now();
+		ws.lastSeen = now;
+
 		switch (msg.m) {
 			case 'ready':
 				self.emit('host-ready', host, ws);
+				break;
+
+			case 'ack':
+				var res = self.ress[msg.id];
+				if (res) res.ackBy = null;
 				break;
 
 			case 'err':
@@ -113,6 +122,7 @@ function GatewayServer(opts) {
 					if (originalMsg) res.bytes += originalMsg.length;
 					else res.bytes += JSON.stringify(msg).length;
 					res.writeHead(msg.sc, msg.sm, msg.headers);
+					res.expires = now + self.silenceTimeout;
 				}
 				break;
 
@@ -163,14 +173,29 @@ function GatewayServer(opts) {
 		ws.ress = {};
 
 		ws.on('message', function(data) {
+
 			if (typeof data == 'string') {
-				var msg = JSON.parse(data);
-				handleMsg(host, ws, msg, data);
+				try {
+					var msg = JSON.parse(data);
+				} catch(ex) {
+					ws.terminate();
+				}
+				if (msg.id && (!self.ress[msg.id] || self.ress[msg.id].ws != ws)) ws.terminate();
+				else handleMsg(host, ws, msg, data);
 			} else {
 				var id = data.readUInt32LE(0);
-				self.ress[id].write(data.slice(4));
-				self.ress[id].bytes += data.length;
+				var res = self.ress[id];
+				if (res) {
+					if (res.ws != ws) return ws.terminate();
+					res.write(data.slice(4));
+					res.bytes += data.length;
+					res.expires = Date.now() + self.silenceTimeout;
+				}
 			}
+		});
+
+		ws.on('pong', function() {
+			ws.lastSeen = Date.now();
 		});
 
 		ws.on('close', function() {
@@ -265,22 +290,32 @@ function GatewayServer(opts) {
 			}
 
 
-			checkOpen() && send(ws, {
-				m: 'r',
-				id: id,
-				remoteIP: remote,
-				remotePort: req.socket.remotePort,
-				proto: proto,
-				method: req.method,
-				url: req.url,
-				headers: req.headers,
-				raw: req.rawHeaders
-			});
+			if (checkOpen()) {
+				send(ws, {
+					m: 'r',
+					id: id,
+					remoteIP: remote,
+					remotePort: req.socket.remotePort,
+					proto: proto,
+					method: req.method,
+					url: req.url,
+					headers: req.headers,
+					raw: req.rawHeaders
+				});
+
+				var now = Date.now();
+				res.ackBy = now + 10000;
+				res.expires = Date.now() + self.silenceTimeout;
+			} else {
+				respond(res, 502, 'Bad Gateway', 'Inspector not connected.');
+			}
 
 			req.on('error', function(err) {
 				checkOpen() && send(ws, {
 					m: 'err',
-					id: msg.id
+					id: msg.id,
+					t: 'req-err',
+					msg: err.message
 				});
 				self.emit('response-complete', ws, res);
 				delete self.ress[id];
@@ -290,6 +325,7 @@ function GatewayServer(opts) {
 			req.on('data', function(chunk) {
 				res.bytes += chunk.length;
 				checkOpen() && sendBin(ws, id, chunk);
+				res.expires = Date.now() + self.silenceTimeout;
 			});
 
 			req.on('end', function() {
@@ -326,13 +362,37 @@ function GatewayServer(opts) {
 				res.end(msg);
 			}
 
+			console.log('res.ws', !!res.ws, res._id);
 			if (res.ws) {
 				self.emit('response-complete', res.ws, res);
-				delete self.ress[res.id];
-				delete res.ws.ress[res.id];
+				delete self.ress[res._id];
+				delete res.ws.ress[res._id];
 			}
 		}
 	}
+
+	self.reaper = setInterval(function() {
+		var now = Date.now();
+		for (var id in self.ress) {
+			var res = self.ress[id];
+			if (res.ackBy && res.ackBy < now) {
+				console.log(id, 'ack timeout');
+				respond(res, 504, 'Gateway Timeout', 'Request timed out.  The inspector did not acknowledge this request.');
+				if (res.ws) {
+					res.ws.terminate();
+				}
+			}
+			else if (res.expires < now) {
+				console.log(id, 'expired');
+				respond(res, 504, 'Gateway Timeout', 'Request timed out.');
+				if (res.ws && res.ws.readyState == WebSocket.OPEN) send(res.ws, {
+					m: 'err',
+					id: res._id,
+					t: 'timeout'
+				});
+			}
+		}
+	}, 10000);
 
 }
 
@@ -369,6 +429,17 @@ GatewayServer.prototype.inspect = function(host) {
 	});
 
 	return inspector;
+};
+
+GatewayServer.prototype.removeHost = function(host) {
+	var self = this,
+		ws = self.hosts[host];
+
+	if (ws) {
+		delete self.hosts[host];
+
+		ws.terminate();
+	}
 };
 
 GatewayServer.prototype[util.inspect.custom] = true; // instruct console.log to ignore the `inspect` property

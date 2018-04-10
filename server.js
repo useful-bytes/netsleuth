@@ -127,6 +127,8 @@ function Inspector(server, opts) {
 				};
 
 				req.on('error', function(err) {
+					if (info.destroy) return;
+
 					console.error(err);
 					if (!msg.replay) {
 						send({
@@ -135,7 +137,7 @@ function Inspector(server, opts) {
 							msg: err.message
 						});
 					}
-					delete self.reqs[msg.id].req;
+					if (self.reqs[msg.id]) delete self.reqs[msg.id].req;
 
 					self.broadcast({
 						method: 'Network.loadingFailed',
@@ -328,6 +330,11 @@ function Inspector(server, opts) {
 					}
 				});
 
+				send({
+					m: 'ack',
+					id: msg.id
+				});
+
 				break;
 
 			case 'e':
@@ -335,6 +342,29 @@ function Inspector(server, opts) {
 				break;
 
 			case 'err':
+				var txt;
+				switch (msg.t) {
+					case 'req-err': txt = 'request error: ' + msg.msg; break;
+					case 'timeout': txt = 'gateway timeout'; break;
+					default: txt = '[unknown] ' + msg.msg;
+				}
+
+				self.broadcast({
+					method: 'Network.loadingFailed',
+					params: {
+						requestId: msg.id,
+						timestamp: Date.now() / 1000,
+						type: 'Other',
+						errorText: txt
+					}
+				});
+
+				var req = self.reqs[msg.id];
+				if (req) {
+					req.destroy = true;
+					if (req.req.socket) req.req.socket.destroy();
+					delete self.reqs[msg.id];
+				} 
 				break;
 
 			case 'cx':
@@ -359,7 +389,7 @@ function Inspector(server, opts) {
 	var ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
 
 	function connect() {
-		var service = self.service = new WebSocket('ws://' + self.gateway + '/host/' + self.host.host, [], {
+		var service = self.service = new WebSocket('wss://' + self.gateway + '/host/' + self.host.host, [], {
 			headers: {
 				Authorization: 'Bearer ' + self.token,
 				'User-Agent': ua
@@ -470,7 +500,7 @@ function Inspector(server, opts) {
 
 			for (var id in self.reqs) {
 				if (self.reqs[id].req) {
-					self.reqs[id].req.socket.destroy();
+					if (self.reqs[id].req.socket) self.reqs[id].req.socket.destroy();
 					delete self.reqs[id].req;
 					self.broadcast({
 						method: 'Network.loadingFailed',
@@ -524,7 +554,7 @@ function Inspector(server, opts) {
 				method: 'Gateway.updateRequestBody',
 				params: {
 					id: id,
-					body: data.toString()
+					body: chunk.toString()
 				}
 			});
 		});
