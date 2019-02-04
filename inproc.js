@@ -116,8 +116,8 @@ function attach(opts, readyCb) {
 			options = util._extend({}, options);
 		}
 
-		var protocol = options.protocol;
-		if (self.agent && self.agent.protocol) protocol = self.agent.protocol;
+		var protocol = options.protocol || '';
+		if (self.agent && self.agent.protocol) protocol = self.agent.protocol || '';
 		self.__protocol = protocol;
 
 		var num = self.__reqNum = ++reqId;
