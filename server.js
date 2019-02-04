@@ -711,68 +711,6 @@ Inspector.prototype.connection = function(ws, req) {
 								});
 							}
 						});
-						// var decoder, ce = req.resHeaders['content-encoding'];
-
-						// if (ce == 'gzip') {
-						// 	decoder = zlib.gunzip;
-						// } else if (ce == 'inflate') {
-						// 	decoder = zlib.inflate;
-						// } else if (ce == 'br') {
-						// 	decoder = iltorb.decompress;
-						// } else {
-						// 	decoder = function(b, cb) { cb(null, b); };
-						// }
-
-						// decoder(body, function(err, body) {
-
-						// 	if (err) {
-						// 		self.console.error('Error decompressing the response body of ' + req.msg.method + ' ' + req.msg.url + ': ' + err.message);
-						// 		csend({
-						// 			id: msg.id,
-						// 			result: {
-						// 				body: '(body not available -- decompression error)',
-						// 				base64Encoded: false
-						// 			}
-						// 		});
-						// 	} else {
-						// 		var b64 = false,
-						// 			charset = 'utf-8';
-
-						// 		var ct = contentTypeParser(req.resHeaders['content-type']);
-						// 		if (ct) {
-
-						// 			if (ct.type == 'text' || (ct.type == 'application' && ct.subtype == 'json')) {
-						// 				var charset = ct.get('charset') || 'windows-1252';
-
-						// 				try {
-						// 					var iconv = new Iconv(charset, 'utf-8//TRANSLIT//IGNORE');
-						// 					body = iconv.convert(body).toString();
-
-						// 				} catch(ex) {
-
-						// 				}
-						// 			} else {
-						// 				body = body.toString('base64');
-						// 				b64 = true;
-						// 			}
-						// 		} else {
-						// 			body = body.toString('base64');
-						// 			b64 = true;
-						// 		}
-
-
-
-						// 		csend({
-						// 			id: msg.id,
-						// 			result: {
-						// 				body: body,
-						// 				base64Encoded: b64
-						// 			}
-						// 		});
-						// 	}
-
-
-						// });
 
 					} else {
 						csend({
