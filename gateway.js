@@ -20,6 +20,7 @@ function GatewayServer(opts) {
 	self.uaOverride = '';
 	self.throttle = {};
 	self.silenceTimeout = opts.silenceTimeout || (1000 * 60 * 2);
+	self.pingFreq = opts.pingFreq || 120000;
 
 	var wss = self.wss = new WebSocket.Server({
 		noServer: true
@@ -219,6 +220,11 @@ function GatewayServer(opts) {
 
 		self.emit('host-online', host, ws);
 
+		send(ws, {
+			m: 'cfg',
+			ping: self.pingFreq
+		})
+
 	});
 
 	self.on('local-inspector', function(inspector, host) {
@@ -320,7 +326,7 @@ function GatewayServer(opts) {
 
 				var now = Date.now();
 				res.ackBy = now + 10000;
-				res.expires = Date.now() + self.silenceTimeout;
+				res.expires = now + self.silenceTimeout;
 			} else {
 				respond(res, 502, 'Bad Gateway', 'Inspector not connected.');
 			}

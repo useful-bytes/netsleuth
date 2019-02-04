@@ -84,7 +84,7 @@ function Inspector(server, opts) {
 	this.serviceError = null;
 	this.reqs = {};
 	this.buffer = [];
-	var ready;
+	var ready, pinger, pingto;
 
 
 	function send(msg) {
@@ -393,6 +393,27 @@ function Inspector(server, opts) {
 				} else {
 					self.console.log(msg.m);
 				}
+				break;
+
+			case 'cfg':
+
+				clearInterval(pinger);
+				clearTimeout(pingto);
+
+				pinger = setInterval(function() {
+					try {
+						clearTimeout(pingto);
+						self.service.ping();
+						pingto = setTimeout(function() {
+							console.error('ping timeout', self.gateway);
+							self.service.close();
+						}, 10000);
+						
+					} catch (ex) {
+						console.error(ex);
+					}
+				}, msg.ping);
+				break;
 		}
 
 	}
@@ -515,6 +536,8 @@ function Inspector(server, opts) {
 		});
 
 		service.on('close', function(code, reason) {
+			clearInterval(pinger);
+			clearTimeout(pingto);
 			if (self.serviceState == 1) {
 				console.error('Connection to gateway closed.', code, reason);
 				self.console.error('Connection to gateway closed. ' + code + ' ' + reason);
@@ -544,6 +567,10 @@ function Inspector(server, opts) {
 				}
 			}
 			if (self.serviceState < 3) setTimeout(connect, 5000);
+		});
+
+		service.on('pong', function() {
+			clearTimeout(pingto);
 		});
 	}
 
@@ -668,7 +695,7 @@ Inspector.prototype.connection = function(ws, req) {
 					} else {
 						send({
 							m: 'inspector',
-							id: ws.id
+							iid: ws.id
 						});
 					}
 					csend({
@@ -754,7 +781,7 @@ Inspector.prototype.connection = function(ws, req) {
 					break;
 
 				default:
-					console.log(msg);
+					// console.log(msg);
 					reply();
 			}
 		} catch (ex) {
@@ -1078,7 +1105,7 @@ InspectionServer.prototype.broadcast = function(msg) {
 };
 
 InspectionServer.prototype.close = function() {
-	clearInverval(this.wsping);
+	clearInterval(this.wsping);
 	this.ws.close();
 	this.http.close();
 	if (this.https) this.https.close();
