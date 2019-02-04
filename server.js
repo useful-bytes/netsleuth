@@ -126,6 +126,14 @@ function Inspector(server, opts) {
 					req: req
 				};
 
+				req.on('continue', function() {
+					self.console.debug('Got 100 Continue for ' + msg.url);
+					send({
+						m: 'cont',
+						id: msg.id
+					});
+				});
+
 				req.on('error', function(err) {
 					if (info.destroy) return;
 

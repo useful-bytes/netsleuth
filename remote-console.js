@@ -3,6 +3,9 @@ function RemoteConsole(inspector) {
 	this.inspector = inspector;
 }
 
+RemoteConsole.prototype.debug = function(msg, src, reqId) {
+	this._send(msg, src || 'other', 'verbose', reqId);
+};
 RemoteConsole.prototype.info = function(msg, src, reqId) {
 	this._send(msg, src || 'other', 'info', reqId);
 };

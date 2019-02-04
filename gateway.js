@@ -73,6 +73,14 @@ function GatewayServer(opts) {
 
 			
 		});
+
+		server.on('checkContinue', function(req, res) {
+			handleRequest(req, res, true);
+		});
+
+		server.on('checkExpectation', function(req, res) {
+			handleRequest(req, res, true);
+		});
 	}
 
 	function send(ws, msg) {
@@ -114,6 +122,13 @@ function GatewayServer(opts) {
 
 			case 'err':
 				respond(self.ress[msg.id], 502, 'Bad Gateway', 'Network error communicating with target:\r\n\r\n' + msg.msg);
+				break;
+
+			case 'cont':
+				var res = self.ress[msg.id];
+				if (res) {
+					res.writeContinue();
+				}
 				break;
 
 			case 'res':
@@ -228,7 +243,7 @@ function GatewayServer(opts) {
 
 
 
-	function handleRequest(req, res) {
+	function handleRequest(req, res, hasExpectation) {
 		var host = req.headers.host,
 			ws = self.hosts[host];
 
