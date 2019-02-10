@@ -23,6 +23,7 @@ var http = require('http'),
 	ResponseBody = require('./response-body'),
 	GatewayServer = require('./gateway'),
 	rawRespond = require('./lib/raw-respond'),
+	SessionCLI = require('./session-cli'),
 	version = require('./package.json').version;
 
 var argv = require('yargs').argv;
@@ -84,6 +85,7 @@ function Inspector(server, opts) {
 	this.serviceError = null;
 	this.reqs = {};
 	this.buffer = [];
+	this.sessionCLI = new SessionCLI(this);
 	var ready, pinger, pingto;
 
 
@@ -467,15 +469,17 @@ function Inspector(server, opts) {
 			} else {
 				if (data.length > 4) {
 					var id = data.readUInt32LE(0);
-					self.reqs[id].req.write(data.slice(4));
-					self.reqs[id].reqBody = Buffer.concat([self.reqs[id].reqBody, data.slice(4)]);
-					self.broadcast({
-						method: 'Gateway.updateRequestBody',
-						params: {
-							id: id,
-							body: data.slice(4).toString()
-						}
-					});
+					if (self.reqs[id] && self.reqs[id].req) {
+						self.reqs[id].req.write(data.slice(4));
+						self.reqs[id].reqBody = Buffer.concat([self.reqs[id].reqBody, data.slice(4)]);
+						self.broadcast({
+							method: 'Gateway.updateRequestBody',
+							params: {
+								id: id,
+								body: data.slice(4).toString()
+							}
+						});
+					}
 				}
 			}
 
@@ -780,6 +784,37 @@ Inspector.prototype.connection = function(ws, req) {
 					clipboardy.write(msg.params.text);
 					break;
 
+
+				case 'Runtime.evaluate':
+
+					// when typing:
+					// msg.params.silent when typing
+					// msg.params.objectGroup == 'completion'
+					// msg.params.expression == 'this'
+
+					if (msg.params.silent) {
+						// autocomplete
+						reply({
+							result: {
+								type: 'object',
+								subtype: 'error', // null = gray, regexp = brown, date/error = black
+								value: 'result',
+								description: ''
+							}
+						});
+					} else {
+						self.sessionCLI.parse(msg.params.expression, function(err, type, res) {
+							reply({
+								result: {
+									type: 'object',
+									subtype: type == 'error' ? 'regexp' : 'date',
+									description: res
+								}
+							});
+						});
+					}
+					break;
+
 				default:
 					// console.log(msg);
 					reply();
@@ -803,6 +838,18 @@ Inspector.prototype.connection = function(ws, req) {
 	ws.on('close', function() {
 		for (var i = 0; i < self.clients.length; i++) {
 			if (self.clients[i] == ws) return self.clients.splice(i, 1);
+		}
+	});
+
+	// enable console
+	csend({
+		method: 'Runtime.executionContextCreated',
+		params: {
+			context: {
+				id: 1,
+				name: 'default',
+				origin: 'origin'
+			}
 		}
 	});
 
