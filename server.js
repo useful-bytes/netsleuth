@@ -286,27 +286,28 @@ function Inspector(server, opts) {
 					});
 
 					res.on('close', function() {
-						if (!msg.replay) {
-							send({
-								m: 'err',
-								id: msg.id,
-								msg: 'incomplete response'
-							});
-						}
-						delete self.reqs[msg.id].req;
-
-						self.broadcast({
-							method: 'Network.loadingFailed',
-							params: {
-								requestId: msg.id,
-								timestamp: Date.now() / 1000,
-								type: 'Other',
-								errorText: 'incomplete response'
+						if (!res.complete) {
+							if (!msg.replay && !res.complete) {
+								send({
+									m: 'err',
+									id: msg.id,
+									msg: 'incomplete response'
+								});
 							}
-						});
+							delete self.reqs[msg.id].req;
 
-						self.console.error('Response for ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + ' terminated prematurely', 'network');
+							self.broadcast({
+								method: 'Network.loadingFailed',
+								params: {
+									requestId: msg.id,
+									timestamp: Date.now() / 1000,
+									type: 'Other',
+									errorText: 'incomplete response'
+								}
+							});
 
+							self.console.error('Response for ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + ' terminated prematurely', 'network');
+						}
 					});
 
 					res.on('end', function() {
