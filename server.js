@@ -699,6 +699,13 @@ Inspector.prototype.connection = function(ws, req) {
 			switch (msg.method) {
 				case 'Network.enable':
 					reply();
+
+					if (!ResponseBody.native) {
+						setTimeout(function() {
+							self.console.warn('Native modules failed to build.  Some features (such as brotli decoding and non-utf8 character encoding support) will not work.  See https://netsleuth.io/docs/native for more information.');
+						}, 100);
+					}
+
 					if (self.serviceState != 1) {
 						setTimeout(function() {
 							self.console.error('Not connected to gateway.');

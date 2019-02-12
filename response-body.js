@@ -6,11 +6,18 @@ var stream = require('stream'),
 	contentTypeParser = require('content-type-parser');
 
 
+ResponseBody.native = true;
 try {
 	iltorb = require('iltorb');
+} catch (ex) {
+	console.warn('Unable to load iltorb native module.', ex.message);
+	ResponseBody.native = false;
+}
+try {
 	Iconv = require('iconv').Iconv;
 } catch (ex) {
-	console.warn('Unable to load native modules', ex);
+	console.warn('Unable to load iconv native module.', ex.message);
+	ResponseBody.native = false;
 }
 
 function ResponseBody(id, res, chunk) {
@@ -47,8 +54,12 @@ ResponseBody.prototype.get = function(cb) {
 		decoder = zlib.gunzip;
 	} else if (ce == 'inflate') {
 		decoder = zlib.inflate;
-	} else if (ce == 'br' && iltorb) {
-		decoder = iltorb.decompress;
+	} else if (ce == 'br') {
+		if (iltorb) {
+			decoder = iltorb.decompress;
+		} else {
+			decoder = function(b, cb) { cb(new Error('iltorb failed to load; cannot decompress brotli-compressed response')); };
+		}
 	} else {
 		decoder = function(b, cb) { cb(null, b); };
 	}
@@ -67,13 +78,22 @@ ResponseBody.prototype.get = function(cb) {
 				if (ct.type == 'text' || (ct.type == 'application' && ct.subtype == 'json')) {
 					var charset = ct.get('charset') || 'windows-1252';
 
-					try {
-						var iconv = new Iconv(charset, 'utf-8//TRANSLIT//IGNORE');
-						cb(null, false, iconv.convert(body).toString());
+					if (charset == 'utf-8') {
+						cb(null, false, body.toString());
+					} else {
+						if (Iconv) {
+							try {
+								var iconv = new Iconv(charset, 'utf-8//TRANSLIT//IGNORE');
+								cb(null, false, iconv.convert(body).toString());
 
-					} catch(ex) {
-						cb(ex);
+							} catch(ex) {
+								cb(ex);
+							}
+						} else {
+							cb(new Error('iconv failed to load; cannot handle charset ' + charset));
+						}
 					}
+
 				} else {
 					cb(null, true, body.toString('base64'));
 				}
