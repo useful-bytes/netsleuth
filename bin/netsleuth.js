@@ -81,6 +81,10 @@ var yargs = require('yargs')
 			boolean: true,
 			describe: 'Do not validate HTTPS certificates presented by the target.'
 		})
+		.option('gateway', {
+			alias: 'g',
+			describe: 'Use this gateway server (if it cannot be inferred from hostname)'
+		})
 
 	}, function(argv) {
 		if (argv.reserve && argv.local) {
@@ -111,8 +115,12 @@ var yargs = require('yargs')
 		};
 
 		if (argv.insecure) host.insecure = true;
+
 		if (argv.local) host.local = true;
-		else host.gateway = argv.hostname ? gatewayFromHost(argv.hostname) : defaultGateway;
+		else {
+			if (argv.gateway) host.gateway = argv.gateway;
+			else host.gateway = argv.hostname ? gatewayFromHost(argv.hostname) : defaultGateway;
+		}
 
 		if (argv.ca) {
 			if (!Array.isArray(argv.ca)) argv.ca = [argv.ca];
