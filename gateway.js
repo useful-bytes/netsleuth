@@ -152,6 +152,13 @@ function GatewayServer(opts) {
 				}
 				break;
 
+			case 'info':
+				var res = self.ress[msg.id];
+				if (res && msg.sc > 101 && msg.sc < 200) {
+					res._writeRaw('HTTP/1.1 ' + msg.sc + ' Processing\r\n\r\n', 'ascii');
+				}
+				break;
+
 			case 'block':
 				self.blocks = msg.urls.map(function(str) {
 					if (str.substr(0, 4) == 'rex:') return new RegExp(str.substr(4));

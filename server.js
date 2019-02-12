@@ -169,7 +169,7 @@ function Inspector(server, opts) {
 						// https://github.com/nodejs/node/issues/9282
 						// if you get here, it means your node's HTTP parser is broken, and there's not much we can do to fix it.
 						// this means we have to kill the response and report a failure.
-						var estr = 'Got an informational response (HTTP ' + res.statusCode + '), but your version of node (v' + process.versions.node + ') does not correctly parse this kind of resposne.  Upgrade to node v10.0.0 or later to fix.';
+						var estr = 'Got an informational response (HTTP ' + res.statusCode + '), but your version of node (v' + process.versions.node + ') does not correctly parse this kind of response.  Upgrade to node v10.0.0 or later to fix.';
 						self.console.error(estr);
 						reqError(msg, 'unhandleable HTTP ' + res.statusCode);
 						send({
@@ -330,8 +330,17 @@ function Inspector(server, opts) {
 						}
 					});
 
-					res.on('information', function(info) {
-						self.console.info('HTTP ' + info.statusCode + ' from ' + msg.url);
+				});
+
+				req.on('information', function(info) {
+					self.console.info('HTTP ' + info.statusCode + ' from ' + msg.url);
+					send({
+						m: 'info',
+						id: msg.id,
+						sc: info.statusCode
+						// sm: res.statusMessage,
+						// headers: res.headers,
+						// raw: res.rawHeaders
 					});
 				});
 
