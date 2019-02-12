@@ -224,7 +224,7 @@ function GatewayServer(opts) {
 		ws.on('close', function() {
 			handleClose(ws, host);
 		});
-		
+
 		ws.on('error', function(err) {
 			// no-op -- the `close` event will fire right after this
 		});
@@ -394,7 +394,6 @@ function GatewayServer(opts) {
 				res.end(msg);
 			}
 
-			console.log('res.ws', !!res.ws, res._id);
 			if (res.ws) {
 				self.emit('response-complete', res.ws, res);
 				delete self.ress[res._id];
@@ -408,14 +407,12 @@ function GatewayServer(opts) {
 		for (var id in self.ress) {
 			var res = self.ress[id];
 			if (res.ackBy && res.ackBy < now) {
-				console.log(id, 'ack timeout');
 				respond(res, 504, 'Gateway Timeout', 'Request timed out.  The inspector did not acknowledge this request.');
 				if (res.ws) {
 					res.ws.terminate();
 				}
 			}
 			else if (res.expires < now) {
-				console.log(id, 'expired');
 				respond(res, 504, 'Gateway Timeout', 'Request timed out.');
 				if (res.ws && res.ws.readyState == WebSocket.OPEN) send(res.ws, {
 					m: 'err',
