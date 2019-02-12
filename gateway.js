@@ -224,6 +224,10 @@ function GatewayServer(opts) {
 		ws.on('close', function() {
 			handleClose(ws, host);
 		});
+		
+		ws.on('error', function(err) {
+			// no-op -- the `close` event will fire right after this
+		});
 
 		self.emit('host-online', host, ws);
 
