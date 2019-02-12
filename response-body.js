@@ -1,9 +1,17 @@
 var stream = require('stream'),
 	util = require('util'),
 	zlib = require('zlib'),
-	iltorb = require('iltorb'),
-	Iconv = require('iconv').Iconv,
+	iltorb,
+	Iconv,
 	contentTypeParser = require('content-type-parser');
+
+
+try {
+	iltorb = require('iltorb');
+	Iconv = require('iconv').Iconv;
+} catch (ex) {
+	console.warn('Unable to load native modules', ex);
+}
 
 function ResponseBody(id, res, chunk) {
 	stream.Writable.call(this);
@@ -39,7 +47,7 @@ ResponseBody.prototype.get = function(cb) {
 		decoder = zlib.gunzip;
 	} else if (ce == 'inflate') {
 		decoder = zlib.inflate;
-	} else if (ce == 'br') {
+	} else if (ce == 'br' && iltorb) {
 		decoder = iltorb.decompress;
 	} else {
 		decoder = function(b, cb) { cb(null, b); };
