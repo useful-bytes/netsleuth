@@ -1,4 +1,5 @@
 var http = require('http'),
+ 	https = require('https'),
 	fs = require('fs'),
 	os = require('os'),
 	url = require('url'),
@@ -107,6 +108,7 @@ function attach(opts, readyCb) {
 	var HttpClientRequest = http.ClientRequest;
 
 	function ClientRequest(options, cb) {
+		// NOTE: This is the patched ClientRequest hooked by netsleuth
 		var self = this;
 		HttpClientRequest.call(self, options, cb);
 
@@ -291,7 +293,27 @@ function attach(opts, readyCb) {
 		return req;
 	};
 
+	https.request = function request(options, cb) {
+		if (typeof options == 'string') {
+			options = url.parse(options);
+			if (!options.hostname) {
+				throw new Error('Unable to determine the domain name');
+			}
+		} else {
+			options = util._extend({}, options);
+		}
+		options._defaultAgent = https.globalAgent;
+		return new ClientRequest(options, cb);
+	};
+
+	https.get = function(options, cb) {
+		var req = https.request(options, cb);
+		req.end();
+		return req;
+	};
+
 	http.ClientRequest = ClientRequest;
+	https.ClientRequest = ClientRequest;
 
 
 
