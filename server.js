@@ -10,6 +10,7 @@ var http = require('http'),
 	EventEmitter = require('events'),
 	request = require('request'),
 	clipboardy = require('clipboardy'),
+	notifier = require('node-notifier'),
 	express = require('express'),
 	bodyParser = require('body-parser'),
 	WebSocket = require('ws'),
@@ -29,6 +30,8 @@ var argv = require('yargs').argv;
 var app = express();
 
 var wsid = 0;
+
+var rexEscape = /([\\^$.|?*+()\[\]{}])/g, wildcard = /\\\*/g;
 
 var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend');
 
@@ -84,6 +87,7 @@ function Inspector(server, opts) {
 	this.reqs = {};
 	this.buffer = [];
 	this.sessionCLI = new SessionCLI(this);
+	this.notify = [];
 	var ready, pinger, pingto;
 
 
@@ -370,6 +374,19 @@ function Inspector(server, opts) {
 					m: 'ack',
 					id: msg.id
 				});
+
+				for (var i = 0; i < self.notify.length; i++) {
+					var n = self.notify[i];
+					if (n.method == '*' || n.method == msg.method) {
+						if (n.rex.test(msg.url)) {
+							notifier.notify({
+								title: opts.host,
+								message: msg.method + ' ' + msg.url
+							});
+							break;
+						}
+					}
+				}
 
 				break;
 
@@ -884,6 +901,19 @@ Inspector.prototype.connection = function(ws, req) {
 		else self.service.send(JSON.stringify(msg));
 	}
 
+};
+
+Inspector.prototype.addNotifyPattern = function(method, pattern, isRegex, caseSensitive) {
+	var rex;
+	if (isRegex) {
+		rex = new RegExp(pattern, caseSensitive ? '' : 'i');
+	} else {
+		rex = new RegExp(pattern.replace(rexEscape, '\\$&').replace(wildcard, '.+'), caseSensitive ? '' : 'i');
+	}
+	this.notify.push({
+		method: method.toUpperCase(),
+		rex: rex
+	});
 };
 
 
