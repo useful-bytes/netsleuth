@@ -328,7 +328,6 @@ function attach(opts, readyCb) {
 		});
 		ws.on('error', function(err) {
 			console.error('netsleuth connection error', err);
-			setTimeout(connect, 5000);
 		});
 	}
 
