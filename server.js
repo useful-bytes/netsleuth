@@ -31,8 +31,6 @@ var app = express();
 
 var wsid = 0;
 
-var rexEscape = /([\\^$.|?*+()\[\]{}])/g, wildcard = /\\\*/g;
-
 var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend');
 
 exports = module.exports = InspectionServer;
@@ -818,33 +816,7 @@ Inspector.prototype.connection = function(ws, req) {
 
 
 				case 'Runtime.evaluate':
-
-					// when typing:
-					// msg.params.silent when typing
-					// msg.params.objectGroup == 'completion'
-					// msg.params.expression == 'this'
-
-					if (msg.params.silent) {
-						// autocomplete
-						reply({
-							result: {
-								type: 'object',
-								subtype: 'error', // null = gray, regexp = brown, date/error = black
-								value: 'result',
-								description: ''
-							}
-						});
-					} else {
-						self.sessionCLI.parse(msg.params.expression, function(err, type, res) {
-							reply({
-								result: {
-									type: 'object',
-									subtype: type == 'error' ? 'regexp' : 'date',
-									description: res
-								}
-							});
-						});
-					}
+					self.sessionCLI.parse(msg, reply);
 					break;
 
 				default:
@@ -901,19 +873,6 @@ Inspector.prototype.connection = function(ws, req) {
 		else self.service.send(JSON.stringify(msg));
 	}
 
-};
-
-Inspector.prototype.addNotifyPattern = function(method, pattern, isRegex, caseSensitive) {
-	var rex;
-	if (isRegex) {
-		rex = new RegExp(pattern, caseSensitive ? '' : 'i');
-	} else {
-		rex = new RegExp(pattern.replace(rexEscape, '\\$&').replace(wildcard, '.+'), caseSensitive ? '' : 'i');
-	}
-	this.notify.push({
-		method: method.toUpperCase(),
-		rex: rex
-	});
 };
 
 
@@ -1056,7 +1015,10 @@ InspectionServer.prototype.newRemoteInspector = function(inspector) {
 
 InspectionServer.prototype.inspectInproc = function(name, transient) {
 	var self = this,
-		inspector = self.inspectors[name] = new InprocInspector(self);
+		inspector = self.inspectors[name] = new InprocInspector(self, {
+			name: name,
+			transient: transient
+		});
 
 	if (transient) {
 		inspector.on('no-targets', function() {

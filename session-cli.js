@@ -1,5 +1,6 @@
 var Yargs = require('yargs/yargs');
 
+var rexEscape = /([\\^$.|?*+()\[\]{}])/g, wildcard = /\\\*/g;
 
 exports = module.exports = function SessionCLI(inspector) {
 
@@ -30,7 +31,16 @@ exports = module.exports = function SessionCLI(inspector) {
 			
 		}, function(argv) {
 			try {
-				inspector.addNotifyPattern(argv.method, argv._[2], argv.regex, argv.caseSensitive);
+				var rex;
+				if (argv.regex) {
+					rex = new RegExp(argv._[2], argv.caseSensitive ? '' : 'i');
+				} else {
+					rex = new RegExp(argv._[2].replace(rexEscape, '\\$&').replace(wildcard, '.+'), argv.caseSensitive ? '' : 'i');
+				}
+				inspector.notify.push({
+					method: argv.method.toUpperCase(),
+					rex: rex
+				});
 				argv.setResult('Added');
 			} catch (ex) {
 				argv.setResult('Unable to add pattern: ' + ex.message);
@@ -52,13 +62,18 @@ exports = module.exports = function SessionCLI(inspector) {
 			.usage('Usage: notify rm <id>\n\nRemoves a pattern by id (as seen in notify ls), or * to remove all patterns.')
 			.demand(1)
 		}, function(argv) {
-			var id = parseInt(argv._[2], 10);
-			if (!id) return argv.setResult('id must be a number.');
-			if (id > inspector.notify.length) return argv.setResult('Invalid id.');
+			if (argv._[2] == '*') {
+				inspector.notify = [];
+				argv.setResult('Removed all patterns');
+			} else {
+				var id = parseInt(argv._[2], 10);
+				if (!id) return argv.setResult('id must be a number.');
+				if (id > inspector.notify.length) return argv.setResult('Invalid id.');
 
-			var rmed = inspector.notify.splice(id-1, 1);
+				var rmed = inspector.notify.splice(id-1, 1);
 
-			argv.setResult('Removed ' + rmed[0].method + ' ' + rmed[0].rex.toString());
+				argv.setResult('Removed ' + rmed[0].method + ' ' + rmed[0].rex.toString());
+			}
 		})
 	})
 	.command('versions', 'Show version info', function(yargs) {
@@ -74,24 +89,52 @@ exports = module.exports = function SessionCLI(inspector) {
 
 	parser.$0 = '';
 
-	this.parse = function(str, cb) {
+	this.parse = function(msg, reply) {
 		var result;
 
-		if (str == 'help') {
-			parser.parse('', function() {
-				cb(null, 'success', parser.getUsageInstance().help() + '\nType “<command> --help” for more information about a particular command.');
-				
+		// when typing:
+		// msg.params.silent when typing
+		// msg.params.objectGroup == 'completion'
+		// msg.params.expression == 'this'
+
+		if (msg.params.silent) {
+			// autocomplete
+			reply({
+				result: {
+					type: 'object',
+					subtype: 'error', // null = gray, regexp = brown, date/error = black
+					value: 'result',
+					description: ''
+				}
+			});
+		} else {
+			var str = msg.params.expression;
+			if (str == 'help') {
+				parser.parse('', function() {
+					done('success', parser.getUsageInstance().help() + '\nType “<command> --help” for more information about a particular command.');
+				});
+			}
+			else parser.parse(str, {
+				setResult: function(str) {
+					result = str;
+				}
+			}, function(err, argv, output) {
+				if (!result) result = output;
+				if (result) done('success', result);
+				else done('error', 'Unknown command.  Type “help” for a list of available commands.');
 			});
 		}
-		else parser.parse(str, {
-			setResult: function(str) {
-				result = str;
-			}
-		}, function(err, argv, output) {
-			if (!result) result = output;
-			if (result) cb(null, 'success', result);
-			else cb(null, 'error', 'Unknown command.  Type “help” for a list of available commands.');
-		});
+
+		function done(type, res) {
+			reply({
+				result: {
+					type: 'object',
+					subtype: type == 'error' ? 'regexp' : 'date',
+					description: res
+				}
+			});
+		}
+
 	};
 
 };

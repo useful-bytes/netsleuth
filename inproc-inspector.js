@@ -1,15 +1,21 @@
 var EventEmitter = require('events'),
 	util = require('util'),
 	WebSocket = require('ws'),
-	RemoteConsole = require('./remote-console')
+	clipboardy = require('clipboardy'),
+	notifier = require('node-notifier'),
+	RemoteConsole = require('./remote-console'),
+	SessionCLI = require('./session-cli'),
 	ResponseBody = require('./response-body');
 
 function InprocInspector(server, opts) {
 	var self = this;
+	self.opts = opts;
 	self.clients = [];
 	self.targets = [];
 	self.reqs = {};
-	this.console = new RemoteConsole(this);
+	self.console = new RemoteConsole(self);
+	self.sessionCLI = new SessionCLI(self);
+	self.notify = [];
 }
 util.inherits(InprocInspector, EventEmitter);
 
@@ -74,6 +80,14 @@ InprocInspector.prototype.connection = function(ws, req) {
 					}
 					break;
 
+				case 'Clipboard.write':
+					clipboardy.write(msg.params.text);
+					break;
+
+				case 'Runtime.evaluate':
+					self.sessionCLI.parse(msg, reply);
+					break;
+
 				default:
 					reply();
 			}
@@ -93,6 +107,18 @@ InprocInspector.prototype.connection = function(ws, req) {
 		function csend(msg) {
 			ws.send(JSON.stringify(msg));
 		}
+
+		// enable console
+		csend({
+			method: 'Runtime.executionContextCreated',
+			params: {
+				context: {
+					id: 1,
+					name: 'default',
+					origin: 'origin'
+				}
+			}
+		});
 		// self.broadcastTargets(data);
 	});
 
@@ -101,6 +127,7 @@ InprocInspector.prototype.connection = function(ws, req) {
 			if (self.clients[i] == ws) return self.clients.splice(i, 1);
 		}
 	});
+
 
 };
 
@@ -146,6 +173,20 @@ InprocInspector.prototype.target = function(ws, req) {
 						var info = self.reqs[id] = {
 							req: msg.params.request
 						};
+
+
+						for (var i = 0; i < self.notify.length; i++) {
+							var n = self.notify[i];
+							if (n.method == '*' || n.method == msg.params.request.method) {
+								if (n.rex.test(msg.params.request.url)) {
+									notifier.notify({
+										title: self.opts.name,
+										message: msg.params.request.method + ' ' + msg.params.request.url
+									});
+									break;
+								}
+							}
+						}
 						break;
 
 					case 'Network.responseReceived':
