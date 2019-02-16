@@ -269,6 +269,9 @@ function GatewayServer(opts) {
 		}
 		if (self.apps[host]) return self.apps[host](req, res);
 
+		if (req.url == '/robots.txt') {
+			return respond(res, 200, 'OK', 'User-agent: *\r\nDisallow: /\r\nNoindex: /\r\nNofollow: /\r\n');
+		}
 
 		if (ws) {
 
