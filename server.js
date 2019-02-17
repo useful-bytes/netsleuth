@@ -481,6 +481,10 @@ function Inspector(server, opts) {
 					state: self.serviceState
 				}
 			});
+			send({
+				m: 'cfg',
+				opts: opts.serviceOpts
+			});
 			if (ready) send({ m: 'ready' });
 		});
 

@@ -46,6 +46,30 @@ function dres(cb) {
 	};
 }
 
+function getServiceOpts(argv) {
+	var opts;
+
+	if (argv.auth) {
+		var colon = argv.auth.indexOf(':'),
+			user = argv.auth.substr(0, colon),
+			pass = argv.auth.substr(colon+1);
+
+		if (!user || !pass) {
+			console.error('Invalid Basic auth.  Please provide “username:password”.');
+			process.exit(1);
+		}
+
+		opts = {
+			auth: {
+				user: user,
+				pass: pass
+			}
+		};
+	}
+
+	return opts;
+}
+
 var yargs = require('yargs')
 	.usage('Usage: $0 <command>')
 
@@ -85,6 +109,15 @@ var yargs = require('yargs')
 			alias: 'g',
 			describe: 'Use this gateway server (if it cannot be inferred from hostname)'
 		})
+		.option('auth', {
+			alias: 'A',
+			describe: 'Basic auth username:password that the gateway should require before forwarding requests'
+		})
+		.option('tmp', {
+			alias: 't',
+			boolean: true,
+			describe: 'Add temporarily -- do not save this target configuration to disk.'
+		})
 
 	}, function(argv) {
 		if (argv.reserve && argv.local) {
@@ -106,7 +139,7 @@ var yargs = require('yargs')
 
 		if (hosts[argv.hostname]) {
 			console.error('You already have a target using hostname ' + argv.hostname);
-			// process.exit(1);
+			process.exit(1);
 		}
 
 
@@ -141,6 +174,8 @@ var yargs = require('yargs')
 			});
 		}
 
+		host.serviceOpts = getServiceOpts(argv);
+
 		runDaemon(function() {
 			request({
 				method: 'POST',
@@ -150,22 +185,24 @@ var yargs = require('yargs')
 				},
 				json: Object.assign({ host: argv.hostname }, host)
 			}, dres(function(res, body) {
-				config.hosts[body.host] = host;
-				rcfile.save(config);
+				if (!argv.tmp) {
+					config.hosts[body.host] = host;
+					rcfile.save(config);
+				}
 				console.log('Inspecting https://' + body.host + ' \u27a1 ' + argv.target);
+
+				if (argv.reserve) {
+					gw.reserve(body.host, argv.store, false, host.serviceOpts, function(err, res, hostname) {
+						if (err) console.error('Unable to connect to gateway to make reservation.', err);
+						else if (res == 200) console.log(body.host + ': reservation updated');
+						else if (res == 201) console.log(body.host + ': reserved');
+						else if (res == 303) console.log(body.host + ': reserved ' + hostname);
+						else if (res == 401) console.log(body.host + ': not logged in to gateway');
+						else console.log(body.host + ': ' + res)
+					});
+				}
 			}));
 		});
-
-		if (argv.reserve) {
-			gw.reserve(argv.hostname, argv.store, false, function(err, res, hostname) {
-				if (err) console.error('Unable to connect to gateway to make reservation.', err);
-				else if (res == 200) console.log(host + ': reservation updated');
-				else if (res == 201) console.log(host + ': reserved');
-				else if (res == 303) console.log(host + ': reserved ' + hostname);
-				else if (res == 401) console.log(host + ': not logged in to gateway');
-				else console.log(host + ': ' + res)
-			});
-		}
 
 	})
 
@@ -228,7 +265,7 @@ var yargs = require('yargs')
 			}));
 		});
 
-		toRemove.forEach(function(host) {
+		if (argv.unreserve) toRemove.forEach(function(host) {
 			if (!config.hosts[host].local) {
 				gw.unreserve(host, function(err) {
 					if (err) {
@@ -255,15 +292,21 @@ var yargs = require('yargs')
 			boolean: true,
 			describe: 'If the requested hostname is not available, automatically reserve a similar name.'
 		})
+		.option('auth', {
+			alias: 'A',
+			describe: 'Basic auth username:password that the gateway should require before forwarding requests.  Note: these credentials are not stored in a secure fashion.'
+		})
 		.epilog('Learn more about how the public gateway works: https://netsleuth.io/gateway')
 	}, function(argv) {
-		var hosts = argv._.slice(1);
+		var serviceOpts = getServiceOpts(argv),
+			hosts = argv._.slice(1);
+
 		hosts.unshift(argv['hostname...']);
 		hosts.forEach(function(host) {
 			if (host.indexOf('.') == -1) {
 				host = host + '.' + defaultGateway;
 			}
-			gw.reserve(host, argv.store, argv.similar, function(err, res, hostname) {
+			gw.reserve(host, argv.store, argv.similar, serviceOpts, function(err, res, hostname) {
 				if (err) console.error('Unable to connect to gateway.', err);
 				else if (res == 200) console.log(host + ': reservation updated');
 				else if (res == 201) console.log(host + ': reserved');

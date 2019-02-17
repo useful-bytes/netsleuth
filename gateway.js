@@ -108,6 +108,15 @@ function GatewayServer(opts) {
 		host.lastSeen = now;
 
 		switch (msg.m) {
+			case 'cfg':
+				if (typeof msg.opts == 'object') {
+					var hopts = host.opts = msg.opts;
+					if (hopts.auth) {
+						hopts.auth = 'Basic ' + new Buffer(hopts.auth.user + ':' + hopts.auth.pass).toString('base64');
+					}
+				}
+				break;
+
 			case 'ready':
 				self.emit('host-ready', host);
 				break;
@@ -277,7 +286,9 @@ function GatewayServer(opts) {
 		if (self.apps[hostname]) return self.apps[hostname](req, res);
 
 		if (req.url == '/robots.txt') {
-			return respond(res, 200, 'OK', 'User-agent: *\r\nDisallow: /\r\nNoindex: /\r\nNofollow: /\r\n');
+			return respond(res, 200, 'OK', 'User-agent: *\r\nDisallow: /\r\nNoindex: /\r\nNofollow: /\r\n', {
+				'Cache-Control': 'public, max-age=2592000'
+			});
 		}
 
 		if (host) {
@@ -287,10 +298,20 @@ function GatewayServer(opts) {
 			self.ress[id] = host.ress[id] = res;
 			res.nshost = host;
 
-			// if (host.opts.auth)
-
 			// 12 for " HTTP/1.1\r\n", 4 for ": " and "\r\n" in header lines, and final 4 for "\r\n\r\n" at end of headers
 			res.bytes = req.method.length + req.url.length + 12 + req.rawHeaders.join('    ').length + 4;
+
+			if (host.opts.auth) {
+				if (req.headers.authorization == host.opts.auth) {
+					delete req.headers.authorization;
+				} else if (req.headers['proxy-authorization'] == host.opts.auth) {
+					delete req.headers['proxy-authorization']
+				} else {
+					return respond(res, 401, 'Authorization Required', 'This host requires authorization to make requests.', {
+						'WWW-Authenticate': 'Basic realm="netsleuth host ' + hostname + '"'
+					});
+				}
+			}
 
 			if (host.throttle.off) {
 				return respond(res, 503, 'Service Unavialable', 'Currently set to offline mode.');
@@ -392,23 +413,23 @@ function GatewayServer(opts) {
 
 
 
-	function respond(res, code, status, message) {
+	function respond(res, code, status, message, headers) {
 		if (res) {	
 			if (res.headersSent) {
 				if (res.socket) res.socket.destroy();
 			} else {
 				var msg = new Buffer(message);
-				res.writeHead(code, status, {
-					'Connection': 'close',
-					'Content-Type': 'text/plain',
-					'Content-Length': msg.length
-				});
+				headers = headers || {};
+				headers.Connection = 'close';
+				headers['Content-Type'] = 'text/plain';
+				headers['Content-Length'] = msg.length;
+				
+				res.writeHead(code, status, headers);
 				res.end(msg);
 			}
 
 			if (res.nshost) {
 				self.emit('response-complete', res.nshost, res);
-				console.log('respond() on req', res._id);
 				delete self.ress[res._id];
 				delete res.nshost.ress[res._id];
 			}
