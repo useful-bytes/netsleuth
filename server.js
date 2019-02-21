@@ -19,7 +19,7 @@ var http = require('http'),
 	joinRaw = require('./join-raw'),
 	InprocInspector = require('./inproc-inspector'),
 	RemoteConsole = require('./remote-console'),
-	ResponseBody = require('./response-body'),
+	MessageBody = require('./message-body'),
 	GatewayServer = require('./gateway'),
 	rawRespond = require('./lib/raw-respond'),
 	SessionCLI = require('./session-cli'),
@@ -269,7 +269,7 @@ function Inspector(server, opts) {
 						self.console.warn('Warning from ' + msg.method + ' ' + msg.url + ': ' + res.headers.warning, 'network', msg.id);
 					}
 
-					info.resBody = new ResponseBody(msg.id, res);
+					info.resBody = new MessageBody(msg.id, res);
 					info.resHeaders = res.headers;
 
 
@@ -719,7 +719,7 @@ Inspector.prototype.connection = function(ws, req) {
 				case 'Network.enable':
 					reply();
 
-					if (!ResponseBody.native) {
+					if (!MessageBody.native) {
 						setTimeout(function() {
 							self.console.warn('Native modules failed to build.  Some features (such as brotli decoding and non-utf8 character encoding support) will not work.  See https://netsleuth.io/docs/native for more information.');
 						}, 100);

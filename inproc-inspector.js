@@ -5,7 +5,7 @@ var EventEmitter = require('events'),
 	notifier = require('node-notifier'),
 	RemoteConsole = require('./remote-console'),
 	SessionCLI = require('./session-cli'),
-	ResponseBody = require('./response-body');
+	MessageBody = require('./message-body');
 
 function InprocInspector(server, opts) {
 	var self = this;
@@ -196,7 +196,7 @@ InprocInspector.prototype.target = function(ws, req) {
 					case 'Network.responseReceived':
 						var info = self.reqs[id];
 						info.res = msg.params.response;
-						info.resBody = new ResponseBody(id, info.res);
+						info.resBody = new MessageBody(id, info.res);
 						break;
 						
 				}
