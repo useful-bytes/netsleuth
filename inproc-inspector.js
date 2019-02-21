@@ -178,6 +178,33 @@ InprocInspector.prototype.target = function(ws, req) {
 							req: msg.params.request
 						};
 
+						var headers = msg.params.request.headers;
+
+						for (var k in headers) {
+							var normalized = k.toLowerCase();
+							if (normalized != k) {
+								headers[normalized] = headers[k];
+								delete headers[k];
+							}
+						}
+
+						if ((headers['content-length'] || headers['transfer-encoding'] == 'chunked') && msg.params.request.method != 'HEAD') {
+							info.reqBody = new MessageBody(id.replace(':', '_'), info.req, {
+								maxSize: 1024 * 100,
+								kind: 'req',
+								host: info.req.headers.host
+							});
+							info.reqBody.on('file', function() {
+								self.broadcast({
+									method: 'Gateway.updateRequestBody',
+									params: {
+										id: id,
+										sentToDisk: true
+									}
+								});
+							});
+						}
+
 
 						for (var i = 0; i < self.notify.length; i++) {
 							var n = self.notify[i];
@@ -193,10 +220,24 @@ InprocInspector.prototype.target = function(ws, req) {
 						}
 						break;
 
+					case 'Network.requestComplete':
+						var info = self.reqs[id];
+						if (info && info.reqBody) info.reqBody.end();
+						return;
+
 					case 'Network.responseReceived':
 						var info = self.reqs[id];
 						info.res = msg.params.response;
-						info.resBody = new MessageBody(id, info.res);
+						info.resBody = new MessageBody(id.replace(':', '_'), info.res, {
+							kind: 'res',
+							host: ws.pid
+						});
+						break;
+
+					case 'Network.loadingFinished':
+					case 'Network.loadingFailed':
+						var info = self.reqs[id];
+						if (info && info.resBody) info.resBody.end();
 						break;
 						
 				}
@@ -211,17 +252,22 @@ InprocInspector.prototype.target = function(ws, req) {
 			if (data.length > 5) {
 				var type = data.readUInt8(0),
 					num = data.readUInt32LE(1),
-					id = req.headers.pid + ':' + num;
+					id = req.headers.pid + ':' + num,
+					info = self.reqs[id];
 
-				if (self.reqs[id]) {
+				if (info) {
 					if (type == 1) {
-						self.broadcast({
-							method: 'Gateway.updateRequestBody',
-							params: {
-								id: id,
-								body: data.slice(5).toString()
-							}
-						});
+						var payload = data.slice(5);
+						info.reqBody.append(payload);
+						if (!info.reqBody.file) {
+							self.broadcast({
+								method: 'Gateway.updateRequestBody',
+								params: {
+									id: id,
+									body: payload.toString()
+								}
+							});
+						}
 					} else if (type == 2) {
 						self.broadcast({
 							method: 'Network.dataReceived',

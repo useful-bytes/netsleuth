@@ -569,7 +569,7 @@ Protocol.inspectorBackend.registerCommand("HeapProfiler.stopSampling", [], ["pro
 
 Protocol.inspectorBackend.registerEvent("Gateway.connectionState", ["state","message"]);
 Protocol.inspectorBackend.registerEvent("Gateway.securityState", ["insecure","message"]);
-Protocol.inspectorBackend.registerEvent("Gateway.updateRequestBody", ["id", "body"]);
+Protocol.inspectorBackend.registerEvent("Gateway.updateRequestBody", ["id", "body", "sentToDisk"]);
 Protocol.inspectorBackend.registerEvent("Gateway.dataReceived", ["requestId", "chunk"]);
 Protocol.inspectorBackend.registerEvent("Gateway.close", []);
 Protocol.inspectorBackend.registerCommand("Gateway.none", [], [], false);

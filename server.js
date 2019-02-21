@@ -86,6 +86,9 @@ function Inspector(server, opts) {
 	this.buffer = [];
 	this.sessionCLI = new SessionCLI(this);
 	this.notify = [];
+	this.tmpDir = opts.tmpDir || path.join(os.tmpdir(), 'netsleuth');
+	fs.mkdir(this.tmpDir, function() {});
+
 	var ready, pinger, pingto;
 
 
@@ -148,6 +151,9 @@ function Inspector(server, opts) {
 						});
 					}
 					if (self.reqs[msg.id]) delete self.reqs[msg.id].req;
+
+					if (info.reqBody) info.reqBody.destroy();
+					if (info.resBody) info.resBody.destroy();
 
 					self.broadcast({
 						method: 'Network.loadingFailed',
@@ -269,7 +275,10 @@ function Inspector(server, opts) {
 						self.console.warn('Warning from ' + msg.method + ' ' + msg.url + ': ' + res.headers.warning, 'network', msg.id);
 					}
 
-					info.resBody = new MessageBody(msg.id, res);
+					info.resBody = new MessageBody(msg.id, res, {
+						kind: 'res',
+						host: msg.headers.host
+					});
 					info.resHeaders = res.headers;
 
 
@@ -298,6 +307,9 @@ function Inspector(server, opts) {
 							}
 							delete self.reqs[msg.id].req;
 
+							if (info.reqBody) info.reqBody.destroy();
+							if (info.resBody) info.resBody.destroy();
+
 							self.broadcast({
 								method: 'Network.loadingFailed',
 								params: {
@@ -325,10 +337,11 @@ function Inspector(server, opts) {
 								params: {
 									requestId: msg.id,
 									timestamp: Date.now() / 1000,
-									encodedDataLength: info.resBody.data.length
+									encodedDataLength: info.resBody.length
 								}
 							});
 						}
+						info.resBody.end();
 					});
 
 				});
@@ -347,7 +360,20 @@ function Inspector(server, opts) {
 
 
 				if ((msg.headers['content-length'] || msg.headers['transfer-encoding'] == 'chunked') && msg.method != 'HEAD') {
-					info.reqBody = new Buffer(0);
+					info.reqBody = new MessageBody(msg.id, req, {
+						maxSize: 1024 * 100,
+						kind: 'req',
+						host: msg.headers.host
+					});
+					info.reqBody.on('file', function() {
+						self.broadcast({
+							method: 'Gateway.updateRequestBody',
+							params: {
+								id: msg.id,
+								sentToDisk: true
+							}
+						});
+					});
 				}
 				
 				self.broadcast({
@@ -389,7 +415,9 @@ function Inspector(server, opts) {
 				break;
 
 			case 'e':
-				self.reqs[msg.id].req.end();
+				var info = self.reqs[msg.id];
+				info.req.end();
+				if (info.reqBody) info.reqBody.end();
 				break;
 
 			case 'err':
@@ -454,10 +482,12 @@ function Inspector(server, opts) {
 			}
 		});
 
-		var req = self.reqs[msg.id];
-		if (req) {
-			req.destroy = true;
-			if (req.req.socket) req.req.socket.destroy();
+		var info = self.reqs[msg.id];
+		if (info) {
+			info.destroy = true;
+			if (info.req.socket) info.req.socket.destroy();
+			if (info.reqBody) info.reqBody.destroy();
+			if (info.resBody) info.resBody.destroy();
 			delete self.reqs[msg.id];
 		}
 	}
@@ -496,16 +526,20 @@ function Inspector(server, opts) {
 			} else {
 				if (data.length > 4) {
 					var id = data.readUInt32LE(0);
-					if (self.reqs[id] && self.reqs[id].req) {
-						self.reqs[id].req.write(data.slice(4));
-						self.reqs[id].reqBody = Buffer.concat([self.reqs[id].reqBody, data.slice(4)]);
-						self.broadcast({
-							method: 'Gateway.updateRequestBody',
-							params: {
-								id: id,
-								body: data.slice(4).toString()
-							}
-						});
+					var info = self.reqs[id];
+					if (info && info.req && info.reqBody) {
+						var payload = data.slice(4);
+						info.req.write(payload);
+						info.reqBody.append(payload);
+						if (!info.reqBody.file) {
+							self.broadcast({
+								method: 'Gateway.updateRequestBody',
+								params: {
+									id: id,
+									body: payload.toString()
+								}
+							});
+						}
 					}
 				}
 			}
@@ -586,6 +620,8 @@ function Inspector(server, opts) {
 				if (self.reqs[id].req) {
 					if (self.reqs[id].req.socket) self.reqs[id].req.socket.destroy();
 					delete self.reqs[id].req;
+					if (self.reqs[id].reqBody) self.reqs[id].reqBody.destroy();
+					if (self.reqs[id].resBody) self.reqs[id].resBody.destroy();
 					self.broadcast({
 						method: 'Network.loadingFailed',
 						params: {
@@ -637,14 +673,16 @@ function Inspector(server, opts) {
 		var lii = self.service = self.gateway;
 		lii.on('gateway-message', handleMsg);
 		lii.on('req-data', function(id, chunk) {
-			self.reqs[id].reqBody = Buffer.concat([self.reqs[id].reqBody, chunk]);
-			self.broadcast({
-				method: 'Gateway.updateRequestBody',
-				params: {
-					id: id,
-					body: chunk.toString()
-				}
-			});
+			self.reqs[id].reqBody.append(chunk);
+			if (!self.reqs[id].reqBody.file) {
+				self.broadcast({
+					method: 'Gateway.updateRequestBody',
+					params: {
+						id: id,
+						body: chunk.toString()
+					}
+				});
+			}
 		});
 
 		self.serviceState = 1;
@@ -675,6 +713,25 @@ function Inspector(server, opts) {
 			});
 		}
 	}
+
+	// every hour, delete any temp files more than 24 hours old
+	// (temp files are saved when a request body is > 100 kB or response body is > 10 MB)
+	self._tmpcleanup = setInterval(function() {
+		fs.readdir(self.tmpDir, function(err, files) {
+			if (err) return console.error('error cleaning temp dir', err);
+			files.forEach(function(file) {
+				file = path.join(self.tmpDir, file);
+				fs.stat(file, function(err, stats) {
+					if (err) return console.error('error stating temp file', file, err);
+					if (stats.mtime < Date.now() - (1000 * 60 * 60 * 24)) {
+						fs.unlink(file, function(err) {
+							if (err) return console.error('error deleting temp file', file, err);
+						});
+					}
+				});
+			});
+		});
+	}, 1000 * 60 * 60);
 		
 
 };
@@ -1164,6 +1221,7 @@ InspectionServer.prototype.broadcast = function(msg) {
 
 InspectionServer.prototype.close = function() {
 	clearInterval(this.wsping);
+	clearInterval(this._tmpcleanup);
 	this.ws.close();
 	this.http.close();
 	if (this.https) this.https.close();

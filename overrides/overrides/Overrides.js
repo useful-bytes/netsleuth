@@ -40,10 +40,14 @@ SDK.GatewayModel = class extends SDK.SDKModel {
 		this.dispatchEventToListeners(SDK.GatewayModel.Events.ConnectionState);
 	}
 
-	updateRequestBody(id, body) {
+	updateRequestBody(id, body, sentToDisk) {
 		var req = getReq(id);
 		if (req) {
-			req.requestFormData += body;
+			if (sentToDisk) {
+				req.requestFormData += '\n\n…';
+			} else {
+				req.requestFormData += body;
+			}
 			req.dispatchEventToListeners(SDK.NetworkRequest.Events.RequestHeadersChanged);
 		}
 	}

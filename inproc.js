@@ -256,6 +256,8 @@ function attach(opts, readyCb) {
 	ClientRequest.prototype.write = function(chunk, encoding, cb) {
 		var ret = http.OutgoingMessage.prototype.write.call(this, chunk, encoding, cb);
 
+		if (this.__ignore) return ret;
+
 		if (!(chunk instanceof Buffer)) {
 			chunk = new Buffer(chunk, encoding);
 		}
@@ -269,12 +271,20 @@ function attach(opts, readyCb) {
 	ClientRequest.prototype.end = function(chunk, encoding, cb) {
 		var ret = http.OutgoingMessage.prototype.end.call(this, chunk, encoding, cb);
 
+		if (this.__ignore) return ret;
+
 		if (typeof chunk == 'string') {
 			chunk = new Buffer(chunk, encoding);
 		}
 		if (chunk instanceof Buffer) {
 			sendBin(1, this.__reqNum, chunk);
 		}
+		send({
+			method: 'Network.requestComplete',
+			params: {
+				requestId: this.__reqId
+			}
+		});
 
 		return ret;
 	};
