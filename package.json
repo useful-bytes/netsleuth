@@ -4,6 +4,7 @@
   "description": "Use Chrome's Network Inspector with anything",
   "main": "index.js",
   "scripts": {
+    "postinstall": "bin/postinstall.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
