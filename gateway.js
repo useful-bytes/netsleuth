@@ -42,14 +42,38 @@ function GatewayServer(opts) {
 			}
 
 			if (reqHost == self.opts.host) {
-				var hostname = getHost(req.url);
-
 				if (self.gatewaySocketRequest) {
 					if (self.gatewaySocketRequest(req, socket, head)) return;
 				}
 
-				if (hostname) {
+				if (req.url.substr(0,6) == '/host/') {
+					var hostname = getHost(req.url);
+
+					// return rawRespond(socket, 308, 'Permanent Redirect', 'netsleuth websocket location has moved', {
+					// 	Location: 'wss://' + hostname + '/.well-known/netsleuth'
+					// });
+
 					self.hostRequest(hostname, req, function(err, ok, params) {
+						if (err) return rawRespond(500, 'Internal Server Error', err.message);
+
+						if (ok) {
+							wss.handleUpgrade(req, socket, head, function(client) {
+								req.headers.host = hostname;
+								wss.emit('connection', client, req, params);
+							});
+						} else {
+							params = params || {};
+							rawRespond(socket, params.code || 404, params.status || 'Not Found', params.message || '', params.headers);
+						}
+
+					});
+
+				} else rawRespond(socket, 404, 'Not Found', 'No WebSocket at ' + req.url);
+
+			} else {
+				if (req.url == '/.well-known/netsleuth') {
+
+					self.hostRequest(reqHost, req, function(err, ok, params) {
 						if (err) return rawRespond(500, 'Internal Server Error', err.message);
 
 						if (ok) {
@@ -62,9 +86,11 @@ function GatewayServer(opts) {
 						}
 
 					});
-				} else rawRespond(socket, 404, 'Not Found', 'No WebSocket at ' + req.url);
-			} else {
-				rawRespond(socket, 501, 'Not Implemented', 'Gateway does not yet support forwarding WebSocket connections.');
+				
+
+				} else {
+					rawRespond(socket, 501, 'Not Implemented', 'Gateway does not yet support forwarding WebSocket connections.');
+				}
 			}
 			
 
@@ -196,10 +222,11 @@ function GatewayServer(opts) {
 	}
 
 	wss.on('connection', function(ws, req, params) {
-		var hostname = getHost(req.url);
+		var hostname = req.headers.host;
 		var host = ws.nshost = self.hosts[hostname] = {
 			type: 'remote',
 			name: hostname,
+			ua: req.headers['user-agent'],
 			ws: ws,
 			ress: {},
 			opts: {},

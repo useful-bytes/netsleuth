@@ -51,6 +51,16 @@ function GatewayError(status, message) {
 }
 util.inherits(GatewayError, Error);
 
+Inspector.SERVICE_STATE = {
+	UNINITIALIZED: 0,
+	OPEN: 1,
+	DISCONNECTED: 2,
+	// Do not auto-reconnect following states
+	ERROR: 3,
+	REDIRECTING: 4,
+	CLOSED: 5
+};
+
 function Inspector(server, opts) {
 	var self = this;
 	EventEmitter.call(this);
@@ -76,11 +86,12 @@ function Inspector(server, opts) {
 			self.token = server.opts.gateways[self.gateway].token;
 		}
 	}
+	self.gatewayUrl = opts.gatewayUrl || 'wss://' + self.host.host + '/.well-known/netsleuth';
 
 	this.clients = [];
 	this.console = new RemoteConsole(this);
 	this.service = null;
-	this.serviceState = 0;
+	this.serviceState = Inspector.SERVICE_STATE.UNINITIALIZED;
 	this.serviceError = null;
 	this.reqs = {};
 	this.buffer = [];
@@ -495,7 +506,7 @@ function Inspector(server, opts) {
 	var ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
 
 	function connect() {
-		var service = self.service = new WebSocket('wss://' + self.gateway + '/host/' + self.host.host, [], {
+		var service = self.service = new WebSocket(self.gatewayUrl, [], {
 			headers: {
 				Authorization: 'Bearer ' + self.token,
 				'User-Agent': ua
@@ -503,7 +514,7 @@ function Inspector(server, opts) {
 		});
 
 		service.on('open', function() {
-			self.serviceState = 1;
+			self.serviceState = Inspector.SERVICE_STATE.OPEN;
 			self.console.info('Connected to gateway.');
 			self.broadcast({
 				method: 'Gateway.connectionState',
@@ -549,7 +560,7 @@ function Inspector(server, opts) {
 
 
 		service.on('error', function(err) {
-			if (self.serviceState < 2) {
+			if (self.serviceState < Inspector.SERVICE_STATE.DISCONNECTED) {
 				console.error('Gateway connection error.', err);
 				self.console.error('Gateway connection error: ' + err.message);
 			}
@@ -558,7 +569,14 @@ function Inspector(server, opts) {
 		service.on('unexpected-response', function(req, res) {
 			// if (res.statusCode >= 400 && res.statusCode <= 403) {
 
-				self.serviceState = 3;
+				if (res.statusCode == 301 || res.statusCode == 302 || res.statusCode == 303 || res.statusCode == 307 || res.statusCode == 308) {
+					self.serviceState = Inspector.SERVICE_STATE.REDIRECTING;
+					service.finalize(true);
+					self.gatewayUrl = res.headers.location;
+					return connect();
+				}
+
+				self.serviceState = Inspector.SERVICE_STATE.ERROR;
 				var err = self.serviceError = new GatewayError(res.statusCode, 'Unable to connect to gateway: ' + res.statusCode + ' ' + res.statusMessage);
 				err.status = res.statusCode;
 				err.statusMessage = res.statusMessage;
@@ -603,11 +621,11 @@ function Inspector(server, opts) {
 		service.on('close', function(code, reason) {
 			clearInterval(pinger);
 			clearTimeout(pingto);
-			if (self.serviceState == 1) {
+			if (self.serviceState == Inspector.SERVICE_STATE.OPEN) {
 				console.error('Connection to gateway closed.', code, reason);
 				self.console.error('Connection to gateway closed. ' + code + ' ' + reason);
 			}
-			if (self.serviceState != 3) self.serviceState = 2;
+			if (self.serviceState < Inspector.SERVICE_STATE.ERROR) self.serviceState = Inspector.SERVICE_STATE.DISCONNECTED;
 			self.broadcast({
 				method: 'Gateway.connectionState',
 				params: {
@@ -633,7 +651,7 @@ function Inspector(server, opts) {
 					});
 				}
 			}
-			if (self.serviceState < 3) setTimeout(connect, 5000);
+			if (self.serviceState < Inspector.SERVICE_STATE.ERROR) setTimeout(connect, 5000);
 		});
 
 		service.on('pong', function() {
@@ -685,7 +703,7 @@ function Inspector(server, opts) {
 			}
 		});
 
-		self.serviceState = 1;
+		self.serviceState = Inspector.SERVICE_STATE.OPEN;
 
 	} else {
 		if (self.host) {
@@ -740,7 +758,7 @@ util.inherits(Inspector, EventEmitter);
 Inspector.prototype.close = function() {
 	if (this.shutdown) return;
 	this.shutdown = true;
-	this.serviceState = 3;
+	this.serviceState = Inspector.SERVICE_STATE.CLOSED;
 	if (this.service) this.service.close();
 	this.console.warn('This inspector has been removed!');
 	this.broadcast({
@@ -782,7 +800,7 @@ Inspector.prototype.connection = function(ws, req) {
 						}, 100);
 					}
 
-					if (self.serviceState != 1) {
+					if (self.serviceState != Inspector.SERVICE_STATE.OPEN) {
 						setTimeout(function() {
 							self.console.error('Not connected to gateway.');
 							if (self.serviceError) self.console.error(self.serviceError.message);
