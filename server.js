@@ -161,7 +161,7 @@ function Inspector(server, opts) {
 							msg: err.message
 						});
 					}
-					if (self.reqs[msg.id]) delete self.reqs[msg.id].req;
+					if (self.reqs[msg.id]) delete self.reqs[msg.id];
 
 					if (info.reqBody) info.reqBody.destroy();
 					if (info.resBody) info.resBody.destroy();
@@ -316,7 +316,7 @@ function Inspector(server, opts) {
 									msg: 'incomplete response'
 								});
 							}
-							delete self.reqs[msg.id].req;
+							delete self.reqs[msg.id];
 
 							if (info.reqBody) info.reqBody.destroy();
 							if (info.resBody) info.resBody.destroy();
@@ -427,8 +427,10 @@ function Inspector(server, opts) {
 
 			case 'e':
 				var info = self.reqs[msg.id];
-				info.req.end();
-				if (info.reqBody) info.reqBody.end();
+				if (info) {
+					if (info.req) info.req.end();
+					if (info.reqBody) info.reqBody.end();
+				}
 				break;
 
 			case 'err':
@@ -691,15 +693,18 @@ function Inspector(server, opts) {
 		var lii = self.service = self.gateway;
 		lii.on('gateway-message', handleMsg);
 		lii.on('req-data', function(id, chunk) {
-			self.reqs[id].reqBody.append(chunk);
-			if (!self.reqs[id].reqBody.file) {
-				self.broadcast({
-					method: 'Gateway.updateRequestBody',
-					params: {
-						id: id,
-						body: chunk.toString()
-					}
-				});
+			var info = self.reqs[id];
+			if (info.reqBody) {
+				info.reqBody.append(chunk);
+				if (!info.reqBody.file) {
+					self.broadcast({
+						method: 'Gateway.updateRequestBody',
+						params: {
+							id: id,
+							body: chunk.toString()
+						}
+					});
+				}
 			}
 		});
 
@@ -827,31 +832,45 @@ Inspector.prototype.connection = function(ws, req) {
 					break;
 
 				case 'Network.getResponseBody':
-					var req = self.reqs[msg.params.requestId];
-					var body = req && req.resBody;
-					if (body) {
+					var info = self.reqs[msg.params.requestId];
+					var body = info && info.resBody;
 
-						body.get(function(err, b64, body) {
-							if (err) {
-								self.console.error('Error getting the response body of ' + req.msg.method + ' ' + req.msg.url + ': ' + err.message);
-								csend({
-									id: msg.id,
-									result: {
-										body: '(body not available: ' + err.message + ')',
-										base64Encoded: false
-									}
-								});
-							} else {
-								csend({
-									id: msg.id,
-									result: {
-										body: body,
-										base64Encoded: b64
-									}
-								});
-							}
-						});
+					if (info) {
+						if (body) {
 
+							body.get(function(err, b64, body) {
+								if (err) {
+									self.console.error('Error getting the response body of ' + info.msg.method + ' ' + info.msg.url + ': ' + err.message);
+									csend({
+										id: msg.id,
+										result: {
+											body: '(body not available: ' + err.message + ')',
+											base64Encoded: false
+										}
+									});
+								} else {
+									csend({
+										id: msg.id,
+										result: {
+											body: body,
+											base64Encoded: b64
+										}
+									});
+								}
+							});
+
+						} else {
+							csend({
+								id: msg.id,
+								result: {
+									body: '(missing response body)'
+								}
+							});
+						}
+
+						// at this point, nothing will need the req info anymore.
+						delete self.reqs[msg.params.requestId];
+						
 					} else {
 						csend({
 							id: msg.id,
