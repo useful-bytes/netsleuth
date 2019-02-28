@@ -93,7 +93,12 @@ function Inspector(server, opts) {
 	this.service = null;
 	this.serviceState = Inspector.SERVICE_STATE.UNINITIALIZED;
 	this.serviceError = null;
+	this.reqn = 0;
 	this.reqs = {};
+	this.lastGC = Date.now();
+	this.gcFreqMs = opts.gcFreqMs || 1000*60*15;
+	this.gcFreqCount = opts.gcFreqCount || 500;
+	this.minLifetime = opts.minLifetime || 1000*60*5;
 	this.buffer = [];
 	this.sessionCLI = new SessionCLI(this);
 	this.notify = [];
@@ -116,6 +121,18 @@ function Inspector(server, opts) {
 		}
 	}
 
+	function reqGC() {
+		var now = Date.now(), del=0;
+		for (var id in self.reqs) {
+			if (self.reqs[id].date + self.minLifetime < now) {
+				delete self.reqs[id];
+				++del;
+			}
+		}
+	}
+
+	self._gctimer = setInterval(reqGC, self.gcFreqMs);
+
 	function handleMsg(msg) {
 		switch (msg.m) {
 			case 'r':
@@ -137,10 +154,15 @@ function Inspector(server, opts) {
 				});
 
 				var info = self.reqs[msg.id] = {
+					n: ++self.reqn,
+					date: Date.now(),
 					proto: proto,
 					msg: msg,
 					req: req
 				};
+
+				// do garbage collection on the nextish tick if necessary
+				if (info.n % self.gcFreqCount == 0) setTimeout(reqGC);
 
 				req.on('continue', function() {
 					self.console.debug('Got 100 Continue for ' + msg.url);
@@ -764,6 +786,8 @@ Inspector.prototype.close = function() {
 	if (this.shutdown) return;
 	this.shutdown = true;
 	this.serviceState = Inspector.SERVICE_STATE.CLOSED;
+	clearInterval(this._gctimer);
+	this.reqs = {};
 	if (this.service) this.service.close();
 	this.console.warn('This inspector has been removed!');
 	this.broadcast({
