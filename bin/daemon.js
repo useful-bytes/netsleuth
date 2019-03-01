@@ -20,7 +20,8 @@ var config = rcfile.get(),
 	port = +process.argv[2];
 
 var server = new Server({
-	gateways: config.gateways
+	gateways: config.gateways,
+	port: port
 });
 
 

@@ -1,6 +1,6 @@
 {
   "name": "netsleuth",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "description": "Use Chrome's Network Inspector with anything",
   "main": "index.js",
   "scripts": {

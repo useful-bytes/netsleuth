@@ -10,12 +10,9 @@ var http = require('http'),
 	joinRaw = require('./join-raw'),
 	resourceType = require('./resource-type'),
 	installHooks = require('./install-hooks'),
-	daemon = require('./lib/daemon'),
+	Daemon = require('./lib/daemon'),
 	rcfile = require('./lib/rcfile'),
 	getStackFrames = require('./get-stack-frames');
-
-var globalConfig = rcfile.get(),
-	dport = (globalConfig.port || 9000);
 
 
 function getrcfile(from) {
@@ -58,27 +55,23 @@ function getProjectConfig(opts) {
 
 function init(opts) {
 	opts = opts || {};
+	var daemon = new Daemon(opts);
 	var projectConfig = getProjectConfig(opts);
 
-	if (!opts.server) {
-		opts.server = 'ws://127.0.0.1:' + dport;
-		daemon.start(dport, function(err, reused) {
-			if (err) console.error('Unable to start netsleuth daemon', err);
-			else {
-				if (!reused) console.error('Started netsleuth daemon on port ' + dport);
-				
-				initProject(opts, projectConfig);
-			}
-		});
-	} else {
-		initProject(opts, projectConfig);
-	}
+	daemon.start(function(err, reused, host) {
+		if (err) console.error('Unable to start netsleuth daemon', err);
+		else {
+			if (!reused) console.error('Started netsleuth daemon on ' + host);
+			
+			initProject(opts, projectConfig);
+		}
+	});
+
 }
 
-function initProject(opts, projectConfig) {
-
+function initProject(daemon, projectConfig) {
 	if (projectConfig) {
-		daemon.initProject(dport, projectConfig, function(err) {
+		daemon.initProject(projectConfig, function(err) {
 			if (err) console.error('Unable to initialize netsleuth project', err);
 		});
 	}
@@ -87,7 +80,8 @@ function initProject(opts, projectConfig) {
 
 function attach(opts, readyCb) {
 	opts = opts || {};
-
+	if (typeof opts == 'string') opts = { name: opts };
+	var daemon = new Daemon(opts);
 	var projectConfig = getProjectConfig(opts);
 
 	if (projectConfig) {
@@ -95,7 +89,6 @@ function attach(opts, readyCb) {
 	}
 
 
-	if (typeof opts == 'string') opts = { name: opts };
 	if (!opts.name) {
 		opts.name = process.argv0 + '.' + process.pid;
 		opts.transient = true;
@@ -331,7 +324,7 @@ function attach(opts, readyCb) {
 	agent.__ignore = true;
 
 	function connect() {
-		ws = new WebSocket(opts.server + '/inproc/' + opts.name, [], {
+		ws = new WebSocket('ws://' + daemon.host + '/inproc/' + opts.name, [], {
 			agent: agent,
 			headers: {
 				Origin: 'netsleuth:api',
@@ -364,20 +357,14 @@ function attach(opts, readyCb) {
 	}
 
 
-	if (!opts.server) {
-		opts.server = 'ws://127.0.0.1:' + dport;
-		daemon.start(dport, function(err, reused) {
-			if (err) console.error('Unable to start netsleuth daemon', err);
-			else {
-				if (!reused) console.error('Started netsleuth daemon on port ' + dport);
-				if (projectConfig) initProject(opts, projectConfig);
-				connect();
-			}
-		});
-	} else {
-		if (projectConfig) initProject(opts, projectConfig);
-		connect();
-	}
+	daemon.start(function(err, reused, host, version) {
+		if (err) console.error('Unable to start netsleuth daemon', err);
+		else {
+			if (!reused) console.error('Started netsleuth daemon v' + version + ' on ' + host);
+			if (projectConfig) initProject(daemon, projectConfig);
+			connect();
+		}
+	});
 
 
 

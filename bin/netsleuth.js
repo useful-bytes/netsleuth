@@ -3,9 +3,8 @@
 var fs = require('fs'),
 	path = require('path'),
 	readline = require('readline'),
-	request = require('request'),
 	rcfile = require('../lib/rcfile'),
-	daemon = require('../lib/daemon'),
+	Daemon = require('../lib/daemon'),
 	gw = require('../lib/gateway-client');
 
 var config = rcfile.get(),
@@ -22,10 +21,10 @@ if (config.gateways && config.gateways[defaultGateway] && config.gateways[defaul
 	}
 }
 
-config.port = config.port || 9000;
+var daemon = new Daemon(config);
 
 function runDaemon(cb) {
-	daemon.start(config.port, function(err) {
+	daemon.start(function(err) {
 		if (err) {
 			console.error('Unable to start inspection server.', err);
 			process.exit(1);
@@ -34,12 +33,9 @@ function runDaemon(cb) {
 }
 
 function dres(cb) {
-	return function(err, res, body) {
+	return function(err, body) {
 		if (err) {
 			console.error('Error communicating with inspection server: ' + err.message);
-			process.exit(1);
-		} else if (res.statusCode != 200) {
-			console.error(body);
 			process.exit(1);
 		}
 		else cb.apply(null, Array.prototype.slice.call(arguments, 1));
@@ -176,33 +172,24 @@ var yargs = require('yargs')
 
 		host.serviceOpts = getServiceOpts(argv);
 
-		runDaemon(function() {
-			request({
-				method: 'POST',
-				url: 'http://127.0.0.1:' + config.port + '/ipc/add',
-				headers: {
-					Origin: 'netsleuth:cli'
-				},
-				json: Object.assign({ host: argv.hostname }, host)
-			}, dres(function(res, body) {
-				if (!argv.tmp) {
-					config.hosts[body.host] = host;
-					rcfile.save(config);
-				}
-				console.log('Inspecting https://' + body.host + ' \u27a1 ' + argv.target);
+		daemon.add(Object.assign({ host: argv.hostname }, host), dres(function(body) {
+			if (!argv.tmp) {
+				config.hosts[body.host] = host;
+				rcfile.save(config);
+			}
+			console.log('Inspecting https://' + body.host + ' \u27a1 ' + argv.target);
 
-				if (argv.reserve) {
-					gw.reserve(body.host, argv.store, false, host.serviceOpts, function(err, res, hostname) {
-						if (err) console.error('Unable to connect to gateway to make reservation.', err);
-						else if (res == 200) console.log(body.host + ': reservation updated');
-						else if (res == 201) console.log(body.host + ': reserved');
-						else if (res == 303) console.log(body.host + ': reserved ' + hostname);
-						else if (res == 401) console.log(body.host + ': not logged in to gateway');
-						else console.log(body.host + ': ' + res)
-					});
-				}
-			}));
-		});
+			if (argv.reserve) {
+				gw.reserve(body.host, argv.store, false, host.serviceOpts, function(err, res, hostname) {
+					if (err) console.error('Unable to connect to gateway to make reservation.', err);
+					else if (res == 200) console.log(body.host + ': reservation updated');
+					else if (res == 201) console.log(body.host + ': reserved');
+					else if (res == 303) console.log(body.host + ': reserved ' + hostname);
+					else if (res == 401) console.log(body.host + ': not logged in to gateway');
+					else console.log(body.host + ': ' + res)
+				});
+			}
+		}));
 
 	})
 
@@ -243,27 +230,18 @@ var yargs = require('yargs')
 			process.exit(1);
 		});
 
-		runDaemon(function() {
-			request({
-				method: 'POST',
-				url: 'http://127.0.0.1:' + config.port + '/ipc/rm',
-				headers: {
-					Origin: 'netsleuth:cli'
-				},
-				json: {
-					hosts: toRemove,
-					unreserve: argv.unreserve
-				}
-			}, dres(function(res, body) {
-				
-				toRemove.forEach(function(host) {
-					delete config.hosts[host];
-				});
+		daemon.rm({
+			hosts: toRemove,
+			unreserve: argv.unreserve
+		}, dres(function() {
 
-				rcfile.save(config);
-				console.log('Removed ' + toRemove.length + ' targets.');
-			}));
-		});
+			toRemove.forEach(function(host) {
+				delete config.hosts[host];
+			});
+
+			rcfile.save(config);
+			console.log('Removed ' + toRemove.length + ' targets.');
+		}));
 
 		if (argv.unreserve) toRemove.forEach(function(host) {
 			if (!config.hosts[host].local) {
@@ -727,22 +705,24 @@ var yargs = require('yargs')
 	.command('start', 'Start the inspection server daemon', function(yargs) {
 		yargs
 		.usage('Usage: $0 start [options]')
-		.option('port', {
-			alias: 'p',
-			number: true,
-			default: config.port,
-			describe: 'Start the server on this port.'
-		})
+		// .option('port', {
+		// 	alias: 'p',
+		// 	number: true,
+		// 	default: config.port,
+		// 	describe: 'Start the server on this port.'
+		// })
 
 	}, function(argv) {
-		
-		daemon.start(argv.port, function(err, alreadyRunning) {
+
+		// since we're explicitly starting the daemon, override this
+		daemon.autoStart = true;
+		daemon.start(function(err, alreadyRunning, host, version) {
 			if (err) {
 				console.error(err);
 				process.exit(1);
 			} else {
-				if (alreadyRunning) console.log('Server already running.');
-				else console.log('Server now running on port ' + argv.port);
+				if (alreadyRunning) console.log('Daemon already running (v' + version + ' on ' + host + ').');
+				else console.log('Daemon v' + version + ' now running on ' + host);
 			}
 		});
 
@@ -751,22 +731,53 @@ var yargs = require('yargs')
 	.command('stop', 'Stop the inspection server daemon', function(yargs) {
 		yargs
 		.usage('Usage: $0 stop [options]')
-		.option('port', {
-			alias: 'p',
-			number: true,
-			default: config.port,
-			describe: 'Stop the server running on this port.'
+		.option('host', {
+			alias: 'h',
+			describe: 'Stop the server running on this host.'
 		})
 
 	}, function(argv) {
 
-		daemon.stop(argv.port, function(err) {
+		if (argv.host) daemon.setHost(argv.host);
+
+		daemon.stop(function(err) {
 			if (err) {
 				console.error(err);
 				process.exit(1);
 			} else {
-				console.log('Server stopped.');
+				console.log('Daemon stopped.');
 				process.exit(0);
+			}
+		});
+
+	})
+
+	.command('restart', 'Stop and restart the inspection server daemon', function(yargs) {
+		yargs
+		.usage('Usage: $0 restart [options]')
+		// .option('port', {
+		// 	alias: 'p',
+		// 	number: true,
+		// 	default: config.port,
+		// 	describe: 'Stop the server running locally on this port.'
+		// })
+
+	}, function(argv) {
+
+		daemon.autoStart = true;
+		daemon.restart(function(err, running, oldVersion, newVersion) {
+			if (err) {
+				console.error(err);
+				process.exit(1);
+			} else {
+				if (running) {
+					if (oldVersion != newVersion) console.log('Daemon restarted with new version.  v' + oldVersion + ' \u27a1 v' + newVersion);
+					else console.log('Daemon v' + newVersion + ' restarted.');
+					process.exit(0);
+				} else {
+					console.error('Daemon was not running.');
+					process.exit(1);
+				}
 			}
 		});
 

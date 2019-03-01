@@ -1059,8 +1059,8 @@ function InspectionServer(opts) {
 	function onupgrade(req, socket, head) {
 		var origin = req.headers.origin || '';
 		if (origin.substr(0,10) != 'netsleuth:' &&
-			origin != 'http://localhost:9000' &&
-			origin != 'http://127.0.0.1:9000') return rawRespond(socket, 403, 'Forbidden', 'This request must be made from an allowed origin.');
+			origin != 'http://localhost:' + opts.port &&
+			origin != 'http://127.0.0.1:' + opts.port) return rawRespond(socket, 403, 'Forbidden', 'This request must be made from an allowed origin.');
 
 		ws.handleUpgrade(req, socket, head, function(client) {
 			if (req.url == '/targets') {
