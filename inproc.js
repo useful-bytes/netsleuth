@@ -63,7 +63,7 @@ function init(opts) {
 		else {
 			if (!reused) console.error('Started netsleuth daemon on ' + host);
 			
-			initProject(opts, projectConfig);
+			initProject(daemon, projectConfig);
 		}
 	});
 
