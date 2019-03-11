@@ -177,7 +177,8 @@ var yargs = require('yargs')
 				config.hosts[body.host] = host;
 				rcfile.save(config);
 			}
-			console.log('Inspecting https://' + body.host + ' \u27a1 ' + argv.target);
+			var proto = host.local ? 'http' : 'https';
+			console.log('Inspecting ' + proto + '://' + body.host + ' \u27a1 ' + argv.target);
 
 			if (argv.reserve) {
 				gw.reserve(body.host, argv.store, false, host.serviceOpts, function(err, res, hostname) {

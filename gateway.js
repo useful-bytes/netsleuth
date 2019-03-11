@@ -104,6 +104,10 @@ function GatewayServer(opts) {
 		server.on('checkExpectation', function(req, res) {
 			handleRequest(req, res, true);
 		});
+
+		server.on('error', function(err) {
+			console.error('gateway server error', err);
+		});
 	}
 
 	function send(ws, msg) {
@@ -433,7 +437,7 @@ function GatewayServer(opts) {
 		}
 
 		function checkOpen() {
-			if (host.ws.readyState == WebSocket.OPEN) return true;
+			if ((host.ws && host.ws.readyState == WebSocket.OPEN) || host.type == 'local') return true;
 			else respond(res, 502, 'Bad Gateway', 'Inspector disconnected during request');
 		}
 	}
@@ -507,6 +511,7 @@ GatewayServer.prototype.inspect = function(name) {
 
 	var host = {
 		type: 'local',
+		ws: inspector,
 		name: name,
 		inspector: inspector,
 		ress: {},
@@ -542,6 +547,12 @@ GatewayServer.prototype.removeHost = function(hostname) {
 	}
 };
 
+GatewayServer.prototype.close = function() {
+	var self = this;
+	if (self.http) self.http.close();
+	if (self.https) self.https.close();
+};
+
 GatewayServer.prototype[util.inspect.custom] = true; // instruct console.log to ignore the `inspect` property
 
 
@@ -565,6 +576,7 @@ function LocalInspectorInstance(host, gateway) {
 util.inherits(LocalInspectorInstance, EventEmitter);
 
 LocalInspectorInstance.prototype.close = function() {
+	this.gateway.close();
 	this.emit('close');
 };
 

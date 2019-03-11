@@ -789,6 +789,7 @@ Inspector.prototype.close = function() {
 	clearInterval(this._gctimer);
 	this.reqs = {};
 	if (this.service) this.service.close();
+	if (this.gateway && this.gateway._local) this.gateway.close();
 	this.console.warn('This inspector has been removed!');
 	this.broadcast({
 		method: 'Gateway.close'
@@ -1217,32 +1218,52 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 	var ip = opts.ip || opts.host;
 
 	if (ip) {
-		gateway.http.listen(opts.port || 80, ip, function(err) {
-			if (err) {
-				if (cb) cb(err);
-				else self.emit('error', err);
-			} else {
-				up(ip);
-			}
-		});
+		function onerror(err) {
+			gateway.http.removeListener('listening', onlistening);
+			if (cb) cb(err);
+			else self.emit('error', err);
+		}
+		function onlistening() {
+			gateway.http.removeListener('error', onerror);
+			up(ip);
+		}
+
+		gateway.http.once('error', onerror);
+		gateway.http.once('listening', onlistening);
+
+
+		gateway.http.listen(opts.port || 80, ip);
 	} else {
 		tryListen();
 	}
 
 	function tryListen() {
-		var ip = InspectionServer.nextLocal();
+		try {
+			var ip = InspectionServer.nextLocal();
+		} catch (ex) {
+			if (cb) cb(ex);
+			else self.emit('error', ex);
+			return;
+		}
 		console.log('trying', ip);
-		gateway.http.listen(opts.port || 80, ip, function(err) {
-			if (err) {
-				if (err.code == 'EADDRINUSE') tryListen();
-				else {
-					if (cb) cb(err);
-					else self.emit('error', err);
-				}
-			} else {
-				up(ip);
+
+		function onerror(err) {
+			gateway.http.removeListener('listening', onlistening);
+			if (err.code == 'EADDRINUSE') tryListen();
+			else {
+				if (cb) cb(err);
+				else self.emit('error', err);
 			}
-		});
+		}
+		function onlistening() {
+			gateway.http.removeListener('error', onerror);
+			up(ip);
+		}
+
+		gateway.http.once('error', onerror);
+		gateway.http.once('listening', onlistening);
+
+		gateway.http.listen(opts.port || 80, ip);
 	}
 
 	function up(ip) {
