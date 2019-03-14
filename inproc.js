@@ -14,6 +14,7 @@ var http = require('http'),
 	rcfile = require('./lib/rcfile'),
 	getStackFrames = require('./get-stack-frames');
 
+var globalConfig = rcfile.get();
 
 function getrcfile(from) {
 	var rc;
@@ -55,9 +56,11 @@ function getProjectConfig(opts) {
 
 function init(opts) {
 	opts = opts || {};
-	var daemon = new Daemon(opts);
 	var projectConfig = getProjectConfig(opts);
+	var config = Object.assign({}, globalConfig, projectConfig.config, opts.config);
 
+	var daemon = new Daemon(config);
+	
 	daemon.start(function(err, reused, host) {
 		if (err) console.error('Unable to start netsleuth daemon', err);
 		else {
@@ -79,10 +82,11 @@ function initProject(daemon, projectConfig) {
 
 
 function attach(opts, readyCb) {
-	opts = opts || {};
 	if (typeof opts == 'string') opts = { name: opts };
-	var daemon = new Daemon(opts);
 	var projectConfig = getProjectConfig(opts);
+	var config = Object.assign({}, globalConfig, projectConfig.config, opts.config);
+
+	var daemon = new Daemon(config);
 
 	if (projectConfig) {
 		if (!opts.name) opts.name = projectConfig.project;
