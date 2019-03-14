@@ -98,7 +98,7 @@ function Inspector(server, opts) {
 	this.lastGC = Date.now();
 	this.gcFreqMs = opts.gcFreqMs || 1000*60*15;
 	this.gcFreqCount = opts.gcFreqCount || 500;
-	this.minLifetime = opts.minLifetime || 1000*60*5;
+	this.gcMinLifetime = opts.gcMinLifetime || 1000*60*5;
 	this.buffer = [];
 	this.sessionCLI = new SessionCLI(this);
 	this.notify = [];
@@ -124,7 +124,7 @@ function Inspector(server, opts) {
 	function reqGC() {
 		var now = Date.now(), del=0;
 		for (var id in self.reqs) {
-			if (self.reqs[id].date + self.minLifetime < now) {
+			if (self.reqs[id].date + self.gcMinLifetime < now) {
 				delete self.reqs[id];
 				++del;
 			}
@@ -309,6 +309,7 @@ function Inspector(server, opts) {
 					}
 
 					info.resBody = new MessageBody(msg.id, res, {
+						maxSize: opts.resMaxSize,
 						kind: 'res',
 						host: msg.headers.host
 					});
@@ -394,7 +395,7 @@ function Inspector(server, opts) {
 
 				if ((msg.headers['content-length'] || msg.headers['transfer-encoding'] == 'chunked') && msg.method != 'HEAD') {
 					info.reqBody = new MessageBody(msg.id, req, {
-						maxSize: 1024 * 100,
+						maxSize: opts.reqMaxSize,
 						kind: 'req',
 						host: msg.headers.host
 					});

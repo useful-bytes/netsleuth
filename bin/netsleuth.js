@@ -474,7 +474,7 @@ var yargs = require('yargs')
 	})
 	.command('register', 'Create new account on the public gateway', function(yargs) {
 		yargs
-		.usage('Usage: $0 login')
+		.usage('Usage: $0 register')
 		.option('gateway', {
 			alias: 'g',
 			default: defaultGateway,
