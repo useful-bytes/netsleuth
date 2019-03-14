@@ -169,7 +169,7 @@ function registerProjectHost(project, inspect) {
 	var hostname = inspect.hostname.replace('{user}', username());
 	if (hostname.indexOf('.') == -1) hostname += '.' + project.gateway;
 	if (inspect.reserve) {
-		gw.reserve(hostname, inspect.store, true, function(err, res, hostname) {
+		gw.reserve(hostname, inspect.store, true, {}, function(err, res, hostname) {
 			if (err) console.error(err);
 			else if (hostname) {
 				config.hosts = config.hosts || {};
