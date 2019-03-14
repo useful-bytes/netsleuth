@@ -151,9 +151,15 @@ server.app.post('/ipc/project', isLocal, function(req, res) {
 
 		if (Array.isArray(project.inspect)) {
 			project.inspect.forEach(function(inspect) {
-				var host = hostFrom[project.project + ':' + inspect.hostname];
+				var from;
+				if (inspect.local) {
+					from = project.project + ':L:' + inspect.target;
+				} else {
+					from = project.project + ':' + inspect.hostname;
+				}
+				var host = hostFrom[from];
 				if (host) {
-
+					// this host has already been added
 				} else {
 					registerProjectHost(project, inspect);
 				}
@@ -166,9 +172,31 @@ server.app.post('/ipc/project', isLocal, function(req, res) {
 
 
 function registerProjectHost(project, inspect) {
-	var hostname = inspect.hostname.replace('{user}', username());
-	if (hostname.indexOf('.') == -1) hostname += '.' + project.gateway;
-	if (inspect.reserve) {
+
+	if (inspect.local) {
+		var from = project.project + ':L:' + inspect.target;
+		var host = hostFrom[from] = {
+			local: true,
+			from: from,
+			target: inspect.target,
+			insecure: inspect.insecure,
+			gcFreqMs: inspect.gcFreqMs,
+			gcFreqCount: inspect.gcFreqCount,
+			gcMinLifetime: inspect.gcMinLifetime,
+			reqMaxSize: inspect.reqMaxSize,
+			resMaxSize: inspect.resMaxSize
+		};
+		addHost(host, function(err, inspector, ip) {
+			if (err) return console.error('unable to add local inspector', err);
+			host.host = ip;
+			config.hosts[ip] = host;
+			rcfile.save(config);
+		});
+	} else {
+		if (!inspect.hostname) return console.error('missing hostname', inspect);
+		var hostname = inspect.hostname.replace('{user}', username());
+		if (hostname.indexOf('.') == -1) hostname += '.' + project.gateway;
+
 		gw.reserve(hostname, inspect.store, true, {}, function(err, res, hostname) {
 			if (err) console.error(err);
 			else if (hostname) {
@@ -177,8 +205,14 @@ function registerProjectHost(project, inspect) {
 				var host = hostFrom[from] = config.hosts[hostname] = {
 					from: from,
 					host: hostname,
+					gateway: project.gateway,
 					target: inspect.target,
-					gateway: project.gateway
+					insecure: inspect.insecure,
+					gcFreqMs: inspect.gcFreqMs,
+					gcFreqCount: inspect.gcFreqCount,
+					gcMinLifetime: inspect.gcMinLifetime,
+					reqMaxSize: inspect.reqMaxSize,
+					resMaxSize: inspect.resMaxSize
 				};
 				rcfile.save(config);
 
