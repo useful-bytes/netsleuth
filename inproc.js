@@ -131,8 +131,18 @@ function attach(opts, readyCb) {
 			self.once('response', function(res) {
 				
 				var fwd = new ResponseBodyForwarder(num, ws);
+				
+				// Save the stream's current flow state so we can restore it after calling pipe()
+				// This is necessary so that res.pipe(…) and its call to res.on('data', …) do not
+				// automatically call res.resume() and begin the flow of data before the inspected
+				// application expects data to flow -- this can result in missed `data` events if
+				// listeners are attached in later ticks.
+				var flowing = res._readableState.flowing;
+				res._readableState.flowing = false;
 
 				res.pipe(fwd);
+
+				res._readableState.flowing = flowing;
 
 				res.on('end', function() {
 					if (res.complete) {
