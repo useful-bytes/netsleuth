@@ -82,7 +82,14 @@ function initProject(daemon, projectConfig) {
 
 
 function attach(opts, readyCb) {
-	if (typeof opts == 'string') opts = { name: opts };
+	if (typeof opts == 'function') {
+		readyCb = opts;
+		opts = {};
+	} else if (typeof opts == 'string') {
+		opts = { name: opts };
+	} else if (!opts) {
+		opts = {};
+	}
 	var projectConfig = getProjectConfig(opts);
 	var config = Object.assign({}, globalConfig, projectConfig.config, opts.config);
 
@@ -381,7 +388,7 @@ function attach(opts, readyCb) {
 		if (err) console.error('Unable to start netsleuth daemon', err);
 		else {
 			if (!reused) console.error('Started netsleuth daemon v' + version + ' on ' + host);
-			if (projectConfig) initProject(daemon, projectConfig);
+			if (projectConfig && opts.initProject !== false) initProject(daemon, projectConfig);
 			connect();
 		}
 	});
