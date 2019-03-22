@@ -220,6 +220,7 @@ function attach(opts, readyCb) {
 	util.inherits(ClientRequest, HttpClientRequest);
 
 	ClientRequest.prototype._storeHeader = function(firstLine, headers) {
+		// NOTE: This is a patched ClientRequest method hooked by netsleuth
 		HttpClientRequest.prototype._storeHeader.call(this, firstLine, headers);
 
 		if (this.__ignore) return;
@@ -261,9 +262,12 @@ function attach(opts, readyCb) {
 	};
 
 	ClientRequest.prototype.write = function(chunk, encoding, cb) {
+		// NOTE: This is a patched ClientRequest method hooked by netsleuth
 		var ret = http.OutgoingMessage.prototype.write.call(this, chunk, encoding, cb);
 
 		if (this.__ignore) return ret;
+
+		if (typeof encoding == 'function') encoding = undefined;
 
 		if (!(chunk instanceof Buffer)) {
 			chunk = new Buffer(chunk, encoding);
@@ -276,10 +280,12 @@ function attach(opts, readyCb) {
 	};
 
 	ClientRequest.prototype.end = function(chunk, encoding, cb) {
+		// NOTE: This is a patched ClientRequest method hooked by netsleuth
 		var ret = http.OutgoingMessage.prototype.end.call(this, chunk, encoding, cb);
 
 		if (this.__ignore) return ret;
 
+		if (typeof encoding == 'function') encoding = undefined;
 		if (typeof chunk == 'string') {
 			chunk = new Buffer(chunk, encoding);
 		}
