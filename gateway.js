@@ -217,13 +217,11 @@ function GatewayServer(opts) {
 	}
 
 	function handleClose(host) {
-		// delete self.hosts[host.name];
 		
 		for (var id in host.ress) {
 			respond(host.ress[id], 502, 'Bad Gateway', 'Inspector disconnected during request');
 		}
 
-		// self.emit('host-offline', host);
 		self.removeHost(host);
 	}
 
