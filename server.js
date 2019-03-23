@@ -7,6 +7,7 @@ var http = require('http'),
 	util = require('util'),
 	zlib = require('zlib'),
 	stream = require('stream'),
+	crypto = require('crypto'),
 	EventEmitter = require('events'),
 	request = require('request'),
 	clipboardy = require('clipboardy'),
@@ -48,18 +49,23 @@ function gatewayFromHost(host) {
 function GatewayError(status, message) {
 	Error.call(this, message);
 	this.status = status;
+	delete this.message;
+	this.message = message;
 }
 util.inherits(GatewayError, Error);
 
 Inspector.SERVICE_STATE = {
 	UNINITIALIZED: 0,
 	OPEN: 1,
-	DISCONNECTED: 2,
+	CONNECTING: 2,
+	DISCONNECTED: 3,
 	// Do not auto-reconnect following states
-	ERROR: 3,
-	REDIRECTING: 4,
-	CLOSED: 5
+	ERROR: 4,
+	REDIRECTING: 5,
+	CLOSED: 6,
 };
+
+var thisHid = getHid();
 
 function Inspector(server, opts) {
 	var self = this;
@@ -503,6 +509,20 @@ function Inspector(server, opts) {
 					}
 				}, msg.ping);
 				break;
+
+			case 'ej':
+				self.serviceError = new GatewayError(403, 'This device was disconnected from the gateway because you logged in from another device.  Type "reconnect" to reconnect.');
+				console.log(self.serviceError);
+				self.console.error(self.serviceError.message);
+				self.serviceState = Inspector.SERVICE_STATE.ERROR;
+				self.broadcast({
+					method: 'Gateway.connectionState',
+					params: {
+						state: self.serviceState,
+						message: 'Disconnected from gateway'
+					}
+				});
+				break;
 		}
 
 	}
@@ -531,6 +551,7 @@ function Inspector(server, opts) {
 	var ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
 
 	function connect() {
+		self.servceState = Inspector.SERVICE_STATE.CONNECTING;
 		var service = self.service = new WebSocket(self.gatewayUrl, [], {
 			headers: {
 				Authorization: 'Bearer ' + self.token,
@@ -549,7 +570,8 @@ function Inspector(server, opts) {
 			});
 			send({
 				m: 'cfg',
-				opts: opts.serviceOpts
+				opts: opts.serviceOpts,
+				hid: thisHid
 			});
 			if (ready) send({ m: 'ready' });
 		});
@@ -778,10 +800,20 @@ function Inspector(server, opts) {
 			});
 		});
 	}, 1000 * 60 * 60);
+
+	self.connect = connect;
 		
 
 };
 util.inherits(Inspector, EventEmitter);
+
+Inspector.prototype.reconnect = function() {
+	if (this.service && !this.service._local) {
+		this.serviceState = Inspector.SERVICE_STATE.CLOSED;
+		this.service.close();
+		this.connect();
+	}
+};
 
 Inspector.prototype.close = function() {
 	if (this.shutdown) return;
@@ -799,6 +831,7 @@ Inspector.prototype.close = function() {
 		ws.close();
 	});
 };
+
 Inspector.prototype.broadcast = function(msg) {
 	var self = this;
 	if (self.buffer) {
@@ -1276,6 +1309,15 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 		if (cb) cb(null, inspector, ip);
 	}
 };
+
+function getHid() {
+	var hash = crypto.createHash('sha256');
+	hash.update(JSON.stringify({
+		user: os.userInfo(),
+		net: os.networkInterfaces()
+	}));
+	return hash.digest('base64');
+}
 
 function ipToLong(ip) {
 	var ipl = 0;

@@ -117,7 +117,7 @@ function GatewayServer(opts) {
 			ws.send(JSON.stringify(msg), function(err) {
 				if (err) {
 					console.error('SEND ERR', err);
-					ws.terminate();
+					self.removeHost(ws.nshost);
 				}
 			});
 		}
@@ -145,6 +145,7 @@ function GatewayServer(opts) {
 						hopts.auth = 'Basic ' + new Buffer(hopts.auth.user + ':' + hopts.auth.pass).toString('base64');
 					}
 				}
+				self.emit('host-cfg', host, msg);
 				break;
 
 			case 'ready':
@@ -216,13 +217,14 @@ function GatewayServer(opts) {
 	}
 
 	function handleClose(host) {
-		delete self.hosts[host.name];
+		// delete self.hosts[host.name];
 		
 		for (var id in host.ress) {
 			respond(host.ress[id], 502, 'Bad Gateway', 'Inspector disconnected during request');
 		}
 
-		self.emit('host-offline', host);
+		// self.emit('host-offline', host);
+		self.removeHost(host);
 	}
 
 	wss.on('connection', function(ws, req, params) {
@@ -248,15 +250,15 @@ function GatewayServer(opts) {
 				try {
 					var msg = JSON.parse(data);
 				} catch(ex) {
-					ws.terminate();
+					self.removeHost(host)
 				}
-				if (msg.id && (!self.ress[msg.id] || self.ress[msg.id].nshost != host)) ws.terminate();
+				if (msg.id && (!self.ress[msg.id] || self.ress[msg.id].nshost != host)) self.removeHost(host);
 				else handleMsg(host, msg, data);
 			} else {
 				var id = data.readUInt32LE(0);
 				var res = self.ress[id];
 				if (res) {
-					if (res.nshost != host) return ws.terminate();
+					if (res.nshost != host) return self.removeHost(host);
 					res.write(data.slice(4));
 					res.bytes += data.length;
 					res.expires = Date.now() + self.silenceTimeout;
@@ -474,7 +476,7 @@ function GatewayServer(opts) {
 			if (res.ackBy && res.ackBy < now) {
 				respond(res, 504, 'Gateway Timeout', 'Request timed out.  The inspector did not acknowledge this request.');
 				if (res.nshost) {
-					res.nshost.ws.terminate();
+					self.removeHost(res.nshost);
 				}
 			}
 			else if (res.expires < now) {
@@ -538,12 +540,21 @@ GatewayServer.prototype.inspect = function(name) {
 
 GatewayServer.prototype.removeHost = function(hostname) {
 	var self = this,
+		host;
+
+	if (typeof hostname == 'string') {
 		host = self.hosts[hostname];
+	} else if (typeof hostname == 'object') {
+		host = hostname;
+		hostname = host.name;
+	}
 
 	if (host) {
 		delete self.hosts[hostname];
 
 		if (host.ws) host.ws.terminate();
+
+		self.emit('host-offline', host);
 	}
 };
 

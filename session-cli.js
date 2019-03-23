@@ -76,6 +76,12 @@ exports = module.exports = function SessionCLI(inspector) {
 			}
 		})
 	})
+	.command('reconnect', 'Reconnect to gateway', function(yargs) {
+		
+	}, function(argv) {
+		argv.setResult('Reconnecting...');
+		inspector.reconnect();
+	})
 	.command('versions', 'Show version info', function(yargs) {
 		
 	}, function(argv) {
