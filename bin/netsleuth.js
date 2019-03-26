@@ -105,6 +105,11 @@ var yargs = require('yargs')
 			alias: 'g',
 			describe: 'Use this gateway server (if it cannot be inferred from hostname)'
 		})
+		.option('region', {
+			alias: 'R',
+			describe: 'Use a gateway server hosted in this region.  Run `netsleuth regions` to see a list.',
+			default: 'auto'
+		})
 		.option('auth', {
 			alias: 'A',
 			describe: 'Basic auth username:password that the gateway should require before forwarding requests'
@@ -140,7 +145,8 @@ var yargs = require('yargs')
 
 
 		var host = {
-			target: argv.target
+			target: argv.target,
+			region: argv.region
 		};
 
 		if (argv.insecure) host.insecure = true;
@@ -700,6 +706,21 @@ var yargs = require('yargs')
 
 	}, function() {
 		console.error('Invalid subcommand.');	
+	})
+
+	.command('regions', 'List available gateway regions', function(yargs) {
+		yargs
+		.usage('Usage: $0 regions [options]')
+		.option('gateway', {
+			alias: 'g',
+			describe: 'Get region list from this gateway service.',
+			default: defaultGateway
+		})
+	}, function(argv) {
+		gw.regions(argv.gateway, function(err, regions) {
+			if (err) console.error(err);
+			else console.log(regions.join('\n'));
+		});
 	})
 
 
