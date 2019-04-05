@@ -54,7 +54,7 @@ function GatewayServer(opts) {
 					// });
 
 					self.hostRequest(hostname, req, function(err, ok, params) {
-						if (err) return rawRespond(500, 'Internal Server Error', err.message);
+						if (err) return rawRespond(socket, 500, 'Internal Server Error', err.message);
 
 						if (ok) {
 							wss.handleUpgrade(req, socket, head, function(client) {
@@ -74,7 +74,7 @@ function GatewayServer(opts) {
 				if (req.url == '/.well-known/netsleuth') {
 
 					self.hostRequest(reqHost, req, function(err, ok, params) {
-						if (err) return rawRespond(500, 'Internal Server Error', err.message);
+						if (err) return rawRespond(socket, 500, 'Internal Server Error', err.message);
 
 						if (ok) {
 							wss.handleUpgrade(req, socket, head, function(client) {
