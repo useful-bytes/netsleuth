@@ -56,13 +56,14 @@ util.inherits(GatewayError, Error);
 
 Inspector.SERVICE_STATE = {
 	UNINITIALIZED: 0,
-	OPEN: 1,
-	CONNECTING: 2,
-	DISCONNECTED: 3,
+	PREFLIGHT: 1,
+	OPEN: 2,
+	CONNECTING: 3,
+	DISCONNECTED: 4,
 	// Do not auto-reconnect following states
-	ERROR: 4,
-	REDIRECTING: 5,
-	CLOSED: 6,
+	ERROR: 5,
+	REDIRECTING: 6,
+	CLOSED: 7,
 };
 
 var thisHid = getHid();
@@ -94,6 +95,7 @@ function Inspector(server, opts) {
 	}
 	self.gatewayUrl = opts.gatewayUrl || 'wss://' + self.host.host + '/.well-known/netsleuth';
 
+	this.id = crypto.randomBytes(33).toString('base64');
 	this.clients = [];
 	this.console = new RemoteConsole(this);
 	this.service = null;
@@ -734,6 +736,53 @@ function Inspector(server, opts) {
 	}
 
 
+	function preconnect() {
+		if (self.serviceState == Inspector.SERVICE_STATE.CLOSED) return;
+
+		self.serviceState = Inspector.SERVICE_STATE.PREFLIGHT;
+
+		request({
+			method: 'POST',
+			url: 'https://' + self.gateway + '/host',
+			headers: {
+				Authorization: 'Bearer ' + self.token,
+				Host: self.gateway
+			},
+			json: {
+				sid: self.id,
+				host: self.host,
+				region: opts.region
+			}
+		}, function(err, res, body) {
+			if (err) {
+				var e = new Error('Unable to connect to gateway service: ' + err.message);
+				e.inner = err;
+				self.emit('error', e);
+				return failed();
+			}
+			if (res.statusCode != 200) {
+				self.emit('error', new GatewayError(res.statusCode, 'Unable to connect to gateway service: HTTP ' + res.statusCode + ' ' + body));
+				return failed();
+			}
+
+			if (!self.host) {
+				self.host = url.parse('https://' + body.host);
+			}
+
+			self.gatewayUrl = body.gateway;
+
+			server.newRemoteInspector(self);
+			connect();
+			checkTarget();
+
+		});
+
+		function failed() {
+			setTimeout(preconnect, 5000);
+		}
+
+	}
+
 	if (self.gateway._local) {
 		var lii = self.service = self.gateway;
 		lii.on('gateway-message', handleMsg);
@@ -756,6 +805,9 @@ function Inspector(server, opts) {
 		self.serviceState = Inspector.SERVICE_STATE.OPEN;
 
 	} else {
+
+		// preconnect();
+
 		if (self.host) {
 			connect();
 			checkTarget();
