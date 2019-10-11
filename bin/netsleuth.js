@@ -114,6 +114,10 @@ var yargs = require('yargs')
 			alias: 'A',
 			describe: 'Basic auth username:password that the gateway should require before forwarding requests'
 		})
+		.option('host-header', {
+			alias: 'H',
+			describe: 'Override the HTTP Host header sent to the target with this.'
+		})
 		.option('tmp', {
 			alias: 't',
 			boolean: true,
@@ -175,6 +179,8 @@ var yargs = require('yargs')
 				return file;
 			});
 		}
+
+		if (argv.hostHeader) host.hostHeader = argv.hostHeader;
 
 		host.serviceOpts = getServiceOpts(argv);
 

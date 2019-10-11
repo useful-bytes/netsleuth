@@ -113,10 +113,17 @@ function Inspector(server, opts) {
 	this.tmpDir = opts.tmpDir || path.join(os.tmpdir(), 'netsleuth');
 	fs.mkdir(this.tmpDir, function() {});
 
+	var aopts = {};
+	if (opts.hostHeader) aopts.servername = opts.hostHeader;
+
+	this.httpAgent = new http.Agent();
+	this.httpsAgent = new https.Agent(aopts);
+
 	var ready, pinger, pingto;
 
 
 	function send(msg) {
+		//console.log('>', msg);
 		if (self.service._local) self.service.emit('inspector-message', msg);
 		else if (self.service.readyState == WebSocket.OPEN) self.service.send(JSON.stringify(msg));
 	}
@@ -142,6 +149,7 @@ function Inspector(server, opts) {
 	self._gctimer = setInterval(reqGC, self.gcFreqMs);
 
 	function handleMsg(msg) {
+		//console.log('<', msg);
 		switch (msg.m) {
 			case 'r':
 				msg.headers.host = self.target.host;
@@ -155,8 +163,9 @@ function Inspector(server, opts) {
 					method: msg.method,
 					path: msg.url,
 					headers: Object.assign({}, msg.headers, {
-						host: self.target.host
+						host: opts.hostHeader ? opts.hostHeader : self.target.host
 					}),
+					agent: (proto == 'https:' ? self.httpsAgent : self.httpAgent),
 					rejectUnauthorized: opts.insecure ? false : true,
 					ca: opts.ca
 				});
@@ -191,22 +200,31 @@ function Inspector(server, opts) {
 							msg: err.message
 						});
 					}
-					if (self.reqs[msg.id]) delete self.reqs[msg.id];
 
-					if (info.reqBody) info.reqBody.destroy();
-					if (info.resBody) info.resBody.destroy();
+					if (info.complete) {
 
-					self.broadcast({
-						method: 'Network.loadingFailed',
-						params: {
-							requestId: msg.id,
-							timestamp: Date.now() / 1000,
-							type: 'Other',
-							errorText: err.message
-						}
-					});
+						self.console.warn('Error after response for ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + ' completed\n' + err.message, 'network');
 
-					self.console.error('Unable to ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + '\n' + err.message, 'network');
+					} else {
+						
+						if (self.reqs[msg.id]) delete self.reqs[msg.id];
+
+						if (info.reqBody) info.reqBody.destroy();
+						if (info.resBody) info.resBody.destroy();
+
+						self.broadcast({
+							method: 'Network.loadingFailed',
+							params: {
+								requestId: msg.id,
+								timestamp: Date.now() / 1000,
+								type: 'Other',
+								errorText: err.message
+							}
+						});
+
+						self.console.error('Unable to ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + '\n' + err.message, 'network');
+
+					}
 
 				});
 
@@ -382,6 +400,7 @@ function Inspector(server, opts) {
 									encodedDataLength: info.resBody.length
 								}
 							});
+							info.complete = true;
 						}
 						info.resBody.end();
 					});
@@ -716,8 +735,9 @@ function Inspector(server, opts) {
 			method: 'HEAD',
 			path: '/',
 			headers: {
-				Host: self.target.host
+				Host: opts.hostHeader ? opts.hostHeader : self.target.host
 			},
+			agent: (self.target.protocol == 'https:' ? self.httpsAgent : self.httpAgent),
 			timeout: 5000
 		});
 
@@ -725,6 +745,7 @@ function Inspector(server, opts) {
 			if (res.statusCode < 500) {
 				ready = true;
 				send({ m: 'ready' });
+				console.log('target ready', self.target.hostname);
 			} else setTimeout(checkTarget, 5000);
 		});
 

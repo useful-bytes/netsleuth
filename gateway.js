@@ -250,8 +250,10 @@ function GatewayServer(opts) {
 				} catch(ex) {
 					self.removeHost(host)
 				}
-				if (msg.id && (!self.ress[msg.id] || self.ress[msg.id].nshost != host)) self.removeHost(host);
-				else handleMsg(host, msg, data);
+				// console.log(msg);
+				// if (msg.id && (!self.ress[msg.id] || self.ress[msg.id].nshost != host)) self.removeHost(host);
+				// else handleMsg(host, msg, data);
+				handleMsg(host, msg, data);
 			} else {
 				var id = data.readUInt32LE(0);
 				var res = self.ress[id];
