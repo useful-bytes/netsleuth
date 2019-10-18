@@ -91,7 +91,7 @@ function attach(opts, readyCb) {
 		opts = {};
 	}
 	var projectConfig = getProjectConfig(opts);
-	var config = Object.assign({}, globalConfig, projectConfig.config, opts.config);
+	var config = Object.assign({}, globalConfig, projectConfig && projectConfig.config, opts.config);
 
 	var daemon = new Daemon(config);
 

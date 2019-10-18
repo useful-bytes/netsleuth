@@ -66,7 +66,7 @@ function addHost(host, cb) {
 function reload() {
 	config = rcfile.get();
 	server.opts.gateways = config.gateways;
-
+	console.log('reloaded config');
 }
 
 

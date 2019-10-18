@@ -398,8 +398,6 @@ var yargs = require('yargs')
 			else console.log('Account verified.');
 		});
 
-		console.log('Login to ' + argv.gateway + ' (or press Ctrl+B to login using your browser)');
-
 		var out = require('../lib/mutable-stdout');
 
 		var rl = readline.createInterface({
@@ -409,40 +407,48 @@ var yargs = require('yargs')
 			terminal: true
 		});
 
-		rl.question('Username: ', function(username) {
-			if (argv.forgot) {
+		if (argv.reset) {
+			console.log('Reset password on ' + argv.gateway);
+			rl.question('New Password: ', function(password) {
 				rl.close();
 				process.stdout.write('\n');
-				gw.forgot(argv.gateway, username, function(err) {
+				gw.reset(argv.gateway, argv.reset, password, argv.default, function(err, user) {
 					if (err) {
-						if (err.code == 404) console.error('Invalid username.');
-						else if (err.code) console.error(err.code + ' ' + err.message + '\n', err.body);
+						if (err.code) console.error(err.code + ' ' + err.message + '\n', err.body);
 						else console.error('Unable to connect to gateway.', err);
 					}
-					else console.log('Reset information sent.');
+					else console.log('Hi, ' + user.username + '!  Successfully reset password and logged in.');
 				});
-			} else {
-				rl.question('Password: ', function(password) {
+			});
+			out.muted = true;
+		} else {
+			console.log('Login to ' + argv.gateway + ' (or press Ctrl+B to login using your browser)');
+
+			rl.question('Username: ', function(username) {
+				if (argv.forgot) {
 					rl.close();
 					process.stdout.write('\n');
-					if (argv.reset) {
-						gw.reset(argv.gateway, username, argv.reset, password, argv.default, function(err) {
-							if (err) {
-								if (err.code) console.error(err.code + ' ' + err.message + '\n', err.body);
-								else console.error('Unable to connect to gateway.', err);
-							}
-							else console.log('Hi, ' + username + '!  Successfully reset password and logged in.');
-						});
-					} else {
+					gw.forgot(argv.gateway, username, function(err) {
+						if (err) {
+							if (err.code == 404) console.error('Invalid username.');
+							else if (err.code) console.error(err.code + ' ' + err.message + '\n', err.body);
+							else console.error('Unable to connect to gateway.', err);
+						}
+						else console.log('Reset information sent.');
+					});
+				} else {
+					rl.question('Password: ', function(password) {
+						rl.close();
+						process.stdout.write('\n');
 						gw.login(argv.gateway, username, password, argv.default, function(err) {
-							if (err)  console.error(err.message);
+							if (err) console.error(err.message);
 							else console.log('Hi, ' + username + '!  Successfully logged in.');
 						});
-					}
-				});
-				out.muted = true;
-			}
-		});
+					});
+					out.muted = true;
+				}
+			});
+		}
 
 		readline.emitKeypressEvents(process.stdin);
 
