@@ -14,21 +14,30 @@
   "author": "daguej",
   "license": "Proprietary",
   "dependencies": {
+    "ansi-colors": "^4.1.1",
     "body-parser": "^1.18.0",
     "clipboardy": "^1.1.4",
+    "cliui": "^3.2.0",
     "content-type-parser": "^1.0.1",
     "dialog": "^0.3.1",
     "express": "^4.15.3",
     "jquery": "^3.2.1",
+    "jsondiffpatch": "^0.3.11",
     "mime-types": "^2.1.22",
     "node-notifier": "^5.4.0",
     "opn": "^5.1.0",
     "request": "^2.81.0",
+    "tough-cookie": "^3.0.1",
     "ws": "^4.1.0",
     "yargs": "^8.0.2"
   },
   "optionalDependencies": {
+    "chrome-cookies-secure": "^1.2.0",
     "iconv": "^2.3.2",
     "iltorb": "^1.3.6"
+  },
+  "devDependencies": {
+    "markdown-it": "^10.0.0",
+    "markdown-it-terminal": "^0.1.1"
   }
 }

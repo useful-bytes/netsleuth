@@ -1145,6 +1145,12 @@ function InspectionServer(opts) {
 		else next();
 	});
 
+	app.get('/inspect/:host/:group/last', function(req, res) {
+		var insp = self.inspectors[req.params.host];
+		if (insp && insp.lastReq[req.params.group]) res.send(insp.lastReq[req.params.group]);
+		else res.sendStatus(404);
+	});
+
 	var httpServer = this.http = http.createServer(app),
 		ws = this.ws = new WebSocket.Server({
 			noServer: true,

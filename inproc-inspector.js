@@ -13,6 +13,7 @@ function InprocInspector(server, opts) {
 	self.clients = [];
 	self.targets = [];
 	self.reqs = {};
+	self.lastReq = {};
 	self.console = new RemoteConsole(self);
 	self.sessionCLI = new SessionCLI(self);
 	self.notify = [];
@@ -177,6 +178,8 @@ InprocInspector.prototype.target = function(ws, req) {
 						var info = self.reqs[id] = {
 							req: msg.params.request
 						};
+						self.lastReq[msg.params.nsgroup] = info;
+
 
 						var headers = msg.params.request.headers;
 
@@ -258,16 +261,18 @@ InprocInspector.prototype.target = function(ws, req) {
 				if (info) {
 					if (type == 1) {
 						var payload = data.slice(5);
-						info.reqBody.append(payload);
-						if (!info.reqBody.file) {
-							self.broadcast({
-								method: 'Gateway.updateRequestBody',
-								params: {
-									id: id,
-									body: payload.toString()
-								}
-							});
-						}
+						if (info.reqBody) {
+							info.reqBody.append(payload);
+							if (!info.reqBody.file) {
+								self.broadcast({
+									method: 'Gateway.updateRequestBody',
+									params: {
+										id: id,
+										body: payload.toString()
+									}
+								});
+							}
+						} else console.error('missing reqBody for ' + id);
 					} else if (type == 2) {
 						self.broadcast({
 							method: 'Network.dataReceived',

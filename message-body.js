@@ -5,6 +5,8 @@ var stream = require('stream'),
 	os = require('os'),
 	path = require('path'),
 	mimeTypes = require('mime-types'),
+	mimeDb = require('mime-db'),
+	charset = require('./lib/charset'),
 	iltorb,
 	Iconv,
 	contentTypeParser = require('content-type-parser');
@@ -143,34 +145,27 @@ MessageBody.prototype.get = function(cb) {
 		if (err) {
 			cb(err);
 		} else {
-			var b64 = false,
-				charset = 'utf-8';
+			var ct = contentTypeParser(self.headers['content-type']),
+				enc = charset(ct);
 
-			var ct = contentTypeParser(self.headers['content-type']);
-			if (ct) {
+			if (enc) {
 
-				if (ct.type == 'text' || (ct.type == 'application' && ct.subtype == 'json')) {
-					var charset = ct.get('charset') || 'windows-1252';
-
-					if (charset == 'utf-8') {
-						cb(null, false, body.toString());
-					} else {
-						if (Iconv) {
-							try {
-								var iconv = new Iconv(charset, 'utf-8//TRANSLIT//IGNORE');
-								cb(null, false, iconv.convert(body).toString());
-
-							} catch(ex) {
-								cb(ex);
-							}
-						} else {
-							cb(new Error('iconv failed to load; cannot handle charset ' + charset));
-						}
-					}
-
+				if (enc == 'utf-8') {
+					cb(null, false, body.toString());
 				} else {
-					cb(null, true, body.toString('base64'));
+					if (Iconv) {
+						try {
+							var iconv = new Iconv(enc, 'utf-8//TRANSLIT//IGNORE');
+							cb(null, false, iconv.convert(body).toString());
+
+						} catch(ex) {
+							cb(ex);
+						}
+					} else {
+						cb(new Error('iconv failed to load; cannot handle charset ' + enc));
+					}
 				}
+
 			} else {
 				cb(null, true, body.toString('base64'));
 			}

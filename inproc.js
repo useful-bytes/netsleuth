@@ -213,7 +213,7 @@ function attach(opts, readyCb) {
 
 				if (self.listenerCount('error') < 2) {
 					if (err instanceof Error) {
-						throw err; // Unhandled 'error' event
+						throw err; // Unhandled 'error' event (in user code -- not netsleuth)
 					} else {
 						var e = new Error('Unhandled "error" event. (' + err + ')');
 						e.context = err;
@@ -230,40 +230,44 @@ function attach(opts, readyCb) {
 		// NOTE: This is a patched ClientRequest method hooked by netsleuth
 		HttpClientRequest.prototype._storeHeader.call(this, firstLine, headers);
 
-		if (this.__ignore) return;
+		var self = this;
+		if (!self.__ignore) process.nextTick(function() {
 
-		var headers = this.__headers = {};
-		var hlines = this._header.split('\r\n');
+			var headers = self.__headers = {};
+			var hlines = self._header.split('\r\n');
 
-		for (var i = 1; i < hlines.length - 2; i++) {
-			var colon = hlines[i].indexOf(':');
-			headers[hlines[i].substr(0, colon)] = hlines[i].substr(colon + 2);
-		}
-
-		send({
-			method: 'Network.requestWillBeSent',
-			params: {
-				requestId: this.__reqId,
-				loaderId: 'ld',
-				documentURL: 'docurl',
-				timestamp: Date.now() / 1000,
-				wallTime: Date.now() / 1000,
-				request: {
-					url: this.__protocol + '//' + this._headers.host + this.path,
-					method: this.method,
-					headers: headers,
-					postData: ''
-				},
-				initiator: {
-					type: 'script',
-					stack: {
-						callFrames: this.__init
-					},
-					url: 'script-url',
-					lineNumber: 0
-				},
-				type: 'Other'
+			for (var i = 1; i < hlines.length - 2; i++) {
+				var colon = hlines[i].indexOf(':');
+				headers[hlines[i].substr(0, colon)] = hlines[i].substr(colon + 2);
 			}
+
+			send({
+				method: 'Network.requestWillBeSent',
+				params: {
+					requestId: self.__reqId,
+					nsgroup: self.__nsgroup,
+					loaderId: 'ld',
+					documentURL: 'docurl',
+					timestamp: Date.now() / 1000,
+					wallTime: Date.now() / 1000,
+					request: {
+						url: self.__protocol + '//' + self._headers.host + self.path,
+						method: self.method,
+						headers: headers,
+						postData: ''
+					},
+					initiator: {
+						type: 'script',
+						stack: {
+							callFrames: self.__init
+						},
+						url: 'script-url',
+						lineNumber: 0
+					},
+					type: 'Other'
+				}
+			});
+			
 		});
 		
 	};
@@ -361,12 +365,13 @@ function attach(opts, readyCb) {
 		});
 
 		ws.on('open', function() {
-			if (ws._socket) ws._socket.unref();
+			if (ws._socket && opts.unref !== false) ws._socket.unref();
 			if (pending.length) {
 				var ops = pending;
 				pending = [];
 				for (var i = 0; i < ops.length; i++) {
 					if (ops[i].op == 'msg') send(ops[i].msg);
+					else if (ops[i].op == 'close') close();
 					else sendBin(ops[i].type, ops[i].id, ops[i].chunk);
 				}
 			}
@@ -407,6 +412,23 @@ function attach(opts, readyCb) {
 			ws.send(Buffer.concat([header, chunk], chunk.length + 5));
 		}
 		else pending.push({ op:'bin', type:type, id:id, chunk:chunk });
+	}
+
+	function close() {
+		process.nextTick(function() {
+			ws.removeAllListeners();
+			ws.close();
+		});
+	}
+
+	return {
+		close: function() {
+			if (ws && ws.readyState == WebSocket.OPEN) {
+				close();
+			} else {
+				pending.push({ op:'close' });
+			}
+		}
 	}
 }
 
