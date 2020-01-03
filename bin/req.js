@@ -10,6 +10,7 @@ var fs = require('fs'),
 	os = require('os'),
 	http = require('http'),
 	https = require('https'),
+	stream = require('stream'),
 	c = require('ansi-colors'),
 	inproc = require('../inproc'),
 	rcfile = require('../lib/rcfile'),
@@ -166,13 +167,22 @@ var yargs = require('yargs')
 			group: 'Display',
 			describe: 'Diff the request/response against one saved in this HAR file (or - for stdin).  Use #entry to specify an entry index (like har: scheme, above; default 0)'
 		})
+		.option('paste', {
+			alias: 'v',
+			boolean: true,
+			describe: 'Send clipboard contents as request body'
+		})
+		.option('copy', {
+			alias: 'c',
+			boolean: true,
+			describe: 'Copy response body to clipboard'
+		})
 		.option('help', {
 			alias: '?',
 			boolean: true,
 			describe: 'Show my help'
 		})
 		.option('version', {
-			alias: 'v',
 			boolean: true,
 			describe: 'Show version number'
 		})
@@ -334,7 +344,7 @@ function prepareDiff(sel) {
 }
 
 if (stdinIsBody) {
-	if (process.stdin.isTTY) {
+	if (process.stdin.isTTY || argv.paste) {
 		stdinPiped = false;
 		if (inprocReady) request(method, uri);
 	} else {
@@ -508,6 +518,14 @@ function request(method, uri, isRedirect, noBody) {
 	var ddPos;
 	if (dd >= 0) ddPos = dd - (process.argv.length - args.length);
 	else ddPos = args.length - 1;
+
+	if (argv.paste) {
+		if (dd >= 0) return fatal('Cannot paste from clipboard and specify raw body content.', 114);
+		body = require('clipboardy').readSync();
+		try {
+			body = JSON.parse(body);
+		} catch (ex) {}
+	}
 
 	for (var i = 0; i <= ddPos; i++) parseParam(args[i]);
 
@@ -712,13 +730,22 @@ function request(method, uri, isRedirect, noBody) {
 
 		req.on('response', function(res) {
 			if (!bodySent) out(REQ_STATUS, c.gray(']') + '\n\n');
-			var scolor = c.white;
+			var scolor = c.white,
+				redir = false,
+				output = process.stdout;
+
 			if (res.statusCode >= 200 && res.statusCode < 300) scolor = c.green;
-			if (res.statusCode >= 300 && res.statusCode < 400) scolor = c.cyan;
+			if (res.statusCode >= 300 && res.statusCode < 400) {
+				scolor = c.cyan;
+				if (argv.follow && res.headers.location) {
+					redir = true;
+					output = process.stderr;
+				}
+			}
 			if (res.statusCode >= 400 && res.statusCode < 500) scolor = c.yellow;
 			if (res.statusCode >= 500) scolor = c.red;
 
-			if (diff) {
+			if (diff && !redir) {
 				var ui = require('cliui')({
 					width: process.stderr.columns
 				});
@@ -751,29 +778,48 @@ function request(method, uri, isRedirect, noBody) {
 
 			var ctype = (res.headers['content-type'] || '').toLowerCase();
 
-			var entity = res;
+			var entity = res,
+				entityText;
 
 			if (res.headers['content-encoding'] == 'gzip') {
 				entity = zlib.createGunzip();
 				res.pipe(entity);
 			}
-			if (logger) logger.observeResBody(entity);
 
+			var isJson = !argv.raw && ctype && ctype.substr(0, 16) == 'application/json' && process.stdout.isTTY;
 
-			if (diff) {
-				var ct = require('content-type-parser')(ctype),
-					enc = argv.enc || require('../lib/charset')(ct);
+			var ct = require('content-type-parser')(ctype),
+				enc = argv.enc || require('../lib/charset')(ct),
+				hideBin = !enc && output.isTTY,
+				outEnc = null;
 
-				var resStr='', resBuf;
+			if (enc) {
+				if (output.isTTY) {
+					outEnc = argv.termEnc || 'utf-8';
+				} else {
+					if (argv.outEnc) outEnc = argv.outEnc;
+				}
+			}
+
+			function entityString() {
+				if (entityText) return entityText;
+					entityText = new stream.PassThrough();
+					entityText.setEncoding('utf-8');
 				if (enc == 'utf-8') {
-					entity.setEncoding('utf-8');
-					entity.on('data', function(str) {
+					entity.pipe(entityText);
+				} else {
+					charConv(entity, enc, 'utf-8').pipe(entityText);
+				}
+				return entityText;
+			}
+
+			// There are a few situations that require us to buffer the response body in memory rather than streaming it out.
+			if (logger || (diff && !redir) || (argv.copy && !redir) || isJson) {
+
+				var resStr='', resBuf, resLen;
+				if (enc) {
+					entityString().on('data', function(str) {
 						resStr += str;
-					});
-				} else if (enc && enc != 'utf-8') {
-					entity = charConv(entity, enc, 'utf-8');
-					entity.on('data', function(buf) {
-						resStr += buf.toString();
 					});
 				} else {
 					resBuf = [];
@@ -781,99 +827,83 @@ function request(method, uri, isRedirect, noBody) {
 						resBuf.push(buf);
 					});
 				}
-
-				entity.on('end', function() {
-					resOk = true;
-					if (resBuf) {
-						outBody('response', Buffer.concat(resBuf));
-					} else {
-						try {
-							outBody('response', JSON.parse(resStr));
-						} catch (ex) {
-							outBody('response', resStr);
-						}
-					}
-					done(res, opts);
-				});
-
-
-			}
-			else if (printBody) {
-				var output = process.stdout;
-				if (argv.follow && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-					output = process.stderr;
-				}
-
-				if (!argv.raw && ctype && ctype.substr(0, 16) == 'application/json' && process.stdout.isTTY) {
-					var buf = '';
-					entity.setEncoding(argv.enc || 'utf-8');
-					entity.on('data', function(d) {
-						buf += d;
-					});
-					entity.on('end', function() {
-						resOk = true;
-						try {
-							buf = JSON.parse(buf);
-							console.dir(buf, {
-								depth: null,
-								colors: true
-							});
-						} catch (ex) {
-							process.stderr.write(c.bgRed('<unable to parse JSON>') + '\n');
-							output.write(buf);
-						}
-						done(res, opts);
-					});
-				} else {
-					var hidden = false, seen = 0;
-
-					if (output.isTTY) {
-						var ct = require('content-type-parser')(ctype),
-							enc = argv.enc || require('../lib/charset')(ct);
-
-						if (enc) {
-							if (enc == argv.termEnc.toLowerCase()) entity.pipe(output);
-							else charConv(entity, enc, argv.termEnc).pipe(output);
-						} else {
-							hidden = true;
-							process.stderr.write(c.gray('[binary data not displayed...'));
-							entity.on('data', function(d) {
-								seen += d.length;
-							});
-						}
-
-					} else {
-						if (argv.enc || argv.outEnc) {
-							var ct = require('content-type-parser')(ctype),
-								enc = argv.enc || require('../lib/charset')(ct),
-								outEnc = argv.outEnc || 'utf-8';
-
-							if (!enc || enc == outEnc.toLowerCase()) entity.pipe(output);
-							else charConv(entity, enc, outEnc).pipe(output);
-						}
-						else entity.pipe(output);
-					}
-					entity.on('end', function() {
-						resOk = true;
-						if (hidden) process.stderr.write(c.gray(' ' + seen + ' bytes]\n'));
-						process.stderr.write('\n');
-						done(res, opts);
-					});
-				}
 			} else {
-				// not printing body
-				entity.on('data', function(chunk) {
-					// noop here, but data may be consumed by the HAR logger
-				});
-				entity.on('end', function() {
-					resOk = true;
-					done(res, opts);
-				});
+				// Streaming mode
+				if (!printBody || hideBin) {
+					resLen = 0;
+					entity.on('data', function(buf) {
+						resLen += buf.length;
+					});
+				}
 			}
+
+			if (printBody && (!diff || redir) && !isJson) {
+				if (output.isTTY) {
+					if (enc && argv.termEnc == 'utf-8') entityString().pipe(output);
+					else if (enc) charConv(entity, enc, argv.termEnc).pipe(output);
+					else process.stderr.write(c.gray('[binary data not displayed...'));
+				} else {
+					if (enc && argv.outEnc) charConv(entity, enc, argv.outEnc).pipe(output);
+					else entity.pipe(output);
+				}
+			}
+
+			entity.on('end', function() {
+				resOk = true;
+
+				if (resBuf) {
+					resBuf = Buffer.concat(resBuf);
+					resLen = resBuf.length;
+				}
+
+				if (printBody) {
+					if (diff && !redir) {
+						if (resBuf) {
+							outBody('response', resBuf);
+						} else {
+							try {
+								outBody('response', JSON.parse(resStr));
+							} catch (ex) {
+								outBody('response', resStr);
+							}
+						}
+					} else {
+
+						if (isJson) {
+							try {
+								var obj = JSON.parse(resStr);
+								output.write(util.inspect(obj, {
+									depth: null,
+									colors: true
+								}));
+							} catch (ex) {
+								process.stderr.write(c.bgRed('<unable to parse JSON>') + '\n');
+								output.write(resStr);
+							}
+						} else if (hideBin) {
+							process.stderr.write(c.gray(' ' + resLen + ' bytes]\n'));
+						} else {
+							process.stderr.write('\n')
+						}
+
+					}
+				}
+
+				if (logger) logger.resComplete(resBuf || resStr);
+
+				if (argv.copy && !redir) {
+					if (resStr) require('clipboardy').writeSync(resStr);
+					else if (resBuf) warn('Cannot write binary data to clipboard -- only text is supported.');
+				}
+
+				done(res, opts);
+			});
+
 
 		});
 
 		if (logger) logger.observe(req);
+
 		function prefixLines(prefix, val) {
 			if (Buffer.isBuffer(val)) return prefix + c.gray('[' + val.length + ' bytes of binary data]')
 			return prefix + val.replace(/\r?\n/g, '\n' + prefix);
