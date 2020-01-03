@@ -182,7 +182,7 @@ function attach(opts, readyCb) {
 						wallTime: Date.now() / 1000,
 						response: {
 							protocol: protocol.substr(0,-1),
-							url: protocol + '//' + self._headers.host + self.path,
+							url: protocol + '//' + self.getHeader('host') + self.path,
 							status: res.statusCode,
 							statusText: res.statusMessage,
 							headers: res.headers,
@@ -231,7 +231,7 @@ function attach(opts, readyCb) {
 		HttpClientRequest.prototype._storeHeader.call(this, firstLine, headers);
 
 		var self = this;
-		if (!self.__ignore) process.nextTick(function() {
+		if (!self.__ignore) {//process.nextTick(function() {
 
 			var headers = self.__headers = {};
 			var hlines = self._header.split('\r\n');
@@ -251,7 +251,7 @@ function attach(opts, readyCb) {
 					timestamp: Date.now() / 1000,
 					wallTime: Date.now() / 1000,
 					request: {
-						url: self.__protocol + '//' + self._headers.host + self.path,
+						url: self.__protocol + '//' + self.getHeader('host') + self.path,
 						method: self.method,
 						headers: headers,
 						postData: ''
@@ -267,8 +267,8 @@ function attach(opts, readyCb) {
 					type: 'Other'
 				}
 			});
-			
-		});
+		}
+		//});
 		
 	};
 
@@ -281,7 +281,7 @@ function attach(opts, readyCb) {
 		if (typeof encoding == 'function') encoding = undefined;
 
 		if (!(chunk instanceof Buffer)) {
-			chunk = new Buffer(chunk, encoding);
+			chunk = Buffer.from(chunk, encoding);
 		}
 
 		sendBin(1, this.__reqNum, chunk);
@@ -298,7 +298,7 @@ function attach(opts, readyCb) {
 
 		if (typeof encoding == 'function') encoding = undefined;
 		if (typeof chunk == 'string') {
-			chunk = new Buffer(chunk, encoding);
+			chunk = Buffer.from(chunk, encoding);
 		}
 		if (chunk instanceof Buffer) {
 			sendBin(1, this.__reqNum, chunk);
@@ -406,7 +406,7 @@ function attach(opts, readyCb) {
 	}
 	function sendBin(type, id, chunk) {
 		if (ws && ws.readyState == WebSocket.OPEN) {
-			var header = new Buffer(5);
+			var header = Buffer.allocUnsafe(5);
 			header.writeUInt8(type, 0, true);
 			header.writeUInt32LE(id, 1, true);
 			ws.send(Buffer.concat([header, chunk], chunk.length + 5));

@@ -13,6 +13,7 @@ var fs = require('fs'),
 	c = require('ansi-colors'),
 	inproc = require('../inproc'),
 	rcfile = require('../lib/rcfile'),
+	reqHeaders = require('../lib/req-headers'),
 	package = require('../package.json');
 
 // Note: other dependencies are require()d on-demand below in order to optimize startup time
@@ -333,17 +334,20 @@ function prepareDiff(sel) {
 }
 
 if (stdinIsBody) {
-	process.stdin.once('readable', function() {
-		var d = process.stdin.read();
-		stdinPiped = !!d;
-
-		if (d) {
-			process.stdin.unshift(d);
-		} else {
-			process.stdin.end();
-		}
+	if (process.stdin.isTTY) {
+		stdinPiped = false;
 		if (inprocReady) request(method, uri);
-	});
+	} else {
+		process.stdin.once('readable', function() {
+			var d = process.stdin.read();
+			stdinPiped = !!d;
+
+			if (d) {
+				process.stdin.unshift(d);
+			}
+			if (inprocReady) request(method, uri);
+		});
+	}
 }
 
 function openFile(f) {
@@ -431,7 +435,7 @@ function request(method, uri, isRedirect, noBody) {
 
 		if (hreq.postData && hreq.postData.text) {
 			if (hreq.postData.encoding == 'base64') {
-				body = new Buffer(hreq.postData.text, 'base64');
+				body = Buffer.from(hreq.postData.text, 'base64');
 			} else {
 				if (hreq.postData.mimeType && hreq.postData.mimeType.substr(0, 16).toLowerCase() == 'application/json') {
 					body = JSON.parse(hreq.postData.text);
@@ -682,14 +686,16 @@ function request(method, uri, isRedirect, noBody) {
 
 			ui.div(cmethod, cpath, cproto);
 
-			diffHeaders(ui, diff.request, req._headers, req._headerNames);
+			var headers = reqHeaders.get(req);
+			diffHeaders(ui, diff.request, headers.values, headers.names);
 
 			out(REQ_PROTO, ui.toString() + '\n');
 
 		} else {
 			out(REQ_PROTO, c.yellow(method) + ' ' + c.cyan.underline(opts.path) + c.gray(' HTTP/1.1\n'));
-			for (var k in req._headers) {
-				out(REQ_PROTO, c.cyan(req._headerNames[k]) + ': ' + req._headers[k] + '\n');
+			var headers = reqHeaders.get(req);
+			for (var k in headers.values) {
+				out(REQ_PROTO, c.cyan(headers.names[k]) + ': ' + headers.values[k] + '\n');
 			}
 		}
 		out(REQ_PROTO, '\n');
@@ -884,7 +890,7 @@ function request(method, uri, isRedirect, noBody) {
 				if (compEntity.encoding == 'base64') {
 					var ct = require('content-type-parser')(compEntity.mimeType),
 						enc = require('../lib/charset')(ct),
-						buf = new Buffer(compEntity.text, 'base64');
+						buf = Buffer.from(compEntity.text, 'base64');
 
 					if (enc == 'utf-8') compEntity = buf.toString();
 					else if (enc) compEntity = charConv(buf, enc, 'utf-8').toString();
@@ -1035,7 +1041,7 @@ function request(method, uri, isRedirect, noBody) {
 						bodyBuf.push(chunk);
 					});
 					bodyStream.on('end', function() {
-						var ct = require('content-type-parser')(req._headers['content-type']),
+						var ct = require('content-type-parser')(req.getHeader('content-type')),
 							enc = require('../lib/charset')(ct),
 							buf = Buffer.concat(bodyBuf);
 

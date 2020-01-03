@@ -130,7 +130,7 @@ function Inspector(server, opts) {
 	function sendBin(id, chunk) {
 		if (self.service._local) self.service.emit('res-data', id, chunk);
 		else if (self.service.readyState == WebSocket.OPEN) {
-			var header = new Buffer(4);
+			var header = Buffer.allocUnsafe(4);
 			header.writeUInt32LE(id, 0, true);
 			self.service.send(Buffer.concat([header, chunk], chunk.length + 4));
 		}
@@ -651,7 +651,7 @@ function Inspector(server, opts) {
 
 				if (res.headers['content-type'] != 'text/plain' || res.headers['content-length'] > 4096) ignoreResBody();
 				else {
-					var body = new Buffer(0);
+					var body = Buffer.alloc(0);
 
 					res.on('data', function(d) {
 						body = Buffer.concat([body, d]);

@@ -13,7 +13,7 @@ util.inherits(ResponseBodyForwarder, stream.Writable);
 
 ResponseBodyForwarder.prototype._write = function(chunk, enc, cb) {
 	var self = this;
-	if (!(chunk instanceof Buffer)) chunk = new Buffer(chunk, enc);
+	if (!(chunk instanceof Buffer)) chunk = Buffer.from(chunk, enc);
 	this.seen += chunk.length;
 
 	if (this.ws.readyState == WebSocket.OPEN) {
@@ -43,7 +43,7 @@ ResponseBodyForwarder.prototype.flushBuffer = function() {
 };
 
 ResponseBodyForwarder.prototype.report = function(chunk, cb) {
-	var header = new Buffer(5);
+	var header = Buffer.allocUnsafe(5);
 	header.writeUInt8(2, 0, true);
 	header.writeUInt32LE(this.id, 1, true);
 	this.ws.send(Buffer.concat([header, chunk], chunk.length + 5), {}, cb);

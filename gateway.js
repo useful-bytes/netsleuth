@@ -126,7 +126,7 @@ function GatewayServer(opts) {
 		if (ws._local) {
 			ws.emit('req-data', id, chunk);
 		} else {
-			var header = new Buffer(4);
+			var header = Buffer.allocUnsafe(4);
 			header.writeUInt32LE(id, 0, true);
 			ws.send(Buffer.concat([header, chunk], chunk.length + 4));
 		}
@@ -142,7 +142,7 @@ function GatewayServer(opts) {
 				if (typeof msg.opts == 'object') {
 					var hopts = host.opts = msg.opts;
 					if (hopts.auth) {
-						hopts.auth = 'Basic ' + new Buffer(hopts.auth.user + ':' + hopts.auth.pass).toString('base64');
+						hopts.auth = 'Basic ' + Buffer.from(hopts.auth.user + ':' + hopts.auth.pass).toString('base64');
 					}
 				}
 				self.emit('host-cfg', host, msg);
@@ -451,7 +451,7 @@ function GatewayServer(opts) {
 			if (res.headersSent) {
 				if (res.socket) res.socket.destroy();
 			} else {
-				var msg = new Buffer(message);
+				var msg = Buffer.from(message);
 				headers = headers || {};
 				headers.Connection = 'close';
 				headers['Content-Type'] = 'text/plain';

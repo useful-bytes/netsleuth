@@ -35,7 +35,7 @@ function MessageBody(id, message, opts) {
 	self.message = message;
 	self.headers = message.headers || message.getHeaders();
 	self.length = 0;
-	self.data = new Buffer(0);
+	self.data = Buffer.alloc(0);
 	self.maxSize = isFinite(opts.maxSize) ? opts.maxSize : 1024 * 1024 * 10;
 	if (opts.tmpDir) {
 		self.tmpDir = opts.tmpDir;
