@@ -15,6 +15,7 @@ var fs = require('fs'),
 	inproc = require('../inproc'),
 	rcfile = require('../lib/rcfile'),
 	reqHeaders = require('../lib/req-headers'),
+	Params = require('../lib/req-param'),
 	package = require('../package.json');
 
 // Note: other dependencies are require()d on-demand below in order to optimize startup time
@@ -406,8 +407,7 @@ function request(method, uri, isRedirect, noBody) {
 		bodyStream,
 		streamLength,
 		uploadFile,
-		bodyFromCli,
-		qparam;
+		bodyFromCli;
 
 	var defaultHeaders = opts.headers = {};
 
@@ -536,7 +536,22 @@ function request(method, uri, isRedirect, noBody) {
 		} catch (ex) {}
 	}
 
-	for (var i = 0; i <= ddPos; i++) parseParam(args[i]);
+	var params = new Params({
+		profile: profile,
+		isRedirect: isRedirect,
+		body: body,
+		headers: opts.headers
+	});
+
+	try {
+		for (var i = 0; i <= ddPos; i++) params.parse(args[i]);
+	} catch (ex) {
+		fatal(ex.message, ex.code);
+	}
+
+	body = params.body;
+	opts.headers = params.headers;
+	uploadFile = params.uploadFile;
 
 	if (dd >= 0) {
 		if (body) return fatal('Cannot specify request body data arguments and raw body content.', 114);
@@ -545,7 +560,8 @@ function request(method, uri, isRedirect, noBody) {
 	}
 
 
-	if (qparam) { // is set if param args mutate the query string (ie `k==v`).  don't touch the qs otherwise to avoid adding an unwanted `=` (eg /foo?bar -> /foo?bar=)
+	if (params.query) { // is set if param args mutate the query string (ie `k==v`).  don't touch the qs otherwise to avoid adding an unwanted `=` (eg /foo?bar -> /foo?bar=)
+		Object.assign(opts.query, params.query);
 		opts.search = '?' + querystring.stringify(opts.query);
 		opts.path = opts.pathname + opts.search;
 	}
@@ -1120,130 +1136,6 @@ function request(method, uri, isRedirect, noBody) {
 			req.emit('error', new Error(msg)); // emitted so the inspector GUI gets the error
 			console.error(c.bgRed('Error:') + ' ' + msg);
 			process.exit(code || 1);
-		}
-	}
-
-	// TODO: use lib/req-param instead
-	function parseParam(param) {
-		var op, k, v, delim;
-
-		switch (param[0]) {
-			case '@':
-				if (uploadFile) return fatal('Cannot specify more than one file to upload.', 105);
-				try {
-					var fn = param.substr(1);
-					if (fn[0] == '~') { // bash doesn't substitute `~` when it immediately follows `@`, so we'll do it here for convenience
-						fn = os.homedir() + fn.substr(1);
-					}
-					uploadFile = openFile(fn);
-				} catch (ex) {
-					console.error(ex)
-					return fatal(ex.message, 66, ex);
-				}
-				break;
-			case '+':
-				var name = param.substr(1);
-				if (!profile) return fatal('Not using a profile; named payloads (' + c.yellow('%') + ') cannot be accessed.', 107);
-				else if (!profile.payloads || !profile.payloads[name]) return fatal('Unknown payload "' + name + '".', 108);
-				else {
-					if (!body) body = {};
-					for (var k in profile.payloads[name]) body[k] = profile.payloads[name][k];
-				}
-				break;
-
-			case '?':
-				op = '?';
-				delim = param.indexOf('=');
-				k = param.substr(1, delim-1);
-				v = param.substr(delim+1);
-				if (!k) return fatal('Invalid query string param argument.', 111);
-
-			default:
-				if (!op) {
-					// search param args for the first op token (ie = or :) and separate into key/value pair
-					loop : for (var i = 1; i < param.length; i++) {
-						switch (param[i]) {
-							case '=':
-								if (param[i+1] == '=') {
-									op = '==';
-									k = param.substr(0, i);
-									v = param.substr(i + 2);
-									break loop;
-								}
-							case ':':
-								op = param[i];
-								k = param.substr(0, i);
-								v = param.substr(i + 1);
-								break loop;
-						}
-					}
-				}
-
-				if (op) switch (op) {
-					case '=':
-					case '==':
-						if (!body) body = {};
-						if (!v) delete body[k];
-						else {
-							var vsub = v.substr(1);
-							if (v[0] == '@') {
-								try {
-									v = fs.readFileSync(v.substr(1), 'utf8');
-								} catch (ex) {
-									fatal(ex.message, 66);
-								}
-								try {
-									v = JSON.parse(v);
-								} catch (ex) {
-									// noop
-								}
-							} else if (op == '=' && v == 'true') {
-								v = true;
-							} else if (op == '=' && v == 'false') {
-								v = false;
-							} else if (op == '=' && v == 'null') {
-								v = null;
-							} else if (v[0] == '\\' && (v[1] == '@')) {
-								v = vsub;
-							} else if (op == '=' && !isNaN(parseFloat(v)) && isFinite(v)) {
-								v = parseFloat(v);
-							}
-
-							if (k.indexOf('.') > 0) {
-								var kpath = k.split('.'),
-									target = body;
-
-								for (var i = 0; i < kpath.length-1; i++) {
-									// check for escaped dots
-									if (i < kpath.length-1 && kpath[i].substr(-1) == '\\') {
-										if (kpath[i].substr(-2,1) == '\\') {
-											kpath[i] = kpath[i].substr(0, kpath[i].length-1);
-										} else {
-											kpath[i] = kpath[i].substr(0, kpath[i].length - 1) + '.' + kpath[i+1];
-											kpath.splice(i+1, 1);
-											if (i == kpath.length-1) break;
-										}
-									}
-									if (typeof target[kpath[i]] != 'object') target[kpath[i]] = {};
-									target = target[kpath[i]];
-								}
-
-								target[kpath[i]] = v;
-							} else body[k] = v;
-						}
-						break;
-					case '?':
-						if (!isRedirect) {
-							qparam = true;
-							opts.query[k] = v;
-						}
-						break;
-					case ':':
-						if (!v) delete opts.headers[k];
-						else opts.headers[k] = v;
-						break;
-				}
-				else return fatal(' Failed to parse params.', 109);
 		}
 	}
 }
