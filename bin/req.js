@@ -113,6 +113,13 @@ var yargs = require('yargs')
 			default: 'utf-8',
 			describe: 'Character encoding used when sending data to the terminal'
 		})
+		.option('max-length', {
+			alias: 'l',
+			default: process.stdout.rows * process.stdout.columns,
+			number: true,
+			group: 'Display',
+			describe: 'Maximum length of body data to print to the terminal (0 for no limit)'
+		})
 		.option('secure', {
 			alias: 's',
 			boolean: true,
@@ -169,11 +176,13 @@ var yargs = require('yargs')
 		})
 		.option('paste', {
 			alias: 'v',
+			group: 'Input',
 			boolean: true,
 			describe: 'Send clipboard contents as request body'
 		})
 		.option('copy', {
 			alias: 'c',
+			group: 'Output',
 			boolean: true,
 			describe: 'Copy response body to clipboard'
 		})
@@ -839,8 +848,13 @@ function request(method, uri, isRedirect, noBody) {
 
 			if (printBody && (!diff || redir) && !isJson) {
 				if (output.isTTY) {
-					if (enc && argv.termEnc == 'utf-8') entityString().pipe(output);
-					else if (enc) charConv(entity, enc, argv.termEnc).pipe(output);
+					var tty = output;
+					if (argv.maxLength) {
+						tty = new TruncatedOutput(argv.maxLength, argv.termEnc);
+						tty.pipe(output);
+					}
+					if (enc && argv.termEnc == 'utf-8') entityString().pipe(tty);
+					else if (enc) charConv(entity, enc, argv.termEnc).pipe(tty);
 					else process.stderr.write(c.gray('[binary data not displayed...'));
 				} else {
 					if (enc && argv.outEnc) charConv(entity, enc, argv.outEnc).pipe(output);
@@ -871,14 +885,10 @@ function request(method, uri, isRedirect, noBody) {
 
 						if (isJson) {
 							try {
-								var obj = JSON.parse(resStr);
-								output.write(util.inspect(obj, {
-									depth: null,
-									colors: true
-								}));
+								outBody('respose', JSON.parse(resStr));
 							} catch (ex) {
 								process.stderr.write(c.bgRed('<unable to parse JSON>') + '\n');
-								output.write(resStr);
+								outBody('response', resStr);
 							}
 						} else if (hideBin) {
 							process.stderr.write(c.gray(' ' + resLen + ' bytes]\n'));
@@ -1018,6 +1028,7 @@ function request(method, uri, isRedirect, noBody) {
 			}
 
 			function _out(str) {
+				if (argv.maxLength && str.length > argv.maxLength) str = str.substr(0, argv.maxLength) + '\n' + c.gray('[truncated. ' + (str.length - argv.maxLength) + ' more characters]\n');
 				out(type == 'request' ? REQ_BODY : RES_BODY, str);
 			}
 		}
@@ -1310,6 +1321,29 @@ function done(res, opts) {
 			
 	}
 }
+
+function TruncatedOutput(max, enc) {
+	stream.Transform.call(this, {
+		objectMode: true
+	});
+	this.max = max;
+	this.seen = 0;
+}
+util.inherits(TruncatedOutput, stream.Transform);
+TruncatedOutput.prototype._transform = function(chunk, enc, cb) {
+	if (this.seen < this.max) {
+		if (typeof chunk == 'string') this.push(chunk.substr(0, this.max-this.seen));
+		else this.push(chunk.slice(0, this.max-this.seen));
+
+		if (this.seen + chunk.length >= this.max) this.push(c.gray('[truncated...'));
+	}
+	this.seen += chunk.length;
+	cb();
+};
+TruncatedOutput.prototype._flush = function(cb) {
+	if (this.seen >= this.max) this.push(c.gray(' ' + (this.seen - this.max) + ' more characters]\n'));
+	cb();
+};
 
 function fatal(msg, code) {
 	console.error(c.bgRed('Error:') + ' ' + msg);

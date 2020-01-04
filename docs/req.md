@@ -41,7 +41,7 @@ req http://t0k3n@localhost/foo -> "Authorization: Bearer t0k3n"
 ```
 
 ### har:/path/to/file.har#entry
-Use the special `har:` scheme to specify that req should replay a request from a HAR file on disk.  Optionally use `entry` to specify the the request entry by index (default `0`).  Later params can override any properties loaded from the HAR.
+Use the special `har:` scheme to specify that req should make a request by replaying from a HAR file on disk.  Optionally use `entry` to specify the the request entry by index (default `0`).  Later params can override any properties loaded from the HAR.
 ```
 req har:file.har bar=baz
 ```
@@ -97,7 +97,10 @@ req proj/foo +bar b=5 -> {"a":1,"b":5,"c":3}
 ```
 
 ### -- raw body
-The text following `--` (and a space) will be transmitted as the request body.  req will not apply any modification to the text, but normal shell escaping rules apply.  Cannot be mixed with `key=value` or `@filepath` params, but `Header:value` params may be specified **before** the `--`.
+The text following `--` (and a space) will be transmitted as the request body.  req will not apply any modification to the text, but normal shell escaping rules apply.  Cannot be mixed with `key=value`, `@filepath`, or `+payload` params, but `Header:value` params may be specified **before** the `--`.
+
+### --paste clipboard
+If the `--paste` option is specified, req will use your system clipboard contents as the request body.  Only plain text is supported.  If the text parses as JSON, you may use `key=value` params to override keys in the pasted data.
 
 # Profiles
 req supports named profiles, which are a set of default options for a particular host.  This allows you to send saved headers with your requests, without having to specify them on the command line every time.
