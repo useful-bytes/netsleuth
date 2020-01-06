@@ -127,6 +127,16 @@ var yargs = require('yargs')
 			group: 'Network Behavior',
 			describe: 'Force TLS (https)'
 		})
+		.option('insecure', {
+			alias: 'S',
+			boolean: true,
+			group: 'Network Behavior',
+			describe: 'Ignore TLS certificate errors'
+		})
+		.option('ca', {
+			group: 'Network Behavior',
+			describe: 'Validate TLS certificates using the CA certificate(s) in this file'
+		})
 		.option('4', {
 			boolean: true,
 			group: 'Network Behavior',
@@ -370,6 +380,14 @@ if (stdinIsBody) {
 	}
 }
 
+if (argv.ca) {
+	try {
+		var cacert = fs.readFileSync(argv.ca, 'utf-8');
+	} catch (ex) {
+		return fatal('Unable to read CA certificate file. ' + ex.message, 66);
+	}
+}
+
 function openFile(f) {
 	var info = fs.statSync(f);
 	return {
@@ -500,6 +518,8 @@ function request(method, uri, isRedirect, noBody) {
 		opts.headers = Object.assign({}, defaultHeaders, profile.headers);
 		opts.family = profile.family;
 		if (profile.gzip) argv.gzip = true;
+		if (profile.insecure) argv.insecure = true;
+		if (profile.ca) opts.ca = profile.ca;
 	}
 
 	if (!opts.protocol) opts.protocol = 'http:';
@@ -513,6 +533,9 @@ function request(method, uri, isRedirect, noBody) {
 	if (argv.bind) opts.localAddress = argv.bind;
 	if (argv[4]) opts.family = 4;
 	if (argv[6]) opts.family = 6;
+
+	if (argv.insecure) opts.rejectUnauthorized = false;
+	if (cacert) opts.ca = cacert;
 
 	if (opts.auth && opts.auth.indexOf(':') == -1) {
 		opts.headers.Authorization = 'Bearer ' + opts.auth;
@@ -1206,9 +1229,9 @@ function done(res, opts) {
 				process.exit(code);
 			});
 
-			var HistoryFile = require('../lib/historyfile'),
-				hf = new HistoryFile('.sleuth_history');
-			hf.insert(uri);
+			// var HistoryFile = require('../lib/historyfile'),
+			// 	hf = new HistoryFile('.sleuth_history');
+			// hf.insert(uri);
 		}
 			
 	}
