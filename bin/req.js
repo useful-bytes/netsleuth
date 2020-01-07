@@ -25,7 +25,7 @@ var config = rcfile.get(),
 	defaultGateway = config.defaultGateway || 'netsleuth.io',
 	defaultTeam;
 
-var yargs = require('yargs')
+var yargs = exports.yargs = require('yargs')
 	.command('profile', 'Modify a profile', function(yargs) {
 		require('./req-profile').yargs(yargs);
 	})
@@ -52,7 +52,7 @@ var yargs = require('yargs')
 			boolean: true,
 			// conflicts: ['txt','bin'],
 			group: 'HTTP Behavior',
-			describe: 'Set request Content-Type: and Accept: application/json (implied when using `key=val` params)'
+			describe: 'Set request Content-Type: and Accept: application/json, and treat response as JSON regardless of Content-Type'
 		})
 		.option('bin', {
 			boolean: true,
@@ -210,7 +210,7 @@ var yargs = require('yargs')
 	}),
 	argv = yargs.argv;
 
-if (argv._[0] == 'profile') return;
+if (require.main != module || argv._[0] == 'profile') return;
 
 if (argv.help) {
 	yargs.showHelp(function(optTxt) {
@@ -834,12 +834,14 @@ function request(method, uri, isRedirect, noBody) {
 				res.pipe(entity);
 			}
 
-			var isJson = !argv.raw && ctype && ctype.substr(0, 16) == 'application/json' && process.stdout.isTTY;
+			var isJson = !argv.raw && (ctype && ctype.substr(0, 16) == 'application/json' || argv.json) && process.stdout.isTTY;
 
 			var ct = require('content-type-parser')(ctype),
 				enc = argv.enc || require('../lib/charset')(ct),
 				hideBin = !enc && output.isTTY,
 				outEnc = null;
+
+			if (!enc && argv.json) enc='utf-8';
 
 			if (enc) {
 				if (output.isTTY) {

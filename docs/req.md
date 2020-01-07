@@ -12,7 +12,7 @@ By default, req will print HTTP headers on stderr and the response body on stdou
 ## [method]
 The HTTP request method.  Any uppercase word accepted.  Default: `GET` or `POST` depending on whether there is data to be sent in the request body.
 
-## <url>
+## \<url>
 The request URL.  May be fully-qualified, or use shorthand:
 ### Default to localhost
 Without an explicit hostname, req will assume localhost.
@@ -91,7 +91,7 @@ req PUT /foo @~/example.json
 ```
 
 ### +namedPayload
-If the <url> uses a Profile, req will copy JSON properties saved in the Profile under this name to the request body.  Later params can override.  Assuming the "proj" Profile has a payload named "bar" with the value `{a:1, b:2, c:3}`:
+If the \<url> uses a Profile, req will copy JSON properties saved in the Profile under this name to the request body.  Later params can override.  Assuming the "proj" Profile has a payload named "bar" with the value `{a:1, b:2, c:3}`:
 ```
 req proj/foo +bar b=5 -> {"a":1,"b":5,"c":3}
 ```

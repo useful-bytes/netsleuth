@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
-var c = require('ansi-colors'),
+var url = require('url'),
+	c = require('ansi-colors'),
 	rcfile = require('../lib/rcfile'),
 	Params = require('../lib/req-param');
 
 var config = rcfile.get();
 
 
-function getParams(argv) {
-	var args = argv._, params = new Params({ noBody: true });
+function getParams(argv, noBody) {
+	var args = argv._, params = new Params({ noBody: noBody });
 
 	try {
 		for (var i = 2; i <= args.length - 1; i++) params.parse(args[i]);
@@ -20,7 +21,7 @@ function getParams(argv) {
 
 function getCookies(origin, cb) {
 	require('chrome-cookies-secure').getCookies(origin + '/', 'header', function(err, cookies) {
-		if (err) return fatal('Unable to get Chrome cookies.', 100, err);
+		if (err) return fatal('Unable to get Chrome cookies.  ' + err.message, 100, err);
 		cb(null, cookies);
 	});
 }
@@ -34,7 +35,7 @@ exports.yargs = function(yargs) {
 		if (!config.profiles) config.profiles = {};
 		// if (config.profiles[argv.name]) return fatal('There is already a profile named "' + argv.name + '".');
 
-		var params = getParams(argv);
+		var params = getParams(argv, true);
 
 		var prof = config.profiles[argv.name] = {
 			host: argv.url
@@ -68,7 +69,7 @@ exports.yargs = function(yargs) {
 	}, function(argv) {
 		if (!config.profiles || !config.profiles[argv.name]) return fatal('There is no profile named "' + argv.name + '".');
 		
-		var params = getParams(argv),
+		var params = getParams(argv, true),
 			profile = config.profiles[argv.name];
 
 		if (argv.host) profile.host = argv.host;
@@ -82,7 +83,7 @@ exports.yargs = function(yargs) {
 		if (profile.body && params.deletedBody) for (var k in params.deletedBody) delete profile.body[k];
 
 		if (argv.chromeCookies) {
-			getCookies(argv.url, function(err, cookies) {
+			getCookies(profile.host, function(err, cookies) {
 				if (cookies) {
 					if (!profile.headers) profile.headers = {};
 					profile.headers.Cookie = cookies;
@@ -111,6 +112,22 @@ exports.yargs = function(yargs) {
 	}, function(argv) {
 		if (!config.profiles) return fatal('There are no profiles.');
 		for (var k in config.profiles) console.log(k, '->', config.profiles[k].host);
+	})
+	.command(['payload <profile> <payload-name>', 'pl'], 'Add or edit a named payload on a profile', function(yargs) {
+		yargs.help();
+	}, function(argv) {
+		if (!config.profiles || !config.profiles[argv.profile]) return fatal('There is no profile named "' + argv.profile + '".');
+		
+		var params = getParams(argv);
+
+		var pl = config.profiles[argv.profile].payloads || {};
+
+		pl[argv.payloadName] = params.body;
+
+		config.profiles[argv.profile].payloads = pl;
+		rcfile.save(config);
+		console.log('Profile payload updated.');
+
 	})
 	.demand(1)
 	.help();

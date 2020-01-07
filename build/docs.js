@@ -34,24 +34,31 @@ mdplain.use(term, {
 });
 
 
-var optmap = {
-	'req.md': 'req'
-};
 
 function renderAll() {
 	var dir = path.join(__dirname, '../docs'),
-		files = fs.readdirSync(dir);
+		outdir = path.join(__dirname, '../dist/docs/'),
+		files = fs.readdirSync(dir),
+		optTxt;
+
 		
 	if (process.argv[2]) {
-		fs.writeFileSync(path.join(__dirname, '../dist/docs/', process.argv[2] + '.ansi'), renderDoc(mdfancy, path.join(dir, process.argv[2])));
-		fs.writeFileSync(path.join(__dirname, '../dist/docs/', process.argv[2] + '.txt'), renderDoc(mdplain, path.join(dir, process.argv[2]), true));
+		fs.writeFileSync(path.join(outdir, process.argv[2] + '.ansi'), renderDoc(mdfancy, path.join(dir, process.argv[2])));
+		fs.writeFileSync(path.join(outdir, process.argv[2] + '.txt'), renderDoc(mdplain, path.join(dir, process.argv[2]), true));
 	} else {
-		for (var file of files) {
-			if (path.extname(file) == '.md') {
-				fs.writeFileSync(path.join(__dirname, '../dist/docs/', file + '.ansi'), renderDoc(mdfancy, path.join(dir, file)));
-				fs.writeFileSync(path.join(__dirname, '../dist/docs/', file + '.txt'), renderDoc(mdplain, path.join(dir, file), true));
+		require('../bin/req').yargs.showHelp(function(optTxt) {
+			optTxt = optTxt.substr(optTxt.indexOf('\n\n')+2);
+			
+			fs.writeFileSync(path.join(outdir, 'req-options.txt'), optTxt);
+
+			for (var file of files) {
+				if (path.extname(file) == '.md') {
+					fs.writeFileSync(path.join(outdir, file + '.ansi'), renderDoc(mdfancy, path.join(dir, file)));
+					fs.writeFileSync(path.join(outdir, file + '.txt'), renderDoc(mdplain, path.join(dir, file), true));
+				}
 			}
-		}
+		});
+
 	}
 	console.log('Rendered.');
 }
@@ -62,9 +69,6 @@ function renderDoc(md, file) {
 
 	var rendered = md.render(src);
 	rendered = rendered.replace(verex, package.version);
-	if (optmap[file]) {
-
-	}
 
 	return rendered;
 }
