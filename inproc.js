@@ -389,13 +389,17 @@ function attach(opts, readyCb) {
 	}
 
 
-	daemon.start(function(err, reused, host, version) {
-		if (err) console.error('Unable to start netsleuth daemon', err);
-		else {
-			if (!reused) console.error('Started netsleuth daemon v' + version + ' on ' + host);
-			if (projectConfig && opts.initProject !== false) initProject(daemon, projectConfig);
-			connect();
-		}
+	process.nextTick(function() {
+		// start() does a daemon health check.  Do it on the next tick so that startup sync i/o (eg require())
+		// does not accidentally cause a timeout in communication with the daemon
+		daemon.start(function(err, reused, host, version) {
+			if (err) console.error('Unable to start netsleuth daemon', err);
+			else {
+				if (!reused) console.error('Started netsleuth daemon v' + version + ' on ' + host);
+				if (projectConfig && opts.initProject !== false) initProject(daemon, projectConfig);
+				connect();
+			}
+		});
 	});
 
 
