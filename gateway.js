@@ -318,6 +318,10 @@ function GatewayServer(opts) {
 		}
 		if (self.apps[hostname]) return self.apps[hostname](req, res);
 
+		if (self.opts.handleRequest) {
+			if (self.opts.handleRequest(req, res)) return;
+		}
+
 		if (req.url == '/robots.txt') {
 			return respond(res, 200, 'OK', 'User-agent: *\r\nDisallow: /\r\nNoindex: /\r\nNofollow: /\r\n', {
 				'Cache-Control': 'public, max-age=2592000'
