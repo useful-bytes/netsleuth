@@ -182,11 +182,15 @@ function Inspector(server, opts) {
 				if (info.n % self.gcFreqCount == 0) setTimeout(reqGC);
 
 				req.on('continue', function() {
-					self.console.debug('Got 100 Continue for ' + msg.url);
-					send({
-						m: 'cont',
-						id: msg.id
-					});
+					if (!http.ServerResponse.prototype.writeProcessing) {
+						// old (node < 10) does not support `information` event, so we have to handle `continue`
+						// on node >= 10, the 100 Continue will be sent from the `information` event
+						self.console.debug('Got 100 Continue for ' + msg.url);
+						send({
+							m: 'cont',
+							id: msg.id
+						});
+					}
 				});
 
 				req.on('error', function(err) {
@@ -412,10 +416,10 @@ function Inspector(server, opts) {
 					send({
 						m: 'info',
 						id: msg.id,
-						sc: info.statusCode
-						// sm: res.statusMessage,
-						// headers: res.headers,
-						// raw: res.rawHeaders
+						sc: info.statusCode,
+						sm: info.statusMessage,
+						headers: info.headers,
+						raw: info.rawHeaders
 					});
 				});
 

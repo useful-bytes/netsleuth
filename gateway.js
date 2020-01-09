@@ -194,8 +194,13 @@ function GatewayServer(opts) {
 
 			case 'info':
 				var res = self.ress[msg.id];
-				if (res && msg.sc > 101 && msg.sc < 200) {
-					res._writeRaw('HTTP/1.1 ' + msg.sc + ' Processing\r\n\r\n', 'ascii');
+				if (res && msg.sc >= 100 && msg.sc < 200) {
+					// abuse http.ServerResponse to generate the informational headers
+					var ires = new http.ServerResponse({});
+					ires.sendDate = false; // prevents ServerResponse from adding a `Date` header
+					ires._removedConnection = true; // prevents ServerResponse from adding a `Connection` header
+					ires.writeHead(msg.sc, msg.sm, msg.headers);
+					res._writeRaw(ires._header, 'ascii');
 				}
 				break;
 

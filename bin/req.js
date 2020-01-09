@@ -776,6 +776,15 @@ function request(method, uri, isRedirect, noBody) {
 			}
 		});
 
+		req.on('information', function(info) {
+			// note: node 10+ required to see 1xx informational responses.
+			out(RES_PROTO, c.gray('HTTP/' + info.httpVersion) + ' ' + c.bold(info.statusCode) + ' ' + info.statusMessage + '\n');
+			for (var i = 0; i < info.rawHeaders.length; i+=2) {
+				out(RES_PROTO, c.cyan(info.rawHeaders[i]) + ': ' + info.rawHeaders[i+1] + '\n');
+			}
+			out(RES_PROTO, '\n');
+		});
+
 		req.on('response', function(res) {
 			if (!bodySent) out(REQ_STATUS, c.gray(']') + '\n\n');
 			var scolor = c.white,
@@ -1148,10 +1157,8 @@ function request(method, uri, isRedirect, noBody) {
 		}
 
 		if (expectContinue) {
-			out(REQ_STATUS, c.gray('[waiting for 100 Continue...'));
 			req.on('continue', function() {
-				out(REQ_STATUS, c.gray(' ok]\n'));
-				sendReqBody();
+				process.nextTick(sendReqBody);
 			});
 		}
 		else sendReqBody();
