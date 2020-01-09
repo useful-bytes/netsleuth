@@ -111,23 +111,36 @@ function attach(opts, readyCb) {
 
 	var HttpClientRequest = http.ClientRequest;
 
-	function ClientRequest(options, cb) {
+	function ClientRequest(input, options, cb) {
 		// NOTE: This is the patched ClientRequest hooked by netsleuth
 		var self = this;
-		HttpClientRequest.call(self, options, cb);
+		var num = self.__reqNum = ++reqId;
+		var id = self.__reqId = process.argv0 + '.' + process.pid + ':' + num;
 
-		if (typeof options == 'string') {
-			options = url.parse(options);
+		var args = Array.prototype.slice.call(arguments);
+
+		if (typeof input == 'string') {
+			input = url.parse(input);
+		} else if (url.URL && input instanceof url.URL) {
+			input = urlToOptions(input);
 		} else {
-			options = util._extend({}, options);
+			cb = options;
+			options = input;
+			input = null;
+		}
+
+		if (typeof options == 'function') {
+			cb = options;
+			options = Object.assign({}, input);
+		} else {
+			options = Object.assign({}, input, options);
 		}
 
 		var protocol = options.protocol || '';
 		if (self.agent && self.agent.protocol) protocol = self.agent.protocol || '';
 		self.__protocol = protocol;
 
-		var num = self.__reqNum = ++reqId;
-		var id = self.__reqId = process.argv0 + '.' + process.pid + ':' + num;
+		HttpClientRequest.apply(self, args);
 
 		if (self.__ignore === undefined && options.agent && options.agent.__ignore) {
 			self.__ignore = true;
@@ -317,31 +330,45 @@ function attach(opts, readyCb) {
 
 
 
-	http.request = function request(options, cb) {
-		return new ClientRequest(options, cb);
+	http.request = function request(url, options, cb) {
+		return new ClientRequest(url, options, cb);
 	};
 
-	http.get = function(options, cb) {
-		var req = http.request(options, cb);
+	http.get = function(url, options, cb) {
+		var req = http.request(url, options, cb);
 		req.end();
 		return req;
 	};
 
-	https.request = function request(options, cb) {
-		if (typeof options == 'string') {
-			options = url.parse(options);
-			if (!options.hostname) {
-				throw new Error('Unable to determine the domain name');
-			}
+	https.request = function request(input, options, cb) {
+
+
+		var args = Array.prototype.slice.call(arguments);
+
+		if (typeof input == 'string') {
+			input = url.parse(input);
+		} else if (url.URL && input instanceof url.URL) {
+			input = urlToOptions(input);
 		} else {
-			options = util._extend({}, options);
+			cb = options;
+			options = input;
+			input = null;
 		}
+
+		if (typeof options == 'function') {
+			cb = options;
+			options = Object.assign({}, input);
+		} else {
+			options = Object.assign({}, input, options);
+		}
+
 		options._defaultAgent = https.globalAgent;
+
 		return new ClientRequest(options, cb);
 	};
 
-	https.get = function(options, cb) {
-		var req = https.request(options, cb);
+	https.get = function(url, options, cb) {
+		var req = https.request(url, options, cb);
 		req.end();
 		return req;
 	};
@@ -436,6 +463,26 @@ function attach(opts, readyCb) {
 	}
 }
 
+function urlToOptions(url) {
+	const options = {
+		protocol: url.protocol,
+		hostname: typeof url.hostname === 'string' && url.hostname.startsWith('[') ?
+			url.hostname.slice(1, -1) :
+			url.hostname,
+		hash: url.hash,
+		search: url.search,
+		pathname: url.pathname,
+		path: (url.pathname || '') + (url.search || ''),
+		href: url.href
+	};
+	if (url.port !== '') {
+		options.port = Number(url.port);
+	}
+	if (url.username || url.password) {
+		options.auth = url.username + ':' + url.password;
+	}
+	return options;
+}
 
 exports.attach = attach;
 exports.init = init;
