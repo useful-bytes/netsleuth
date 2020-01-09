@@ -37,6 +37,10 @@ function GatewayServer(opts) {
 		server.on('upgrade', function(req, socket, head) {
 			var reqHost = req.headers.host;
 
+			socket.on('error', function(err) {
+				console.error('websocket error', err);
+			});
+
 			if (!reqHost) {
 				return rawRespond(socket, 400, 'Bad Request (missing host header)', 'Client did not supply the Host header, which well-behaved clients MUST supply.');
 			}
