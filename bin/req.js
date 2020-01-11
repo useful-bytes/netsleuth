@@ -648,9 +648,11 @@ function request(method, uri, isRedirect, noBody) {
 		bodyStream = null;
 	} else {
 		if (body) {
+			setType();
 			if (typeof body == 'object' && !Buffer.isBuffer(body)) {
 				rawBody = Buffer.from(JSON.stringify(body));
-				argv.json = true;
+				if (!opts.headers['Content-Type']) opts.headers['Content-Type'] = 'application/json';
+				if (!opts.headers['Accept']) opts.headers['Accept'] = 'application/json, */*';
 			}
 			else rawBody = Buffer.from(body);
 
@@ -663,7 +665,6 @@ function request(method, uri, isRedirect, noBody) {
 				if (logger) logger.compressedReqLength = rawBody.length;
 			}
 			opts.headers['Content-Length'] = rawBody.length;
-			setType();
 		} else if (uploadFile) {
 			bodyStream = uploadFile.stream;
 			streamLength = opts.headers['Content-Length'] = uploadFile.size;
@@ -940,6 +941,7 @@ function request(method, uri, isRedirect, noBody) {
 								process.stderr.write(c.bgRed('<unable to parse JSON>') + '\n');
 								outBody('response', resStr);
 							}
+							process.stderr.write('\n');
 						} else if (hideBin) {
 							process.stderr.write(c.gray(' ' + resLen + ' bytes]\n'));
 						} else {
@@ -1067,7 +1069,7 @@ function request(method, uri, isRedirect, noBody) {
 
 			function printInspect(obj, line) {
 				
-				var nbody = util.inspect(obj, {
+				var nbody = argv.raw ? JSON.stringify(obj) : util.inspect(obj, {
 					depth: null,
 					colors: true
 				});
