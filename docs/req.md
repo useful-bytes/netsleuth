@@ -53,6 +53,7 @@ Any number of additional space-separated parameters may be specified.  Values ma
 The request body will be set to a JSON object with this key/value added.
 
 - Use dot notation in the key for nested objects (`foo.bar=value`)
+- Use `[]` to push primitive values to an array (`foo[]=1 foo[]=2`)
 - Numeric values will be set as numbers
 - `true`, `false`, and `null` will be set as booleans/null
 - Anything else will be set as a string
@@ -63,6 +64,7 @@ The request body will be set to a JSON object with this key/value added.
 req /foo n=1 a==1 b="x y" c=z -> {"n":1,"a":"1","b":"x y","c":"z"}
 req /foo a=\\@a b=\\=b -> {"a":"@a","b":"=b"}
 req /foo obj.a=1 obj.b=2 -> {"obj":{"a":1,"b":2}}
+req /foo arr[]=1 arr[]=2 -> {"arr":[1,2]}
 ```
 
 ### key=@filepath
