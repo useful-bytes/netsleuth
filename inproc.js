@@ -387,7 +387,8 @@ function attach(opts, readyCb) {
 			headers: {
 				Origin: 'netsleuth:api',
 				PID: process.argv0 + '.' + process.pid,
-				'Sleuth-Transient': !!opts.transient
+				'Sleuth-Transient': !!opts.transient,
+				Icon: opts.icon
 			}
 		});
 

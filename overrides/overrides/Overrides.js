@@ -1,6 +1,6 @@
 
 Runtime._queryParamsObject.ws = location.host + location.pathname;
-document.title = location.pathname.split('/')[2] + ' - Network Inspector';
+document.title = location.pathname.split('/')[2] + ' - netsleuth';
 
 InspectorFrontendHost.copyText = function(text) {
 	SDK.targetManager._mainConnection.sendMessage(JSON.stringify({
@@ -152,3 +152,29 @@ var Base64Binary = {
 		return uarray;	
 	}
 }
+
+var favicon = new Image();
+favicon.onload = function() {
+	var canvas = document.createElement('canvas');
+	canvas.width = 32;
+	canvas.height = 32;
+	var ctx = canvas.getContext('2d'),
+		ratio = Math.min(32/favicon.width, 32/favicon.height),
+		iw = favicon.width * ratio,
+		ih = favicon.height * ratio;
+
+	ctx.drawImage(favicon, 16-(iw/2), 16-(ih/2), iw, ih);
+
+	var mag = new Image();
+	mag.onload = function() {
+	
+		ctx.drawImage(mag, 13, 12, 19, 19);
+
+		var lnk = document.createElement('link');
+		lnk.rel = 'icon';
+		lnk.href = canvas.toDataURL('image/png');
+		document.head.appendChild(lnk);
+	};
+	mag.src = '/img/mag.svg';
+};
+favicon.src = location.href + '/favicon.ico';

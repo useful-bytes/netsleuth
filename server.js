@@ -1155,6 +1155,41 @@ function InspectionServer(opts) {
 		else res.sendStatus(404);
 	});
 
+	var ICON_CACHE = 'public, max-age=' + (60*60*24);
+	app.get('/inspect/:host/favicon.ico', function(req, res) {
+		var insp = self.inspectors[req.params.host];
+
+		if (insp) {
+			if (insp instanceof InprocInspector) {
+				res.set('Cache-Control', ICON_CACHE);
+				if (insp.opts.icon) {
+					fs.stat(insp.opts.icon, function(err, stats) {
+						if (err) res.sendFile(__dirname + '/www/img/node.svg');
+						else res.sendFile(insp.opts.icon);
+					});
+				} else res.sendFile(__dirname + '/www/img/node.svg');
+			} else if (insp.friendlyTarget) {
+				request({
+					url: insp.friendlyTarget + 'favicon.ico',
+					encoding: null
+				}, function(err, ires, body) {
+					if (err) res.sendStatus(500);
+					else if (ires.statusCode == 200) {
+						res.set({
+							'Content-Type': ires.headers['content-type'],
+							'Cache-Control': ICON_CACHE
+						});
+						res.send(body);
+					}
+					else res.sendStatus(404);
+				});
+			} else {
+				res.sendStatus(501);
+			}
+
+		} else res.sendStatus(404);
+	});
+
 	var httpServer = this.http = http.createServer(app),
 		ws = this.ws = new WebSocket.Server({
 			noServer: true,
@@ -1175,6 +1210,9 @@ function InspectionServer(opts) {
 
 
 	function onupgrade(req, socket, head) {
+		socket.on('error', function(err) {
+			console.error('inspector ws error', err);
+		});
 		var origin = req.headers.origin || '';
 		if (origin.substr(0,10) != 'netsleuth:' &&
 			origin != 'http://localhost:' + opts.port &&
@@ -1187,7 +1225,7 @@ function InspectionServer(opts) {
 				var host = getInspectorId(req.url);
 				if (host) {
 					if (host.type == 'inproc') {
-						if (!self.inspectors[host.name]) self.inspectInproc(host.name, req.headers['sleuth-transient'] == 'true');
+						if (!self.inspectors[host.name]) self.inspectInproc(host.name, req.headers['sleuth-transient'] == 'true', req.headers.icon);
 						self.inspectors[host.name].target(client, req);
 					} else {
 						self.inspectors[host.name].connection(client, req);
@@ -1202,6 +1240,14 @@ function InspectionServer(opts) {
 	}
 
 	httpServer.on('upgrade', onupgrade);
+
+	httpServer.on('error', function(err) {
+		console.error('inspector http error', err);
+	});
+
+	ws.on('error', function(err) {
+		console.error('inspector ws error', err);
+	});
 
 	if (opts.https) {
 		var httpsServer = this.https = https.createServer(opts.https, app);
@@ -1243,7 +1289,7 @@ InspectionServer.prototype.newRemoteInspector = function(inspector) {
 	
 	this.monitorBroadcast({
 		m: 'new',
-		type: 1,
+		type: getInspectorType(inspector),
 		host: inspector.host.host,
 		target: href
 	});
@@ -1253,11 +1299,12 @@ InspectionServer.prototype.newRemoteInspector = function(inspector) {
 	});
 };
 
-InspectionServer.prototype.inspectInproc = function(name, transient) {
+InspectionServer.prototype.inspectInproc = function(name, transient, icon) {
 	var self = this,
 		inspector = self.inspectors[name] = new InprocInspector(self, {
 			name: name,
-			transient: transient
+			transient: transient,
+			icon: icon
 		});
 
 	if (transient) {
@@ -1292,7 +1339,7 @@ InspectionServer.prototype.targetMonitorConnection = function(ws, req) {
 	var inspectors = [];
 	for (var k in self.inspectors) {
 		inspectors.push({
-			type: self.inspectors[k] instanceof InprocInspector ? 2 : 1,
+			type: getInspectorType(self.inspectors[k]),
 			host: k,
 			target: self.inspectors[k].friendlyTarget
 		});
@@ -1445,4 +1492,10 @@ InspectionServer.prototype.close = function() {
 function getInspectorId(url) {
 	var path = url.split('/');
 	if (path[1] == 'inspect' || path[1] == 'inproc') return { type: path[1], name: path[2] };
+}
+
+function getInspectorType(insp) {
+	if (insp instanceof InprocInspector) return 2;
+	if (insp.gateway._local) return 3;
+	return 1;
 }

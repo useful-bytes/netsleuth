@@ -265,6 +265,7 @@ if (argv.noInspector) {
 } else {
 	var ns = inproc.attach({
 		name: argv.inspector,
+		icon: path.resolve(__dirname, '../www/img/terminal.svg'),
 		unref: false
 	}, function() {
 		// console.log(Date.now()-d);

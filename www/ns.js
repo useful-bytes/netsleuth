@@ -27,12 +27,20 @@ function addHost(h) {
 		a = $('<a>').attr({
 			href: '/inspect/' + h.host,
 			target: '_blank'
-		}).appendTo(li)
+		}).appendTo(li),
+		img = $('<img>').attr('src', '/inspect/' + h.host + '/favicon.ico').addClass('tico').on('error', badIcon).appendTo(a),
 		h3 = $('<h3>').text(h.host).appendTo(a);
 
-	if (h.target) $('<span>').addClass('target').text(h.target).appendTo(a);
+	if (h.type == 1) $('<img>').attr('src', '/img/cloud.svg').attr('title', 'Public gateway inspector').addClass('ttype').appendTo(a);
+	if (h.type == 3) $('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local proxy inspector').addClass('ttype').appendTo(a);
+
+	if (h.target) $('<span>').addClass('target').text('→ ' + h.target).appendTo(a);
 
 	li.appendTo(list);
+}
+
+function badIcon() {
+	$(this).attr('src', '/img/netsleuth.svg');
 }
 
 var space = /\s/g,
