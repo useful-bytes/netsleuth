@@ -125,7 +125,6 @@ InprocInspector.prototype.connection = function(ws, req) {
 			console.error('Client protocol error:', ex.stack);
 		}
 		
-
 		function reply(res) {
 			csend({
 				id: msg.id,
@@ -133,21 +132,6 @@ InprocInspector.prototype.connection = function(ws, req) {
 			});
 		}
 
-		function csend(msg) {
-			ws.send(JSON.stringify(msg));
-		}
-
-		// enable console
-		csend({
-			method: 'Runtime.executionContextCreated',
-			params: {
-				context: {
-					id: 1,
-					name: 'default',
-					origin: 'origin'
-				}
-			}
-		});
 		// self.broadcastTargets(data);
 	});
 
@@ -161,6 +145,23 @@ InprocInspector.prototype.connection = function(ws, req) {
 		}
 	});
 
+
+
+	function csend(msg) {
+		ws.send(JSON.stringify(msg));
+	}
+
+	// enable console
+	csend({
+		method: 'Runtime.executionContextCreated',
+		params: {
+			context: {
+				id: 1,
+				name: 'default',
+				origin: 'origin'
+			}
+		}
+	});
 
 };
 

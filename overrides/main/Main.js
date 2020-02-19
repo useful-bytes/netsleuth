@@ -826,12 +826,12 @@ Main.RemoteDebuggingTerminatedScreen = class extends UI.VBox {
     super(true);
     this.registerRequiredCSS('main/remoteDebuggingTerminatedScreen.css');
     var message = this.contentElement.createChild('div', 'message');
-    message.createChild('span').textContent = Common.UIString('Debugging connection was closed. Reason: ');
-    message.createChild('span', 'reason').textContent = reason;
+    message.createChild('span', 'reason').textContent = 'The connection to the netsleuth daemon was closed.';
+    this.contentElement.createChild('div', 'message').textContent = 'If this page is unable to reconnect, you may need to restart the netsleuth daemon.';
     this.contentElement.createChild('div', 'message').textContent =
-        Common.UIString('Reconnect when ready by reopening DevTools.');
-    var button = UI.createTextButton(Common.UIString('Reconnect DevTools'), () => window.location.reload());
-    this.contentElement.createChild('div', 'button').appendChild(button);
+        'Attempting to reconnect...';
+    // var button = UI.createTextButton('Reconnect', () => window.location.reload());
+    // this.contentElement.createChild('div', 'button').appendChild(button);
   }
 
   /**
@@ -840,10 +840,14 @@ Main.RemoteDebuggingTerminatedScreen = class extends UI.VBox {
   static show(reason) {
     var dialog = new UI.Dialog();
     dialog.setSizeBehavior(UI.GlassPane.SizeBehavior.MeasureContent);
-    dialog.addCloseButton();
+    // dialog.addCloseButton();
+    dialog.setOutsideClickCallback(function() {
+      // noop
+    });
     dialog.setDimmed(true);
     new Main.RemoteDebuggingTerminatedScreen(reason).show(dialog.contentElement);
     dialog.show();
+    NS.reconnect();
   }
 };
 

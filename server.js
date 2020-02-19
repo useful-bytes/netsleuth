@@ -1157,6 +1157,11 @@ function InspectionServer(opts) {
 		else next();
 	});
 
+	app.get('/inspect/:host/health', function(req, res) {
+		if (self.inspectors[req.params.host]) res.send({ok:true});
+		else res.sendStatus(404);
+	});
+
 	app.get('/inspect/:host/:group/last', function(req, res) {
 		var insp = self.inspectors[req.params.host];
 		if (insp && insp.lastReq[req.params.group]) res.send(insp.lastReq[req.params.group]);

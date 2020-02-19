@@ -178,3 +178,14 @@ favicon.onload = function() {
 	mag.src = '/img/mag.svg';
 };
 favicon.src = location.href + '/favicon.ico';
+
+NS = {
+	reconnect: function() {
+		fetch(location.href + '/health').then(function(res) {
+			if (res.ok) window.location.reload();
+			else setTimeout(NS.reconnect, 5000);
+		}, function(err) {
+			setTimeout(NS.reconnect, 5000);
+		});
+	}
+};
