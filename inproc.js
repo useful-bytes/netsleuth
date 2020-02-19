@@ -14,7 +14,9 @@ var http = require('http'),
 	rcfile = require('./lib/rcfile'),
 	getStackFrames = require('./get-stack-frames');
 
-var globalConfig = rcfile.get();
+var globalConfig = rcfile.get(),
+	rexEscape = /([\\^$.|?*+()\[\]{}])/g, wildcard = /\\\*/g,
+	uconfig = {};
 
 function getrcfile(from) {
 	var rc;
@@ -186,6 +188,8 @@ function attach(opts, readyCb) {
 					if (Array.isArray(res.headers[k])) res.headers[k] = res.headers[k].join('\n');
 				}
 
+				if (!self.__ignore && uconfig.noCache) res.headers['cache-control'] = 'no-store';
+
 				send({
 					method: 'Network.responseReceived',
 					params: {
@@ -241,6 +245,41 @@ function attach(opts, readyCb) {
 
 	ClientRequest.prototype._storeHeader = function(firstLine, headers) {
 		// NOTE: This is a patched ClientRequest method hooked by netsleuth
+
+		// First, apply overrides enabled in the inspector GUI (unless this is a special ignored request)
+		if (!this.__ignore) {
+			// "Offline" checkbox
+			if (uconfig.throttle && uconfig.throttle.offline) {
+				this._hasBody = false;
+				blocked(this);
+				return this.emit('error', new RequestBlockedError('Request blocked by netsleuth.  The "Offline" box is checked in the inspector GUI.'));
+			}
+
+			// "Request blocking" tab
+			if (uconfig.blockedUrls && uconfig.blockedUrls.length) {
+				var url = this.__protocol + '//' + this.getHeader('host') + this.path;
+				for (var i = 0; i < uconfig.blockedUrls.length; i++) {
+					if (uconfig.blockedUrls[i].test(url)) {
+						this._hasBody = false;
+						blocked(this);
+						return this.emit('error', new RequestBlockedError('Request blocked by netsleuth.  URL matches a request blocking pattern set in the inspector GUI.'));
+					}
+				}
+			}
+
+			// "Disable cache" checkbox
+			if (uconfig.noCache) {
+				headers['cache-control'] = ['Cache-Control', 'no-cache'];
+				delete headers['if-none-match'];
+				delete headers['if-modified-since'];
+			}
+
+			// "User agent" override
+			if (uconfig.ua) {
+				headers['user-agent'] = ['User-Agent', uconfig.ua];
+			}
+		}
+
 		HttpClientRequest.prototype._storeHeader.call(this, firstLine, headers);
 
 		var self = this;
@@ -382,14 +421,16 @@ function attach(opts, readyCb) {
 	agent.__ignore = true;
 
 	function connect() {
+		var headers = {
+			Origin: 'netsleuth:api',
+			PID: process.argv0 + '.' + process.pid,
+			'Sleuth-Transient': !!opts.transient,
+		};
+		if (opts.icon) headers.Icon = opts.icon;
+
 		ws = new WebSocket('ws://' + daemon.host + '/inproc/' + opts.name, [], {
 			agent: agent,
-			headers: {
-				Origin: 'netsleuth:api',
-				PID: process.argv0 + '.' + process.pid,
-				'Sleuth-Transient': !!opts.transient,
-				Icon: opts.icon
-			}
+			headers: headers
 		});
 
 		ws.on('open', function() {
@@ -403,11 +444,28 @@ function attach(opts, readyCb) {
 					else sendBin(ops[i].type, ops[i].id, ops[i].chunk);
 				}
 			}
-			if (readyCb) {
-				readyCb();
-				readyCb = null;
+		});
+
+		ws.on('message', function(msg) {
+			msg = JSON.parse(msg);
+			switch (msg.m) {
+				case 'ready':
+					if (readyCb) {
+						readyCb();
+						readyCb = null;
+					}
+					break;
+
+				case 'config':
+					uconfig = msg.config;
+					if (uconfig.blockedUrls) uconfig.blockedUrls = uconfig.blockedUrls.map(function(str) {
+						if (str.substr(0, 4) == 'rex:') return new RegExp(str.substr(4));
+						else return new RegExp(str.replace(rexEscape, '\\$&').replace(wildcard, '.+'));
+					});
+					break;
 			}
 		});
+
 		ws.on('close', function() {
 			setTimeout(connect, 5000);
 		});
@@ -432,6 +490,17 @@ function attach(opts, readyCb) {
 
 
 
+	function blocked(req) {
+		send({
+			method: 'Gateway.blocked',
+			params: {
+				requestId: req.__reqId,
+				method: req.method,
+				headers: { host: req.getHeader('host') },
+				url: req.path
+			}
+		});
+	}
 	function send(msg) {
 		if (ws && ws.readyState == WebSocket.OPEN) ws.send(JSON.stringify(msg));
 		else pending.push({ op:'msg', msg:msg });
@@ -485,5 +554,14 @@ function urlToOptions(url) {
 	return options;
 }
 
+function RequestBlockedError(msg) {
+	Error.captureStackTrace(this, this.constructor);
+	this.name = this.constructor.name;
+	this.message = msg;
+}
+util.inherits(RequestBlockedError, Error);
+
 exports.attach = attach;
 exports.init = init;
+exports.getUserConfig = function() { return uconfig; };
+exports.RequestBlockedError = RequestBlockedError;

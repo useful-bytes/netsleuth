@@ -17,6 +17,10 @@ function InprocInspector(server, opts) {
 	self.console = new RemoteConsole(self);
 	self.sessionCLI = new SessionCLI(self);
 	self.notify = [];
+	self.blockedUrls = [];
+	self.ua = null;
+	self.throttle = null;
+	self.noCache = false;
 }
 util.inherits(InprocInspector, EventEmitter);
 
@@ -79,6 +83,30 @@ InprocInspector.prototype.connection = function(ws, req) {
 							}
 						});
 					}
+					break;
+
+				case 'Network.setBlockedURLs':
+					self.blockedUrls = msg.params.urls;
+					reply();
+					self.sendConfig();
+					break;
+
+				case 'Network.setUserAgentOverride':
+					self.ua = msg.params.userAgent || null;
+					reply();
+					self.sendConfig();
+					break;
+
+				case 'Network.emulateNetworkConditions':
+					self.throttle = msg.params;
+					reply();
+					self.sendConfig();
+					break;
+
+				case 'Network.setCacheDisabled':
+					self.noCache = msg.params.cacheDisabled;
+					reply();
+					self.sendConfig();
 					break;
 
 				case 'Clipboard.write':
@@ -230,17 +258,23 @@ InprocInspector.prototype.target = function(ws, req) {
 
 					case 'Network.responseReceived':
 						var info = self.reqs[id];
-						info.res = msg.params.response;
-						info.resBody = new MessageBody(id.replace(':', '_'), info.res, {
-							kind: 'res',
-							host: ws.pid
-						});
+						if (info) {
+							info.res = msg.params.response;
+							info.resBody = new MessageBody(id.replace(':', '_'), info.res, {
+								kind: 'res',
+								host: ws.pid
+							});
+						}
 						break;
 
 					case 'Network.loadingFinished':
 					case 'Network.loadingFailed':
 						var info = self.reqs[id];
 						if (info && info.resBody) info.resBody.end();
+						break;
+
+					case 'Gateway.blocked':
+						self.console.warn('Blocked request for ' + msg.params.method + ' ' + msg.params.headers.host + msg.params.url, 'network');
 						break;
 						
 				}
@@ -308,7 +342,25 @@ InprocInspector.prototype.target = function(ws, req) {
 		self.console.error('Socket error from ' + ws.pid + ': ' + err.message);
 	});
 
+	self.sendConfig(ws);
+	ws.send(JSON.stringify({m:'ready'}));
+
 	self.updateTargets();
+};
+
+InprocInspector.prototype.sendConfig = function(ws) {
+	var msg = JSON.stringify({
+		m: 'config',
+		config: {
+			blockedUrls: this.blockedUrls,
+			ua: this.ua,
+			throttle: this.throttle,
+			noCache: this.noCache
+		}
+	});
+
+	if (ws) ws.send(msg);
+	else this.broadcastTargets(msg);
 };
 
 

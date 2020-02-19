@@ -761,9 +761,24 @@ function request(method, uri, isRedirect, noBody) {
 
 		} else {
 			out(REQ_PROTO, c.yellow(method) + ' ' + c.cyan.underline(opts.path) + c.gray(' HTTP/1.1\n'));
-			var headers = reqHeaders.get(req);
+			var headers = reqHeaders.get(req),
+				uconfig = inproc.getUserConfig();
+
 			for (var k in headers.values) {
-				out(REQ_PROTO, c.cyan(headers.names[k]) + ': ' + headers.values[k] + '\n');
+				if ((uconfig.noCache && (k == 'cache-control' || k == 'if-none-match' || k == 'if-modified-since')) || (uconfig.ua && k == 'user-agent')) {
+					out(REQ_PROTO, c.red(headers.names[k] + ': ' + headers.values[k]) + '\n');
+				}
+				else out(REQ_PROTO, c.cyan(headers.names[k]) + ': ' + headers.values[k] + '\n');
+			}
+
+			if (uconfig.noCache) {
+				out(REQ_PROTO, c.cyan('Cache-Control') + ': ' + c.yellow('no-cache\n'));
+			}
+			if (uconfig.ua) {
+				out(REQ_PROTO, c.cyan('User-Agent') + ': ' + c.yellow(uconfig.ua + '\n'));
+			}
+			if (uconfig.noCache || uconfig.ua) {
+				out(REQ_PROTO, c.gray('(overrides enabled in the inspector GUI)\n'));
 			}
 		}
 		out(REQ_PROTO, '\n');

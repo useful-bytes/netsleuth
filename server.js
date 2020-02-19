@@ -1044,6 +1044,14 @@ Inspector.prototype.connection = function(ws, req) {
 					reply();
 					break;
 
+				case 'Network.setCacheDisabled':
+					send({
+						m: 'no-cache',
+						val: msg.params.cacheDisabled
+					});
+					reply();
+					break;
+
 				case 'Clipboard.write':
 					clipboardy.write(msg.params.text);
 					break;

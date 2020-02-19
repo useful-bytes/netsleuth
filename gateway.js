@@ -177,6 +177,9 @@ function GatewayServer(opts) {
 				if (res) {
 					if (originalMsg) res.bytes += originalMsg.length;
 					else res.bytes += JSON.stringify(msg).length;
+					if (host.noCache) {
+						msg.headers['cache-control'] = 'no-store';
+					}
 					res.writeHead(msg.sc, msg.sm, msg.headers);
 					res.expires = now + self.silenceTimeout;
 				}
@@ -218,6 +221,9 @@ function GatewayServer(opts) {
 			case 'throttle':
 				host.throttle = msg;
 				break;
+
+			case 'no-cache':
+				host.noCache = msg.val;
 
 			case 'inspector':
 				self.emit('inspector-connected', host, msg.id);
@@ -382,6 +388,12 @@ function GatewayServer(opts) {
 
 			if (host.uaOverride) {
 				req.headers['user-agent'] = host.uaOverride;
+			}
+
+			if (host.noCache) {
+				req.headers['cache-control'] = 'no-cache';
+				delete req.headers['if-none-match'];
+				delete req.headers['if-modified-since'];
 			}
 
 			var proto = req.socket.encrypted ? 'https' : 'http',
