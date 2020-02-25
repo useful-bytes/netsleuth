@@ -722,7 +722,7 @@ Main.NetworkPanelIndicator = class {
     function updateVisibility() {
       var icon = null;
       var mainTarget = SDK.targetManager.mainTarget();
-      if (!mainTarget || mainTarget.model(SDK.GatewayModel).state != 1) {
+      if (!mainTarget || mainTarget.model(SDK.GatewayModel).state != 2) {
         icon = UI.Icon.create('smallicon-error');
         icon.title = (mainTarget && mainTarget.model(SDK.GatewayModel).message) || 'Disconnected';
       } else if (manager.isThrottling()) {
