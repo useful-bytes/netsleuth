@@ -72,6 +72,7 @@ function Inspector(server, opts) {
 	var self = this;
 	EventEmitter.call(this);
 	this.server = server;
+	this.opts = opts;
 	if (opts.host) {
 		if (opts.host.indexOf('://') == -1) this.host = url.parse('https://' + opts.host);
 		else this.host = url.parse(opts.host);
@@ -643,7 +644,7 @@ function Inspector(server, opts) {
 
 				if (res.statusCode == 301 || res.statusCode == 302 || res.statusCode == 303 || res.statusCode == 307 || res.statusCode == 308) {
 					self.serviceState = Inspector.SERVICE_STATE.REDIRECTING;
-					service.finalize(true);
+					service.terminate();
 					self.gatewayUrl = res.headers.location;
 					return connect();
 				}
@@ -665,7 +666,7 @@ function Inspector(server, opts) {
 					res.on('end', function() {
 						err.message = body.toString();
 						self.emit('error', err);
-						service.finalize(true);
+						service.terminate();
 					});
 
 					res.on('error', ignoreResBody);
@@ -683,7 +684,7 @@ function Inspector(server, opts) {
 				function ignoreResBody() {
 					req.abort();
 					self.emit('error', err);
-					service.finalize(true);
+					service.terminate();
 				}
 			// }
 			// req.abort();
@@ -1373,7 +1374,7 @@ InspectionServer.prototype.monitorBroadcast = function(msg) {
 };
 
 
-var availLocal = ipToLong('127.0.0.1'), LOCAL_MAX = ipToLong('127.255.255.255');
+var availLocal = ipToLong('127.0.0.1'), LOCAL_MAX = ipToLong('127.255.255.255'), ipish = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 InspectionServer.nextLocal = function() {
 	var ip = ++availLocal;
 	console.log(ip, ipFromLong(ip), ip & 255);
@@ -1392,7 +1393,8 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 
 	if (!opts || !opts.target) throw new Error('Must specify target host for outgoing inspection');
 
-	var ip = opts.ip || opts.host;
+	var ip = opts.ip;
+	if (!ip && ipish.test(opts.host)) ip = opts.host;
 
 	if (ip) {
 		function onerror(err) {
@@ -1445,9 +1447,12 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 
 	function up(ip) {
 		var inspector = self.inspect({
-			host: ip,
+			host: opts.host || ip,
 			target: opts.target,
-			gateway: gateway.inspect(ip)
+			gateway: gateway.inspect(opts.host || ip),
+			ca: opts.ca,
+			hostsfile: opts.hostsfile,
+			ip: opts.ip
 		});
 		if (cb) cb(null, inspector, ip);
 	}

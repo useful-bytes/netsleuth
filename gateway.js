@@ -577,7 +577,7 @@ GatewayServer.prototype.removeHost = function(hostname) {
 	if (host) {
 		delete self.hosts[hostname];
 
-		if (host.ws) host.ws.terminate();
+		if (host.ws && host.ws.terminate) host.ws.terminate();
 
 		self.emit('host-offline', host);
 	}

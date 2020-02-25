@@ -88,11 +88,11 @@ var yargs = require('yargs')
 			boolean: true,
 			describe: 'Add target in local gateway mode.  In this mode, requests are made to a proxy running on your machine and forwarded to the target.'
 		})
-		// .option('add-host', {
-		// 	alias: 'h',
-		// 	boolean: true,
-		// 	describe: 'Add an entry to your HOSTS file for this hostname pointing to 127.0.0.1.  netsleuth will sudo for you.'
-		// })
+		.option('add-host', {
+			alias: 'h',
+			boolean: true,
+			describe: 'Add an entry to your HOSTS file for this hostname pointing to 127.0.0.1.  netsleuth will sudo for you.'
+		})
 		.option('ca', {
 			alias: 'a',
 			describe: 'Location of the CA or self-signed certificate to use when validating HTTPS certificates presented by the target.'
@@ -181,27 +181,16 @@ var yargs = require('yargs')
 		}
 
 		if (argv.hostHeader) host.hostHeader = argv.hostHeader;
+		if (argv.tmp) host.tmp = true;
+		if (argv.reserve) host.reserve = true;
+		if (argv.store) host.store = true;
+		if (argv.addHost) host.hostsfile = true;
 
 		host.serviceOpts = getServiceOpts(argv);
 
 		daemon.add(Object.assign({ host: argv.hostname }, host), dres(function(body) {
-			if (!argv.tmp) {
-				config.hosts[body.host] = host;
-				rcfile.save(config);
-			}
 			var proto = host.local ? 'http' : 'https';
 			console.log('Inspecting ' + proto + '://' + body.host + ' \u27a1 ' + argv.target);
-
-			if (argv.reserve) {
-				gw.reserve(body.host, argv.store, false, host.serviceOpts, function(err, res, hostname) {
-					if (err) console.error('Unable to connect to gateway to make reservation.', err);
-					else if (res == 200) console.log(body.host + ': reservation updated');
-					else if (res == 201) console.log(body.host + ': reserved');
-					else if (res == 303) console.log(body.host + ': reserved ' + hostname);
-					else if (res == 401) console.log(body.host + ': not logged in to gateway');
-					else console.log(body.host + ': ' + res)
-				});
-			}
 		}));
 
 	})
@@ -247,12 +236,6 @@ var yargs = require('yargs')
 			hosts: toRemove,
 			unreserve: argv.unreserve
 		}, dres(function() {
-
-			toRemove.forEach(function(host) {
-				delete config.hosts[host];
-			});
-
-			rcfile.save(config);
 			console.log('Removed ' + toRemove.length + ' targets.');
 		}));
 

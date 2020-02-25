@@ -116,7 +116,7 @@ var yargs = exports.yargs = require('yargs')
 		})
 		.option('max-length', {
 			alias: 'l',
-			default: process.stdout.rows * process.stdout.columns,
+			default: process.stdout.rows * process.stdout.columns * 10,
 			number: true,
 			group: 'Display',
 			describe: 'Maximum length of body data to print to the terminal (0 for no limit)'

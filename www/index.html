@@ -9,14 +9,99 @@
 
 <header>
 	<h1><img src="/img/netsleuth.svg" width=32 height=32> netsleuth</h1>
+	<button id="add" title="Add new inspection target">+</button>
 </header>
 
 <div id="main">
-<noscript>JavaScript must be enabled.</noscript>
-<div id="notchrome" style="display:none;">The inspector only works in Chrome.  Please open this page in Chrome.</div>
+<noscript class="err">JavaScript must be enabled.</noscript>
+<div id="notchrome" class="err" style="display:none;">The inspector only works in Chrome.  Please open this page in Chrome.</div>
+<div id="disc" class="err"><p>The connection to the netsleuth daemon was closed.</p><p>Attempting to reconnect...</p></div>
 <ul id="targets">
 
 </ul>
+<div id="empty">
+<i>No inspection targets</i>
+
+<h3>Adding your first target</h3>
+<p>There are several ways to get started:</p>
+<ul>
+<li>Run a node.js script with <code class="term">snode</code> instead of <code class="term">node</code> to make the process inspectable</li>
+<li><a href="https://netsleuth.io/docs/api" target=_blank>Use the API to integrate your node.js project</a></li>
+<li>Use the <a href="https://netsleuth.io/docs/cli" target=_blank>CLI</a> to add a target.
+	<ul>
+	<li>Public gateway to local dev env: <code class="term">netsleuth inspect http://localhost:3000 example.netsleuth.io</code></li>
+	<li>Local proxy to a server: <code class="term">netsleuth inspect -l https://example.com 127.0.0.2</code></li>
+	</ul>
+</li>
+<li>Click the <b>+</b> button on this page to add a target</li>
+</ul>
+</div>
+</div>
+<div id="adddlg" class="dialog">
+	<div id="aclose" class="closebtn">×</div>
+	<div id="atabs">
+		<img id="atpub" src="/img/cloud.svg" title="Add a public gateway target">
+		<img id="atprox" src="/img/proxy.svg" title="Add a local proxy target">
+	</div>
+
+	<div id="addctls" class="atab">
+		<h4 class="atpub">New public gateway target</h4>
+		<h4 class="atprox">New local proxy target</h4>
+		<p class="atpub">Requests will be forwarded from the public gateway server to the target server via your machine.</p>
+		<p class="atprox">Requests will be forwarded from a server on your machine to the target server.</p>
+		<div class="row"><label for="acname">Hostname: </label><input id="acname"><span class="atpub">.netsleuth.io</span><small class="atprox">Hostname can be anything, or your machine's IP address (LAN or 127.0.0.x)</small></div>
+		<div class="row"><label for="actarget">Target: </label><input id="actarget" value="http://localhost:80"><small>Target can be any HTTP(S) server reachable from your machine (local or remote).  Use a protocol-relative URL (<code>//example.com</code>) to use the same protocol as each client request.</small></div>
+		<div class="row">
+			<label for="actls">Target TLS: </label>
+			<select id="actls">
+				<option value="normal">Normal</option>
+				<option value="insecure">Insecure</option>
+				<option value="ca">Custom CA</option>
+			</select>
+			<small id="actlsi"></small>
+		</div>
+		<div class="row" id="actlscar">
+			<label for="actlsca">Certificate: </label>
+			<span id="actlscasel">
+				<button id="actlsget">Get…</button> or 
+				<input type="file" id="actlsca">
+			</span>
+			<span id="actlscafetched">
+				<span id="actlscasubject"></span>
+				<button id="actlscasubjectclear">×</button>
+			</span>
+		</div>
+		<div class="row atpub"><input type="checkbox" id="acreserve"><label for="acreserve"> Reserve hostname<small class="cbdesc" id="acreservei"></small></label></div>
+		<div class="row atpub"><input type="checkbox" id="acstore"><label for="acstore"> Store requests when offline<small class="cbdesc" id="acstorei"></small></label></div>
+		<div class="row atprox"><input type="checkbox" id="atproxhostsfile"><label for="atproxhostsfile"> Add hostname to system HOSTS file</label></div>
+		<div class="row"><button id="acadd">Add</button></div>
+	</div>
+
+
+</div>
+<div id="certdlg" class="dialog atab">
+	<div id="cclose" class="closebtn">×</div>
+
+	<h3 class="loading">Getting target's TLS certificate...</h3>
+	<h3 class="done">Use this self-signed certificate?</h3>
+
+	<p class="done">netsleuth has fetched this certificate from <span id="ctarget">the target server</span>.  You must manually ensure this is the correct certificate &mdash; there is no way to automatically validate it.</p>
+
+	<div class="row done"><b>Subject:</b> <span id="csubject"></span></div>
+	<div class="row done"><b>Issuer:</b> <span id="cissuer"></span></div>
+	<div class="row done"><b>Fingerprint (SHA-1):</b> <span id="csha1"></span></div>
+	<div class="row done"><b>Fingerprint (SHA-256):</b> <span id="csha256"></span></div>
+	<div class="row done"><b>Expires:</b> <span id="cexp"></span></div>
+	<div class="row done"><span id="cvalid"></span></div>
+
+	<div class="row"><button id="caccept" class="done">Accept</button> <button id="ccancel">Cancel</button></div>
+</div>
+<div id="deldlg" class="dialog atab">
+	<div id="dclose" class="closebtn">×</div>
+	<h3><img id="dico" width=20 height=20 align=left> Delete host?</h3>
+	<p>Are you sure you want to delete <b id="dhost"></b>?</p>
+
+	<div class="row"><button id="dok">Delete</button> <button id="dcancel">Cancel</button></div>
 </div>
 <script src="/jq/jquery.min.js"></script>
 <script src="ns.js"></script>

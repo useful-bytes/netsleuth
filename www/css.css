@@ -8,13 +8,17 @@ header img { vertical-align:middle; }
 
 #login { position:absolute; top:11px; right:30px; background:#139713; color:#fff;  }
 h1 { margin:0; padding:10px; font-size:22px; display:inline-block; }
+#add { position:absolute; top:8px; right:10px; font-size:20px; font-weight:bold; }
 
 #main { margin-top:45px; padding:15px; }
+.disabled { opacity:.4; pointer-events:none; }
 #content { max-width: 700px; margin:auto; margin-top:60px; padding:15px; }
 
 #targets { list-style:none; padding:0; margin:0; }
-#targets a { display:block; border:1px solid gray; border-radius:5px; margin:10px; padding: 10px; color:#000; text-decoration:none; min-height:32px; }
+#targets a { position:relative; display:block; border:1px solid gray; border-radius:5px; margin:10px; padding: 10px; color:#000; text-decoration:none; min-height:32px; }
 #targets a:hover { background:#eee; }
+#targets a button { display:none; position:absolute; top:5px; right:5px; font-size:20px; color:#f00; }
+#targets a:hover button { display:block; }
 .tico { width:32px; height:32px; object-fit:contain; float:left; margin:0 5px 0 0; }
 .ttype { width:16px; height:16px; margin:0 3px 0 0; vertical-align:bottom; }
 h3 { margin:0; }
@@ -22,4 +26,22 @@ h3 { margin:0; }
 
 .btn.login { background:#139713; color:#fff; font-size:2em; display:inline-block; margin:20px 0; padding:9px 30px; }
 
-#notchrome, noscript { display:block; border:1px solid #f00; padding:10px; background:rgba(255,0,0,.3); }
+.err { display:block; border:1px solid #f00; padding:10px; background:rgba(255,0,0,.3); }
+#disc, #empty { display:none; }
+
+#empty i { display:block; text-align:center; margin:80px 0; }
+code.term { background:#000; color:#fff; padding:3px; border-radius:4px; }
+
+.dialog { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); min-width:400px; max-width:90%; max-height:90%; background:#fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.1); }
+.closebtn { display:inline-block; position:absolute; top:10px; right:14px; font-size:20px; width:22px; height:22px; text-align:center; cursor:default; }
+.closebtn:hover { background:#555; color:#fff; border-radius:22px; text-shadow:1px 1px 0 #333; }
+#atabs { background:#ddd; height:44px; }
+#atabs img { display:inline-block; width:32px; height:32px; padding:6px; }
+#atabs img.active { background:#fff; }
+.atab { padding:10px; }
+.atab h4 { margin:0; }
+.row { margin:12px 0; }
+small { display:block; color:#666; }
+.danger { color:#f00; }
+.cbdesc { margin-left:24px; }
+#dico { margin-right:10px; }

@@ -6,6 +6,8 @@ var fs = require('fs'),
 	rcfile = require('../lib/rcfile'),
 	gw = require('../lib/gateway-client'),
 	browserLogin = require('../lib/browser-login'),
+	hosts = require('../lib/hosts'),
+	serverCert = require('../lib/server-cert'),
 	Server = require('../server');
 
 if (!process.stdout.isTTY) {
@@ -43,7 +45,8 @@ function addHost(host, cb) {
 
 	if (host.ca) {
 		host.ca = host.ca.map(function(path) {
-			return fs.readFileSync(path);
+			if (path.substr(0,28) == '-----BEGIN CERTIFICATE-----\n') return path;
+			else return fs.readFileSync(path);
 		});
 	}
 
@@ -74,9 +77,10 @@ function isLocal(req, res, next) {
 	var origin = req.headers.origin || '';
 	if (origin.substr(0, 10) != 'netsleuth:' &&
 		origin != 'http://localhost:' + port &&
-		origin != 'http://127.0.0.1:' + port
+		origin != 'http://127.0.0.1:' + port &&
+		req.headers['sec-fetch-site'] != 'same-origin'
 	) res.status(403).send('This request must be made from an allowed origin.');
-	else if (req.socket.remoteAddress == '127.0.0.1' || req.socket.remoteAddress == '::ffff:127.0.0.1') next();
+	else if (req.socket.remoteAddress == '127.0.0.1' || req.socket.remoteAddress == '::1' || req.socket.remoteAddress == '::ffff:127.0.0.1') next();
 	else res.status(403).send('This request must be made from localhost.');
 }
 
@@ -94,37 +98,81 @@ server.app.post('/ipc/reload', isLocal, function(req, res) {
 
 server.app.post('/ipc/add', isLocal, function(req, res) {
 
-	var host = req.body;
-
-	addHost(host, function(err, inspector) {
+	addHost(req.body, function(err, inspector, ip) {
 
 		if (err) ierr(err);
 		else {
+
 
 			inspector.on('error', ierr);
 
 			inspector.on('hostname', function(host) {
 				inspector.removeListener('error', ierr);
-				res.send({host:host});
+
+				if (ip) {
+					req.body.ip = ip;
+					inspector.opts.ip = ip;
+					host = req.body.host;
+				}
+				
+				if (!req.body.tmp) {
+					reload();
+					config.hosts[host] = req.body;
+					rcfile.save(config);
+				}
+
+				if (req.body.local) {
+					if (req.body.hostsfile) {
+						hosts.add(ip, host, function(err) {
+							res.send({ host: host, hostsUpdated: !err });
+						});
+					} else res.send({ host: host });
+				}
+				else if (req.body.reserve) {
+					gw.reserve(host, req.body.store, false, req.body.serviceOpts, function(err, rres, hostname) {
+						if (err) {
+							console.error('Unable to connect to gateway to make reservation.', err);
+							res.send({ host: host, reservation: 'err' });
+						}
+						else if (rres == 200) res.send({ host: host, reservation: 'updated' });
+						else if (rres == 201) res.send({ host: host, reservation: 'created' });
+						else if (rres == 303) res.send({ host: host, reservation: 'created' });
+						else if (rres == 401) res.send({ host: host, reservation: 'unauth' });
+						else {
+							console.error(host + ': ' + rres)
+							res.send({ host: host, reservation: 'err' });
+						}
+					});
+				} else res.send({ host:host });
 			});
 			
 		}
-			
+
 		function ierr(err) {
-			inspector.removeListener('error', ierr);
+			if (inspector) inspector.removeListener('error', ierr);
 			res.status(err.status || 500).send(err.message);
-			if (host.host) server.remove(host.host);
-			else inspector.close();
+			if (req.body.host) server.remove(req.body.host);
+			else if (inspector) inspector.close();
 		}
+			
 	});
 
 });
 
 server.app.post('/ipc/rm', isLocal, function(req, res) {
 	if (req.body && req.body.hosts && Array.isArray(req.body.hosts)) {
+		reload();
 		req.body.hosts.forEach(function(host) {
+			var insp = server.inspectors[host];
+			if (insp.opts.hostsfile) {
+				hosts.remove(insp.opts.ip, insp.opts.host, function(err) {
+					if (err) console.error('error removing HOSTS entry for ' + insp.opts.host, err);
+				});
+			}
 			server.remove(host);
+			delete config.hosts[host];
 		});
+		rcfile.save(config);
 	}
 	res.send({});
 });
@@ -168,6 +216,13 @@ server.app.post('/ipc/project', isLocal, function(req, res) {
 
 		res.sendStatus(204);
 	}
+});
+
+server.app.get('/ipc/cert/:host', isLocal, function(req, res) {
+	serverCert.get('https://' + req.params.host, function(err, cert) {
+		if (err) res.sendStatus(500);
+		else res.send(cert);
+	});
 });
 
 
