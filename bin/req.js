@@ -449,8 +449,13 @@ function request(method, uri, isRedirect, noBody) {
 		else if (opts.host && opts.pathname) opts.pathname = path.join(opts.host, opts.pathname); // har:p/file.bar
 		// else har:/abs/file.bar
 
+		var inHar;
 		try {
-			var inHar = JSON.parse(fs.readFileSync(opts.pathname));
+			if (opts.pathname == 'clip') {
+				inHar = JSON.parse(require('clipboardy').readSync());
+			} else {
+				inHar = JSON.parse(fs.readFileSync(opts.pathname));
+			}
 		} catch (ex) {
 			return fatal(ex.message);
 		}

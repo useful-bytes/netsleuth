@@ -41,7 +41,7 @@ req http://t0k3n@localhost/foo -> "Authorization: Bearer t0k3n"
 ```
 
 ### har:/path/to/file.har#entry
-Use the special `har:` scheme to specify that req should make a request by replaying from a HAR file on disk.  Optionally use `entry` to specify the the request entry by index (default `0`).  Later params can override any properties loaded from the HAR.
+Use the special `har:` scheme to specify that req should make a request by replaying from a HAR file on disk (or `har:clip` to read the system clipboard).  Optionally use `entry` to specify the the request entry by index (default `0`).  Later params can override any properties loaded from the HAR.
 ```
 req har:file.har bar=baz
 ```
