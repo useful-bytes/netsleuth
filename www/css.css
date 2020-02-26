@@ -27,12 +27,12 @@ h3 { margin:0; }
 .btn.login { background:#139713; color:#fff; font-size:2em; display:inline-block; margin:20px 0; padding:9px 30px; }
 
 .err { display:block; border:1px solid #f00; padding:10px; background:rgba(255,0,0,.3); }
-#disc, #empty { display:none; }
+#disc, #empty, .acauth { display:none; }
 
 #empty i { display:block; text-align:center; margin:80px 0; }
 code.term { background:#000; color:#fff; padding:3px; border-radius:4px; }
 
-.dialog { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); min-width:400px; max-width:90%; max-height:90%; background:#fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.1); }
+.dialog { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); min-width:400px; max-width:90%; max-height:90%; background:#fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.1); z-index:999; overflow:auto; }
 .closebtn { display:inline-block; position:absolute; top:10px; right:14px; font-size:20px; width:22px; height:22px; text-align:center; cursor:default; }
 .closebtn:hover { background:#555; color:#fff; border-radius:22px; text-shadow:1px 1px 0 #333; }
 #atabs { background:#ddd; height:44px; }
@@ -45,3 +45,4 @@ small { display:block; color:#666; }
 .danger { color:#f00; }
 .cbdesc { margin-left:24px; }
 #dico { margin-right:10px; }
+.acauth { display:none; margin-left:24px; }

@@ -49,30 +49,8 @@ function GatewayServer(opts) {
 				if (self.gatewaySocketRequest) {
 					if (self.gatewaySocketRequest(req, socket, head)) return;
 				}
-
-				if (req.url.substr(0,6) == '/host/') {
-					var hostname = getHost(req.url);
-
-					// return rawRespond(socket, 308, 'Permanent Redirect', 'netsleuth websocket location has moved', {
-					// 	Location: 'wss://' + hostname + '/.well-known/netsleuth'
-					// });
-
-					self.hostRequest(hostname, req, function(err, ok, params) {
-						if (err) return rawRespond(socket, 500, 'Internal Server Error', err.message);
-
-						if (ok) {
-							wss.handleUpgrade(req, socket, head, function(client) {
-								req.headers.host = hostname;
-								wss.emit('connection', client, req, params);
-							});
-						} else {
-							params = params || {};
-							rawRespond(socket, params.code || 404, params.status || 'Not Found', params.message || '', params.headers);
-						}
-
-					});
-
-				} else rawRespond(socket, 404, 'Not Found', 'No WebSocket at ' + req.url);
+				
+				rawRespond(socket, 404, 'Not Found', 'No WebSocket at ' + req.url);
 
 			} else {
 				if (req.url == '/.well-known/netsleuth') {
@@ -528,7 +506,7 @@ GatewayServer.prototype.hostRequest = function(host, req, cb) {
 	else cb(null, true);
 };
 
-GatewayServer.prototype.inspect = function(name) {
+GatewayServer.prototype.inspect = function(name, serviceOpts) {
 	var self = this,
 		inspector = new LocalInspectorInstance(name, self);
 
@@ -547,6 +525,8 @@ GatewayServer.prototype.inspect = function(name) {
 		blocks: [],
 		uaOverride: ''
 	};
+
+	if (serviceOpts && serviceOpts.auth) host.opts.auth = 'Basic ' + Buffer.from(serviceOpts.auth.user + ':' + serviceOpts.auth.pass).toString('base64');
 
 	self.hostRequest(name, null, function(err, ok, params) {
 		process.nextTick(function() {

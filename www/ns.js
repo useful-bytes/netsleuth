@@ -118,21 +118,34 @@ function atab(id) {
 	$('#atabs img').removeClass('active');
 	$('#' + id).addClass('active');
 	$('.' + id).show();
+	$('#adddlg input').trigger('change');
 }
 
 $('#actarget').on('focus', function() {
 	if (this.value == 'http://localhost:80') this.setSelectionRange(17,19);
 });
 
-$('#acreserve').change(function() {
-	$('#acreservei').text(this.checked ?
-		'Reserved hostnames are saved for you until you release them.' :
-		'Unreserved hostnames are released when you go offline.');
+$('#actemp').change(function() {
+	$('#actempi').text(this.checked ?
+		'This host will be automatically deleted at next restart' + ( atab.active == 'atpub' ?
+			' and the public gateway will not reserve its name for you.' :
+			'.'
+		) :
+		'This host will be saved to your config file' + (atab.active == 'atpub' ?
+			' and its name will be exclusively reserved for you by the public gateway.' :
+			'.'));
+
+	$('.notemp').attr('disabled', this.checked).trigger('change');
+	$('.notempl').toggleClass('disabled', this.checked);
+
 });
 $('#acstore').change(function() {
-	$('#acstorei').text(this.checked ?
+	$('#acstorei').text(this.checked && !this.disabled ?
 		'The gateway will store requests when your machine is offline.' :
 		'Clients will receive an error when your machine is offline.');
+});
+$('#acauth').change(function() {
+	$('.acauth').vis(this.checked);
 });
 $('#actls').change(function() {
 	$('#actlsi').text(this.disabled ? 'No TLS -- target is plain HTTP.' : {
@@ -229,14 +242,22 @@ $('#acadd').click(function() {
 		return alert('Please enter a valid target URL.');
 	}
 
+	if ($('#actemp').is(':checked')) opts.temp = true;
+
+	opts.serviceOpts = {};
+
+	if ($('#acauth').is(':checked')) opts.serviceOpts.auth = {
+		user: $('#acauthu').val(),
+		pass: $('#acauthp').val()
+	};
+
 	if (atab.active == 'atprox') {
 		if (!opts.host) return alert('Please enter a hostname.');
 		opts.local = true;
 		opts.hostsfile = $('#atproxhostsfile').is(':checked');
 	} else {
 		opts.gateway = 'netsleuth.io';
-		opts.reserve = $('#acreserve').is(':checked');
-		opts.store = $('#acstore').is(':checked');
+		opts.serviceOpts.store = $('#acstore').is(':checked');
 		if (opts.host) opts.host = opts.host + '.netsleuth.io';
 		else opts.host = undefined;
 	}
@@ -285,7 +306,9 @@ $('#acadd').click(function() {
 				$('#actarget').val('http://localhost:80');
 				aclose();
 			} else {
-				alert('oops');
+				res.text().then(function(err) {
+					alert(err);
+				});
 			}
 		});
 	}

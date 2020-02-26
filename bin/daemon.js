@@ -115,7 +115,7 @@ server.app.post('/ipc/add', isLocal, function(req, res) {
 					host = req.body.host;
 				}
 				
-				if (!req.body.tmp) {
+				if (!req.body.temp) {
 					reload();
 					config.hosts[host] = req.body;
 					rcfile.save(config);
@@ -128,27 +128,13 @@ server.app.post('/ipc/add', isLocal, function(req, res) {
 						});
 					} else res.send({ host: host });
 				}
-				else if (req.body.reserve) {
-					gw.reserve(host, req.body.store, false, req.body.serviceOpts, function(err, rres, hostname) {
-						if (err) {
-							console.error('Unable to connect to gateway to make reservation.', err);
-							res.send({ host: host, reservation: 'err' });
-						}
-						else if (rres == 200) res.send({ host: host, reservation: 'updated' });
-						else if (rres == 201) res.send({ host: host, reservation: 'created' });
-						else if (rres == 303) res.send({ host: host, reservation: 'created' });
-						else if (rres == 401) res.send({ host: host, reservation: 'unauth' });
-						else {
-							console.error(host + ': ' + rres)
-							res.send({ host: host, reservation: 'err' });
-						}
-					});
-				} else res.send({ host:host });
+				else res.send({ host: host });
 			});
 			
 		}
 
 		function ierr(err) {
+			console.error('ierr', err);
 			if (inspector) inspector.removeListener('error', ierr);
 			res.status(err.status || 500).send(err.message);
 			if (req.body.host) server.remove(req.body.host);
@@ -171,6 +157,10 @@ server.app.post('/ipc/rm', isLocal, function(req, res) {
 			}
 			server.remove(host);
 			delete config.hosts[host];
+
+			if (!host.local && !req.body.keepReservation) gw.unreserve(host, function(err) {
+				if (err) console.error('error unreserving host', host);
+			});
 		});
 		rcfile.save(config);
 	}

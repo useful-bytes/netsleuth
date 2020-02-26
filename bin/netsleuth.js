@@ -43,7 +43,9 @@ function dres(cb) {
 }
 
 function getServiceOpts(argv) {
-	var opts;
+	var opts = {
+		store: argv.store
+	};
 
 	if (argv.auth) {
 		var colon = argv.auth.indexOf(':'),
@@ -55,11 +57,9 @@ function getServiceOpts(argv) {
 			process.exit(1);
 		}
 
-		opts = {
-			auth: {
-				user: user,
-				pass: pass
-			}
+		opts.auth = {
+			user: user,
+			pass: pass
 		};
 	}
 
@@ -73,15 +73,10 @@ var yargs = require('yargs')
 		yargs
 		.usage('Usage: $0 inspect [options] <target> [hostname]\n\nAdds a new inspection target to your local inspection server.\n<target>\n  Origin URL of the server requests will be forwarded to (ie, paths ignored).  The target can be any URL you can reach from your machine, and can be protocol-absolute to always use the same protocol to connect to the target (regardless of which protocol--HTTP or HTTPS--was used by the client to connect to the gateway), or protocol-relative if you want to use the same protocol that the client used for each request.\n[hostname]\n  Hostname to use for incoming requests.\n  In public mode: Can be a fully-qualified DNS name or a hostname that will be concatenated with the default gateway, ".' + defaultGateway + '".\n  In local mode: can be a hostname or IP address.  (Protip: the loopback subnet is a /8; use a different loopback IP for each target.)\n\nIf not specified, the hostname is autoassigned.')
 		.example('$0 inspect http://localhost:3000 myapp.netsleuth.io\n$0 inspect --ca test.crt //staging.example.com staging.netsleuth.io\n$0 inspect --local https://example.com 127.0.0.2')
-		.option('reserve', {
-			alias: 'r',
-			boolean: true,
-			describe: 'Also reserve the hostname so no one else can take it even if you are offline.  (Only applicable for public gateway.)'
-		})
 		.option('store', {
 			alias: 's',
 			boolean: true,
-			describe: 'If reserving the hostname, enable offline storage mode.  (See help for `netsleuth reserve`.)'
+			describe: 'Enable the gateway\'s offline storage mode.  (See help for `netsleuth reserve`.)'
 		})
 		.option('local', {
 			alias: 'l',
@@ -94,7 +89,7 @@ var yargs = require('yargs')
 			describe: 'Add an entry to your HOSTS file for this hostname pointing to 127.0.0.1.  netsleuth will sudo for you.'
 		})
 		.option('ca', {
-			alias: 'a',
+			alias: 'c',
 			describe: 'Location of the CA or self-signed certificate to use when validating HTTPS certificates presented by the target.'
 		})
 		.option('insecure', {
@@ -106,30 +101,25 @@ var yargs = require('yargs')
 			describe: 'Use this gateway server (if it cannot be inferred from hostname)'
 		})
 		.option('region', {
-			alias: 'R',
+			alias: 'r',
 			describe: 'Use a gateway server hosted in this region.  Run `netsleuth regions` to see a list.',
 			default: 'auto'
 		})
 		.option('auth', {
-			alias: 'A',
+			alias: 'a',
 			describe: 'Basic auth username:password that the gateway should require before forwarding requests'
 		})
 		.option('host-header', {
 			alias: 'H',
 			describe: 'Override the HTTP Host header sent to the target with this.'
 		})
-		.option('tmp', {
+		.option('temp', {
 			alias: 't',
 			boolean: true,
 			describe: 'Add temporarily -- do not save this target configuration to disk.'
 		})
 
 	}, function(argv) {
-		if (argv.reserve && argv.local) {
-			yargs.showHelp();
-			console.error('Cannot reserve a hostname for targets added in local mode.');
-			process.exit(1);
-		}
 		if (argv.addHost && !argv.local) {
 			yargs.showHelp();
 			console.error('Hostname can only be added to your HOSTS file when adding a local mode target.');
@@ -141,12 +131,6 @@ var yargs = require('yargs')
 		if (argv.hostname && !argv.local && argv.hostname.indexOf('.') == -1) {
 			argv.hostname = argv.hostname + '.' + defaultGateway;
 		}
-
-		if (hosts[argv.hostname]) {
-			console.error('You already have a target using hostname ' + argv.hostname);
-			process.exit(1);
-		}
-
 
 		var host = {
 			target: argv.target,
@@ -181,9 +165,7 @@ var yargs = require('yargs')
 		}
 
 		if (argv.hostHeader) host.hostHeader = argv.hostHeader;
-		if (argv.tmp) host.tmp = true;
-		if (argv.reserve) host.reserve = true;
-		if (argv.store) host.store = true;
+		if (argv.temp) host.temp = true;
 		if (argv.addHost) host.hostsfile = true;
 
 		host.serviceOpts = getServiceOpts(argv);
@@ -210,10 +192,10 @@ var yargs = require('yargs')
 		yargs
 		.usage('Usage: $0 rm [options] <target|hostname>...\n<target>\n  An Origin URL to remove as an inspection target\n<hostname>\n  A hostname to remove as an inspection target\n\nYou need only specify *either* the target or hostname of an inspection target.')
 		.example('$0 rm a.netsleuth.io b.netsleuth.io')
-		.option('unreserve', {
-			alias: 'u',
+		.option('keep-reservation', {
+			alias: 'R',
 			boolean: true,
-			describe: 'Also cancel the hostname reservation (if applicable)'
+			describe: 'Keeps your reservation of this hostname active on the public gateway'
 		})
 	}, function(argv) {
 
@@ -234,61 +216,11 @@ var yargs = require('yargs')
 
 		daemon.rm({
 			hosts: toRemove,
-			unreserve: argv.unreserve
+			keepReservation: argv.keepReservation
 		}, dres(function() {
 			console.log('Removed ' + toRemove.length + ' targets.');
 		}));
 
-		if (argv.unreserve) toRemove.forEach(function(host) {
-			if (!config.hosts[host].local) {
-				gw.unreserve(host, function(err) {
-					if (err) {
-						if (err.code) console.error(host + ': ' + err.code + ' ' + err.message);
-						else console.error(host + ': Unable to connect to gateway to cancel reservation.  ' + err.message);
-					}
-					else console.log(host + ': unreserved');
-				});
-			}
-		});
-
-	})
-	.command('reserve <hostname>...', 'Reserve a hostname on the public gateway', function(yargs) {
-		yargs
-		.usage('Reserves a hostname on the public gateway.\nUsage: $0 reserve [options] <hostname>...\n<hostname>\n  A hostname to reserve.  Reserved hostnames are unavailable for other users to take even if you are offline.  Can be a fully-qualified DNS name or a hostname that will be concatenated with the default gateway, ".' + defaultGateway + '".')
-		.example('$0 reserve myapp.netsleuth.io')
-		.option('store', {
-			alias: 's',
-			boolean: true,
-			describe: 'Enable request storage mode.  When enabled and you are offline, the gateway will store incoming requests *except* GET, HEAD, and OPTIONS requests.  Stored requests are delivered when the target comes back online.'
-		})
-		.option('similar', {
-			alias: 'm',
-			boolean: true,
-			describe: 'If the requested hostname is not available, automatically reserve a similar name.'
-		})
-		.option('auth', {
-			alias: 'A',
-			describe: 'Basic auth username:password that the gateway should require before forwarding requests.  Note: these credentials are not stored in a secure fashion.'
-		})
-		.epilog('Learn more about how the public gateway works: https://netsleuth.io/gateway')
-	}, function(argv) {
-		var serviceOpts = getServiceOpts(argv),
-			hosts = argv._.slice(1);
-
-		hosts.unshift(argv['hostname...']);
-		hosts.forEach(function(host) {
-			if (host.indexOf('.') == -1) {
-				host = host + '.' + defaultGateway;
-			}
-			gw.reserve(host, argv.store, argv.similar, serviceOpts, function(err, res, hostname) {
-				if (err) console.error('Unable to connect to gateway.', err);
-				else if (res == 200) console.log(host + ': reservation updated');
-				else if (res == 201) console.log(host + ': reserved');
-				else if (res == 303) console.log(host + ': reserved ' + hostname);
-				else if (res == 401) console.log(host + ': not logged in to gateway');
-				else console.log(host + ': ' + res)
-			});
-		});
 	})
 	.command('reservations', 'Lists your hostname reservations on the public gateway', function(yargs) {
 		yargs
@@ -304,7 +236,7 @@ var yargs = require('yargs')
 				else {
 					console.log('\n# ' + gateway + '\n');
 					reservations.forEach(function(rez) {
-						console.log((rez.store ? '* ' : '- ') + rez.host);
+						console.log((rez.serviceOpts && rez.serviceOpts.store ? '* ' : '- ') + rez.host);
 					});
 					console.log(reservations.length + ' reservations.');
 				}

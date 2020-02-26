@@ -49,7 +49,7 @@
 		<h4 class="atprox">New local proxy target</h4>
 		<p class="atpub">Requests will be forwarded from the public gateway server to the target server via your machine.</p>
 		<p class="atprox">Requests will be forwarded from a server on your machine to the target server.</p>
-		<div class="row"><label for="acname">Hostname: </label><input id="acname"><span class="atpub">.netsleuth.io</span><small class="atprox">Hostname can be anything, or your machine's IP address (LAN or 127.0.0.x)</small></div>
+		<div class="row"><label for="acname">Hostname: </label><input id="acname"><span class="atpub">.netsleuth.io</span><small class="atpub">Or leave blank to get an autoassigned hostname.</small><small class="atprox">Hostname can be anything, or your machine's IP address (LAN or 127.0.0.x)</small></div>
 		<div class="row"><label for="actarget">Target: </label><input id="actarget" value="http://localhost:80"><small>Target can be any HTTP(S) server reachable from your machine (local or remote).  Use a protocol-relative URL (<code>//example.com</code>) to use the same protocol as each client request.</small></div>
 		<div class="row">
 			<label for="actls">Target TLS: </label>
@@ -71,9 +71,13 @@
 				<button id="actlscasubjectclear">×</button>
 			</span>
 		</div>
-		<div class="row atpub"><input type="checkbox" id="acreserve"><label for="acreserve"> Reserve hostname<small class="cbdesc" id="acreservei"></small></label></div>
-		<div class="row atpub"><input type="checkbox" id="acstore"><label for="acstore"> Store requests when offline<small class="cbdesc" id="acstorei"></small></label></div>
-		<div class="row atprox"><input type="checkbox" id="atproxhostsfile"><label for="atproxhostsfile"> Add hostname to system HOSTS file</label></div>
+		<div class="row"><input type="checkbox" id="actemp"><label for="actemp"> Temporary<small class="cbdesc" id="actempi"></small></label></div>
+		<div class="row atpub"><input type="checkbox" id="acstore" class="notemp"><label for="acstore" class="notempl"> Store requests when offline<small class="cbdesc" id="acstorei"></small></label></div>
+		<div class="row"><input type="checkbox" id="acauth"><label for="acauth"> Require Basic auth from clients</label>
+			<div class="row acauth"><label for="acauthu">Username: </label><input id="acauthu"></div>
+			<div class="row acauth"><label for="acauthp">Password: </label><input id="acauthp"></div>
+		</div>
+		<div class="row atprox"><input type="checkbox" id="atproxhostsfile" class="notemp"><label for="atproxhostsfile" class="notempl"> Add hostname to system HOSTS file</label></div>
 		<div class="row"><button id="acadd">Add</button></div>
 	</div>
 
