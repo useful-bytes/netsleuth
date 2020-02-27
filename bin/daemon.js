@@ -3,12 +3,14 @@
 var fs = require('fs'),
 	os = require('os'),
 	dialog = require('dialog'),
+	request = require('request'),
 	rcfile = require('../lib/rcfile'),
 	gw = require('../lib/gateway-client'),
 	browserLogin = require('../lib/browser-login'),
 	hosts = require('../lib/hosts'),
 	serverCert = require('../lib/server-cert'),
-	Server = require('../server');
+	Server = require('../server'),
+	version = require('../package.json').version;
 
 if (!process.stdout.isTTY) {
 	process.on('uncaughtException', function(err) {
@@ -19,7 +21,8 @@ if (!process.stdout.isTTY) {
 }
 
 var config = rcfile.get(),
-	port = +process.argv[2];
+	port = +process.argv[2],
+	ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
 
 var server = new Server({
 	gateways: config.gateways,
@@ -98,50 +101,55 @@ server.app.post('/ipc/reload', isLocal, function(req, res) {
 
 server.app.post('/ipc/add', isLocal, function(req, res) {
 
-	addHost(req.body, function(err, inspector, ip) {
+	if (req.body.local || (config.gateways[req.body.gateway] && config.gateways[req.body.gateway].token)) {
+		addHost(req.body, function(err, inspector, ip) {
 
-		if (err) ierr(err);
-		else {
+			if (err) ierr(err);
+			else {
 
 
-			inspector.on('error', ierr);
+				inspector.on('error', ierr);
 
-			inspector.on('hostname', function(host) {
-				inspector.removeListener('error', ierr);
+				inspector.on('hostname', function(host) {
+					inspector.removeListener('error', ierr);
 
-				if (ip) {
-					req.body.ip = ip;
-					inspector.opts.ip = ip;
-					host = req.body.host;
-				}
+					if (ip) {
+						req.body.ip = ip;
+						inspector.opts.ip = ip;
+						host = req.body.host;
+					}
+					
+					if (!req.body.temp) {
+						reload();
+						config.hosts[host] = req.body;
+						rcfile.save(config);
+					}
+
+					if (req.body.local) {
+						if (req.body.hostsfile) {
+							hosts.add(ip, host, function(err) {
+								res.send({ host: host, hostsUpdated: !err });
+							});
+						} else res.send({ host: host });
+					}
+					else res.send({ host: host });
+				});
 				
-				if (!req.body.temp) {
-					reload();
-					config.hosts[host] = req.body;
-					rcfile.save(config);
-				}
+			}
 
-				if (req.body.local) {
-					if (req.body.hostsfile) {
-						hosts.add(ip, host, function(err) {
-							res.send({ host: host, hostsUpdated: !err });
-						});
-					} else res.send({ host: host });
-				}
-				else res.send({ host: host });
-			});
-			
-		}
+			function ierr(err) {
+				console.error('ierr', err);
+				if (inspector) inspector.removeListener('error', ierr);
+				res.status(err.status || 500).send({ message: err.message });
+				if (req.body.host) server.remove(req.body.host);
+				else if (inspector) inspector.close();
+			}
+		});
 
-		function ierr(err) {
-			console.error('ierr', err);
-			if (inspector) inspector.removeListener('error', ierr);
-			res.status(err.status || 500).send(err.message);
-			if (req.body.host) server.remove(req.body.host);
-			else if (inspector) inspector.close();
-		}
-			
-	});
+	} else {
+		if (req.body.gateway) res.status(401).send({ message: 'Not logged in to gateway ' + req.body.gateway });
+		else res.status(400).send({ message: 'Must specify a gateway.' });
+	}
 
 });
 
@@ -215,6 +223,80 @@ server.app.get('/ipc/cert/:host', isLocal, function(req, res) {
 	});
 });
 
+server.app.post('/ipc/find-best-region', isLocal, function(req, res) {
+	if (!req.body.gateway) return res.status(400).send('Must specify gateway service.');
+	findBestRegion(req.body, function(err, results) {
+		if (err) res.status(500).send({ message: err.message });
+		else res.send(results);
+	});
+});
+
+server.app.get('/ipc/gateways', isLocal, function(req, res) {
+	if (!config.gateways) config.gateways = {};
+	if (!config.gateways['netsleuth.io']) config.gateways['netsleuth.io'] = {};
+
+	var gws = {}, arr = [], gwdone = 0;
+
+	for (var gw in config.gateways) {
+		arr.push(gws[gw] = {
+			name: gw,
+			domains: null,
+			regions: null,
+			defaultRegion: config.gateways[gw].defaultRegion
+		});
+
+		getGatewayInfo(gw, 'domains', function(err, domains, gw) {
+			gws[gw].domains = domains;
+			if (++gwdone == arr.length*2) done();
+		});
+		getGatewayInfo(gw, 'regions', function(err, regions, gw) {
+			gws[gw].regions = regions && regions.map(function(region) {
+				return region.id;
+			});
+			
+			if (++gwdone == arr.length*2) done();
+		});
+	}
+
+	function done() {
+		arr.sort(function(a, b) {
+			if (a.name < b.name) return -1;
+			if (a.name > b.name) return 1;
+			return 0;
+		});
+		res.send({
+			default: config.defaultGateway || 'netsleuth.io',
+			gateways: arr
+		});
+	}
+});
+
+var cache = {};
+function getGatewayInfo(gw, type, cb) {
+	if (cache[gw] && cache[gw][type]) process.nextTick(function() {
+		cb(null, cache[gw][type], gw);
+	});
+	else {
+		var headers = {
+			'User-Agent': ua
+		};
+		if (config.gateways[gw] && config.gateways[gw].token) headers.Authorization = 'Bearer ' + config.gateways[gw].token;
+		request({
+			url: 'https://' + gw + '/gateway/' + type,
+			headers: headers,
+			json: true
+		}, function(err, res, data) {
+			if (err) return cb(err, null, gw);
+			else if (res.statusCode != 200) return cb(new Error('Unable to get ' + type + '.  HTTP ' + res.statusCode), null, gw);
+			else {
+				if (!cache[gw]) cache[gw] = {};
+				cache[gw][type] = data;
+				cb(null, data, gw);
+			}
+		});
+	}
+}
+
 
 function registerProjectHost(project, inspect) {
 
@@ -268,6 +350,74 @@ function registerProjectHost(project, inspect) {
 		});
 	}
 }
+
+function findBestRegion(opts, cb) {
+	try {
+		var Ping = require('net-ping'),
+			session = Ping.createSession();
+	} catch (ex) {
+		return cb(ex);
+	}
+	getGatewayInfo(opts.gateway, 'regions', function(err, regions) {		
+		if (err) return cb(err);
+
+		var results = regions.map(ping),
+			complete = 0;
+
+		function ping(region) {
+			var result = {
+				id: region.id,
+				ms: [],
+				errs: 0
+			};
+			go();
+			return result;
+
+			function go() {
+				session.pingHost(region.ping, function(err, target, sent, rcvd) {
+					if (err) {
+						if (++result.errs == 3) done();
+						else setTimeout(go, 250);
+					}
+					else if (result.ms.push(rcvd - sent) >= 3) done();
+					else setTimeout(go, 250);
+				});
+			}
+
+			function done() {
+				if (++complete == results.length) {
+					results.forEach(function(result) {
+						if (result.ms.length) result.ms = result.ms.reduce(sum) / result.ms.length;
+						else result.ms = null;
+					});
+					results.sort(function(a, b) {
+						if (a.ms === null) return 1;
+						if (b.ms === null) return -1;
+						return a.ms - b.ms;
+					});
+
+					if (results[0].ms !== null && opts.save !== false) {
+						reload();
+						config.gateways[opts.gateway].defaultRegion = results[0].id;
+						rcfile.save(config);
+					}
+					cb(null, results);
+				}
+			}
+		}
+
+	});
+}
+
+function sum(total, val) {
+	return total + val;
+}
+
+if (!config.gateways['netsleuth.io'] || !config.gateways['netsleuth.io'].defaultRegion) findBestRegion({ gateway: 'netsleuth.io' }, function(err, results) {
+	if (err) console.error('No default region set', err);
+	else if (results[0].ms == null) console.error('No default region set; unable to find best');
+	else console.log('Set default region to ' + results[0].id);
+});
 
 server.http.listen(port);
 

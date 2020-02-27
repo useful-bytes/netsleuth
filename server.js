@@ -116,6 +116,8 @@ function Inspector(server, opts) {
 	var aopts = {};
 	if (opts.hostHeader) aopts.servername = opts.hostHeader;
 
+	this.ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
+
 	this.httpAgent = new http.Agent();
 	this.httpsAgent = new https.Agent(aopts);
 
@@ -573,14 +575,12 @@ function Inspector(server, opts) {
 		}
 	}
 
-	var ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
-
 	function connect() {
 		self.servceState = Inspector.SERVICE_STATE.CONNECTING;
 		var service = self.service = new WebSocket(self.gatewayUrl, [], {
 			headers: {
 				Authorization: 'Bearer ' + self.token,
-				'User-Agent': ua
+				'User-Agent': self.ua
 			}
 		});
 
@@ -771,6 +771,7 @@ function Inspector(server, opts) {
 			url: 'https://' + self.gateway + '/host',
 			headers: {
 				Authorization: 'Bearer ' + self.token,
+				'User-Agent': self.ua,
 				Host: self.gateway
 			},
 			json: {

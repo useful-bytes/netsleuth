@@ -35,7 +35,8 @@ function runDaemon(cb) {
 function dres(cb) {
 	return function(err, body) {
 		if (err) {
-			console.error('Error communicating with inspection server: ' + err.message);
+			if (err.message) console.error(err.message);
+			else console.error('Error communicating with inspection server.', err);
 			process.exit(1);
 		}
 		else cb.apply(null, Array.prototype.slice.call(arguments, 1));
@@ -133,8 +134,7 @@ var yargs = require('yargs')
 		}
 
 		var host = {
-			target: argv.target,
-			region: argv.region
+			target: argv.target
 		};
 
 		if (argv.insecure) host.insecure = true;
@@ -144,6 +144,10 @@ var yargs = require('yargs')
 			if (argv.gateway) host.gateway = argv.gateway;
 			else host.gateway = argv.hostname ? gatewayFromHost(argv.hostname) : defaultGateway;
 		}
+
+		if (argv.region == 'auto') {
+			host.region = config.gateways[host.gateway] && config.gateways[host.gateway].defaultRegion;
+		} else host.region = argv.region;
 
 		if (argv.ca) {
 			if (!Array.isArray(argv.ca)) argv.ca = [argv.ca];
@@ -643,10 +647,55 @@ var yargs = require('yargs')
 			describe: 'Get region list from this gateway service.',
 			default: defaultGateway
 		})
+		.command('best', 'Find the best region to use as your default', function(yargs) {
+			yargs
+			.usage('Usage $0 regions best [options]\n\nPings all available regions to find the one with the lowest latency from your machine, and sets it as your default region.')
+			.option('no-save', {
+				alias: 'S',
+				boolean: true,
+				describe: 'Do not update your config file with the best region'
+			})
+		}, function(argv) {
+			daemon.findBestRegion({ gateway: argv.gateway, save: !argv.noSave }, function(err, results) {
+				if (err) {
+					console.error('Region search failed: ' + err.message);
+					process.exit(1);
+				}
+				process.stdout.write('Latency  Region\n');
+				results.forEach(function(region) {
+					var ms = region.ms === null ? 'error' : Math.round(region.ms) + 'ms';
+					process.stdout.write(ms + ' '.repeat(9-ms.length) + region.id + '\n');
+				});
+				if (results[0].ms !== null && !argv.noSave) process.stdout.write('\nSet default ' + argv.gateway + ' region to ' + results[0].id);
+			});
+		})
+		.command('default [region]', 'Get or set the default region for a gateway', function(yargs) {
+			
+		}, function(argv) {
+			if (!config.gateways[argv.gateway]) return console.error('No such gateway configured: ' + argv.gateway);
+			if (argv.region) {
+				gw.regions(argv.gateway, function(err, regions) {
+					if (err) return console.error(err);
+					for (var i = 0; i < regions.length; i++) {
+						if (regions[i].id == argv.region) {
+							config.gateways[argv.gateway].defaultRegion = argv.region;
+							rcfile.save(config);
+							return console.log('Set default ' + argv.gateway + ' region to ' + argv.region);
+						}
+					}
+					console.error(argv.region + ' is not a valid ' + argv.gateway + ' region');
+					process.exit(1);
+				});
+			} else {
+				console.log('The default ' + argv.gateway + ' region is ' + config.gateways[argv.gateway].defaultRegion || '(unset)');
+			}
+		});
 	}, function(argv) {
 		gw.regions(argv.gateway, function(err, regions) {
 			if (err) console.error(err);
-			else console.log(regions.join('\n'));
+			else regions.forEach(function(region) {
+				console.log(region.id);
+			});
 		});
 	})
 

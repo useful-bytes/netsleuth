@@ -49,7 +49,8 @@
 		<h4 class="atprox">New local proxy target</h4>
 		<p class="atpub">Requests will be forwarded from the public gateway server to the target server via your machine.</p>
 		<p class="atprox">Requests will be forwarded from a server on your machine to the target server.</p>
-		<div class="row"><label for="acname">Hostname: </label><input id="acname"><span class="atpub">.netsleuth.io</span><small class="atpub">Or leave blank to get an autoassigned hostname.</small><small class="atprox">Hostname can be anything, or your machine's IP address (LAN or 127.0.0.x)</small></div>
+		<div class="row"><label for="acname">Hostname: </label><input id="acname"><select id="acgateway" class="atpub"><option value="netsleuth.io">.netsleuth.io</option></select><small class="atpub">Or leave blank to get an autoassigned hostname.</small><small class="atprox">Hostname can be anything, or your machine's IP address (LAN or 127.0.0.x)</small></div>
+		<div class="row atpub"><label for="acregion">Region: </label><select id="acregion"><option value=""></option></select><small>This host will be served from this cloud region.</small></div>
 		<div class="row"><label for="actarget">Target: </label><input id="actarget" value="http://localhost:80"><small>Target can be any HTTP(S) server reachable from your machine (local or remote).  Use a protocol-relative URL (<code>//example.com</code>) to use the same protocol as each client request.</small></div>
 		<div class="row">
 			<label for="actls">Target TLS: </label>
@@ -93,10 +94,9 @@
 
 	<div class="row done"><b>Subject:</b> <span id="csubject"></span></div>
 	<div class="row done"><b>Issuer:</b> <span id="cissuer"></span></div>
-	<div class="row done"><b>Fingerprint (SHA-1):</b> <span id="csha1"></span></div>
-	<div class="row done"><b>Fingerprint (SHA-256):</b> <span id="csha256"></span></div>
+	<div class="row done"><b>Fingerprint (SHA-1):</b> <code id="csha1"></code></div>
+	<div class="row done"><b>Fingerprint (SHA-256):</b> <code id="csha256"></code></div>
 	<div class="row done"><b>Expires:</b> <span id="cexp"></span></div>
-	<div class="row done"><span id="cvalid"></span></div>
 
 	<div class="row"><button id="caccept" class="done">Accept</button> <button id="ccancel">Cancel</button></div>
 </div>

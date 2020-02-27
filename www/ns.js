@@ -167,24 +167,28 @@ $('#actlsget').click(function() {
 	}).then(function(res) {
 		if (res.ok) {
 			return res.json().then(function(cert) {
-				fcert = cert.raw;
-				$('#certdlg .loading').hide();
-				$('#certdlg .done').show();
-				$('#ctarget').text('https://' + u.host);
-				$('#csubject').text(stringifyNameObject(cert.subject));
-				$('#actlscasubject').text(stringifyNameObject(cert.subject));
-				$('#cissuer').text(stringifyNameObject(cert.issuer));
-				$('#csha1').text(cert.fingerprint);
-				$('#csha256').text(cert.fingerprint256);
-				$('#cexp').text(cert.valid_to);
-				$('#cvalid').text(cert.valid ? 'This certificate is valid and signed by a trusted CA.  You should not need to use Custom CA mode; Normal mode should work fine.' : 'Does not validate against public CAs');
+				if (cert.valid) {
+					cclose();
+					alert(u.host + ' uses a valid certificate signed by a public CA; there is no need to use Custom CA mode.');
+				} else {
+					fcert = cert.raw;
+					$('#certdlg .loading').hide();
+					$('#certdlg .done').show();
+					$('#ctarget').text('https://' + u.host);
+					$('#csubject').text(stringifyNameObject(cert.subject));
+					$('#actlscasubject').text(stringifyNameObject(cert.subject));
+					$('#cissuer').text(stringifyNameObject(cert.issuer));
+					$('#csha1').text(cert.fingerprint);
+					$('#csha256').text(cert.fingerprint256);
+					$('#cexp').text(cert.valid_to);
+				}
 			});
 		} else {
 			throw new Error('Bad response');
 		}
 	}).catch(function(err) {
-		alert('Unable to get the target server\'s TLS certificate.  Make sure it is running and reachable.');
 		cclose();
+		alert('Unable to get the target server\'s TLS certificate.  Make sure it is running and reachable.');
 	});
 	$('#certdlg .loading').show();
 	$('#certdlg .done').hide();
@@ -256,9 +260,11 @@ $('#acadd').click(function() {
 		opts.local = true;
 		opts.hostsfile = $('#atproxhostsfile').is(':checked');
 	} else {
-		opts.gateway = 'netsleuth.io';
+		var dom = $('#acgateway').val();
+		opts.gateway = domains[dom].name;
+		opts.region = $('#acregion').val();
 		opts.serviceOpts.store = $('#acstore').is(':checked');
-		if (opts.host) opts.host = opts.host + '.netsleuth.io';
+		if (opts.host) opts.host = opts.host + '.' + dom;
 		else opts.host = undefined;
 	}
 
@@ -306,8 +312,10 @@ $('#acadd').click(function() {
 				$('#actarget').val('http://localhost:80');
 				aclose();
 			} else {
-				res.text().then(function(err) {
-					alert(err);
+				res.json().then(function(err) {
+					alert(err.message);
+				}).catch(function(err) {
+					alert('Unexpected error.');
 				});
 			}
 		});
@@ -363,4 +371,41 @@ $('#dok').click(function() {
 		alert('Unable to delete host.');
 		$('#deldlg').removeClass('disabled');
 	});
+});
+
+var gateways = {}, domains = {};
+function updateGateways() {
+	fetch('/ipc/gateways').then(function(res) {
+		res.json().then(function(cfg) {
+			var $gw = $('#acgateway');
+			$gw.empty();
+			cfg.gateways.forEach(function(gw) {
+				gateways[gw.name] = gw;
+				(gw.domains || [gw.name]).forEach(function(dom) {
+					domains[dom] = gw;
+					var opt = $('<option>').attr('value', dom).text('.' + dom);
+					if (dom == cfg.default) opt.attr('selected', true);
+					opt.appendTo($gw);
+				});
+			});
+			$gw.trigger('change');
+		});
+	});
+}
+updateGateways();
+
+$('#acgateway').on('change', function() {
+	var self = this,
+		$r = $('#acregion').empty(),
+		regions = domains[self.value].regions;
+
+	if (regions) {
+		regions.forEach(function(region) {
+			var opt = $('<option>').attr('value', region).text(region);
+			if (region == domains[self.value].defaultRegion) opt.attr('selected', true);
+			opt.appendTo($r);
+		});
+	} else {
+		$('<option>').attr('value', '').text('(default)').appendTo($r);
+	}
 });
