@@ -53,7 +53,7 @@ InprocInspector.prototype.connection = function(ws, req) {
 					csend({
 						method: 'Gateway.connectionState',
 						params: {
-							state: self.targets.length ? 1 : 2
+							state: self.targets.length ? 2 : 3
 						}
 					});
 
@@ -173,7 +173,7 @@ InprocInspector.prototype.updateTargets = function() {
 	self.broadcast({
 		method: 'Gateway.connectionState',
 		params: {
-			state: self.targets.length ? 1 : 2,
+			state: self.targets.length ? 2 : 3,
 			message: 'No connected targets'
 		}
 	});
