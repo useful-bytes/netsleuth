@@ -66,7 +66,7 @@ var yargs = exports.yargs = require('yargs')
 			describe: 'Set request Content-Type to the mimetype normally associated with the specified file extension'
 		})
 		.option('charset', {
-			alias: 'c',
+			alias: 'h',
 			group: 'HTTP Behavior',
 			describe: 'Add a `charset` directive to the request Content-Type.'
 		})
@@ -183,7 +183,7 @@ var yargs = exports.yargs = require('yargs')
 		})
 		.option('diff', {
 			group: 'Display',
-			describe: 'Diff the request/response against one saved in this HAR file (or - for stdin).  Use #entry to specify an entry index (like har: scheme, above; default 0)'
+			describe: 'Diff the request/response against one saved in this HAR file (or - for stdin, or ! for clipboard).  Use #entry to search request URLs or specify an entry index (like har: scheme, above; default 0)'
 		})
 		.option('paste', {
 			alias: 'v',
@@ -334,7 +334,7 @@ if (argv.diff) {
 			sel = argv.diff.substr(seli+1);
 		} else file = argv.diff;
 		try {
-			diff = JSON.parse(fs.readFileSync(file));
+			diff = JSON.parse(file == '!' ? require('clipboardy').readSync() : fs.readFileSync(file));
 		} catch (ex) {
 			return fatal('Unable to load HAR file.  ' + ex.message, 66);
 		}
@@ -342,9 +342,14 @@ if (argv.diff) {
 	}
 }
 
-function prepareDiff(sel) {
+function prepareDiff(q) {
 	try {
-		diff = diff.log.entries[sel || 0];
+		if (q) {
+			var hsearch = findHAREntry(diff.log.entries, q);
+			if (hsearch.results == 0) return fatal('Unable to find a matching HAR entry for diff.', 115);
+			if (hsearch.results > 1) return fatal('Diff HAR query matches multiple entries.\n\n' + hsearch.table, 115);
+			diff = diff.log.entries[hsearch.index];
+		} else diff = diff.log.entries[0];
 
 		headers(diff.request);
 		headers(diff.response);
@@ -451,7 +456,7 @@ function request(method, uri, isRedirect, noBody) {
 
 		var inHar;
 		try {
-			if (opts.pathname == 'clip') {
+			if (opts.pathname == '/!') {
 				inHar = JSON.parse(require('clipboardy').readSync());
 			} else {
 				inHar = JSON.parse(fs.readFileSync(opts.pathname));
@@ -462,11 +467,15 @@ function request(method, uri, isRedirect, noBody) {
 
 		if (!inHar.log || !inHar.log.entries) return fatal('Not a valid HAR file.', 115);
 
-		var ihar = parseInt(opts.hash && opts.hash.substr(1)) || 0;
-
-		if (!inHar.log.entries[ihar]) return fatal('Invalid HAR entry index.', 115);
-
-		var hreq = inHar.log.entries[ihar].request;
+		var hreq;
+		if (opts.hash) {
+			var hsearch = findHAREntry(inHar.log.entries, opts.hash.substr(1));
+			if (hsearch.results == 0) return fatal('Unable to find a matching HAR entry for replay.', 115);
+			if (hsearch.results > 1) return fatal('Replay HAR query matches multiple entries.\n\n' + hsearch.table, 115);
+			hreq = inHar.log.entries[hsearch[0].index];
+		} else {
+			hreq = inHar.log.entries[0].request;
+		}
 
 		opts = url.parse(hreq.url, true);
 		opts.headers = {};
@@ -1266,6 +1275,35 @@ function done(res, opts) {
 			// hf.insert(uri);
 		}
 			
+	}
+}
+
+function findHAREntry(entries, q) {
+	var ihar = parseInt(q, 10);
+	if (!Number.isNaN(ihar)) {
+		if (entries[ihar]) return { results: 1, index: ihar };
+		else return { results: 0 };
+	} else {
+		var r = [];
+		for (var i = 0; i < entries.length; i++) {
+			if (entries[i].request.url.indexOf(q) >= 0) r.push({ index: i, url: entries[i].request.url});
+		}
+
+		if (r.length == 0) return { results: 0 };
+		if (r.length == 1) return { results: 1, index: r[0].index };
+
+		var ui = require('cliui')({
+			width: process.stderr.columns
+		});
+
+		ui.div('Idx \tURL\n' + r.map(function(match) {
+			return match.index + '\t' + match.url;
+		}).join('\n'))
+
+		return {
+			results: r.length,
+			table: ui.toString()
+		};
 	}
 }
 
