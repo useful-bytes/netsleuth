@@ -15,6 +15,7 @@ function GatewayServer(opts) {
 	self.apps = {};
 	self.hosts = {};
 	self.ress = {};
+	self.ws = {};
 	self.reqid = 0;
 	self.silenceTimeout = opts.silenceTimeout || (1000 * 60 * 2);
 	self.pingFreq = opts.pingFreq || 120000;
@@ -37,8 +38,10 @@ function GatewayServer(opts) {
 		server.on('upgrade', function(req, socket, head) {
 			var reqHost = req.headers.host;
 
+			// Attach an error handler now so that socket errors that happen before the upgrade is completed
+			// do not bring down the process.  Remove this right before calling handleUpgrade() (which attaches its own error handler)
 			socket.on('error', function(err) {
-				console.error('websocket error', err);
+				// noop
 			});
 
 			if (!reqHost) {
@@ -59,6 +62,7 @@ function GatewayServer(opts) {
 						if (err) return rawRespond(socket, 500, 'Internal Server Error', err.message);
 
 						if (ok) {
+							socket.removeAllListeners('error');
 							wss.handleUpgrade(req, socket, head, function(client) {
 								wss.emit('connection', client, req, params);
 							});
@@ -71,7 +75,46 @@ function GatewayServer(opts) {
 				
 
 				} else {
-					rawRespond(socket, 501, 'Not Implemented', 'Gateway does not yet support forwarding WebSocket connections.');
+
+					var host = self.hosts[reqHost];
+
+					if (!host) return rawRespond(socket, 503, 'Service Unavialable', 'The host "' + reqHost + '" does not have an active destination.');
+
+
+					var id = ++self.reqid;
+					self.ws[id] = host.wsconn[id] = {
+						id: id,
+						req: req,
+						socket: socket,
+						head: head
+					};
+
+
+					var proto = req.socket.encrypted ? 'wss' : 'ws',
+						remote;
+
+					if (req.socket.remoteFamily == 'IPv6') remote = '[' + req.socket.remoteAddress + ']';
+					else remote = req.socket.remoteAddress;
+
+					if (!host.opts.noForwarded && !self.opts.noForwarded) {
+						var fwd = req.headers['forwarded'];
+						if (fwd) fwd += ',';
+						else fwd = '';
+
+						req.headers['forwarded'] = fwd + 'for="' + remote + ':' + req.socket.remotePort + '";host="' + reqHost + '";proto=' +  proto;
+					}
+
+					send(host.ws, {
+						m: 'ws',
+						id: id,
+						remoteIP: remote,
+						remotePort: req.socket.remotePort,
+						proto: proto,
+						method: req.method,
+						url: req.url,
+						headers: req.headers,
+						raw: req.rawHeaders
+					});
 				}
 			}
 			
@@ -203,6 +246,103 @@ function GatewayServer(opts) {
 			case 'no-cache':
 				host.noCache = msg.val;
 
+
+			case 'wsupg':
+				var info = self.ws[msg.id];
+				if (info) info.resHeaders = msg.headers;
+				break;
+
+			case 'wsopen':
+				var info = self.ws[msg.id];
+				if (!info) return;
+
+				info.socket.removeAllListeners('error');
+				wss.handleUpgrade(info.req, info.socket, info.head, function(ws) {
+					// TODO: we're not passing any extra upgrade response headers back to clients
+					// wss emits headers(headers, req)
+
+					info.ws = ws;
+
+					ws.on('message', function(data) {
+						if (typeof data == 'string') {
+							send(host.ws, {
+								m: 'wsm',
+								id: msg.id,
+								d: data
+							});
+						} else {
+							sendBin(host.ws, msg.id, data);
+						}
+					});
+
+					ws.on('close', function() {
+						send(host.ws, {
+							m: 'wsclose',
+							id: msg.id
+						});
+						delete self.ws[msg.id];
+						delete host.wsconn[msg.id];
+						info.ws = null;
+					});
+
+					ws.on('error', function(err) {
+						console.error('ws prox err', err);
+					});
+
+					ws.on('ping', function(data) {
+						send(host.ws, {
+							m: 'wsping',
+							id: msg.id,
+							d: data
+						});
+					});
+
+					ws.on('pong', function(data) {
+						send(host.ws, {
+							m: 'wspong',
+							id: msg.id,
+							d: data
+						});
+					});
+				});
+
+				break;
+
+			case 'wsm':
+				var info = self.ws[msg.id];
+				if (info && info.ws) info.ws.send(msg.d);
+				break;
+
+			case 'wsping':
+				var info = self.ws[msg.id];
+				if (info && info.ws) info.ws.ping(msg.d);
+				break;
+
+			case 'wspong':
+				var info = self.ws[msg.id];
+				if (info && info.ws) info.ws.pong(msg.d);
+				break;
+
+			case 'wsclose':
+				var info = self.ws[msg.id];
+				if (info && info.ws) info.ws.close();
+				break;
+
+			case 'wserr':
+				var info = self.ws[msg.id];
+				if (info) {
+					delete self.ws[msg.id];
+					delete host.wsconn[msg.id];
+
+					// TODO: we should pass the server's HTTP response body back to clients instead of being lazy and doing this
+
+					delete msg.headers.connection;
+					delete msg.headers['content-type'];
+					delete msg.headers['content-length'];
+					rawRespond(info.socket, msg.code, msg.msg, 'netsleuth failed to establish a WebSocket connection with the target because it responded HTTP ' + msg.code + ' ' + msg.msg + '.', msg.headers);
+				}
+				break;
+
 			case 'inspector':
 				self.emit('inspector-connected', host, msg.id);
 				break;
@@ -213,6 +353,13 @@ function GatewayServer(opts) {
 		
 		for (var id in host.ress) {
 			respond(host.ress[id], 502, 'Bad Gateway', 'Inspector disconnected during request');
+		}
+
+		for (var id in host.wsconn) {
+			var info = host.wsconn[id];
+			if (info.ws) info.ws.close();
+			else info.socket.close();
+			delete self.ws[id];
 		}
 
 		self.removeHost(host);
@@ -226,6 +373,7 @@ function GatewayServer(opts) {
 			ua: req.headers['user-agent'],
 			ws: ws,
 			ress: {},
+			wsconn: {},
 			opts: {},
 			throttle: {},
 			blocks: [],
@@ -240,13 +388,11 @@ function GatewayServer(opts) {
 			if (typeof data == 'string') {
 				try {
 					var msg = JSON.parse(data);
+					handleMsg(host, msg, data);
 				} catch(ex) {
-					self.removeHost(host)
+					console.error('error handling', msg || data, ex);
+					self.removeHost(host);
 				}
-				// console.log(msg);
-				// if (msg.id && (!self.ress[msg.id] || self.ress[msg.id].nshost != host)) self.removeHost(host);
-				// else handleMsg(host, msg, data);
-				handleMsg(host, msg, data);
 			} else {
 				var id = data.readUInt32LE(0);
 				var res = self.ress[id];
@@ -255,6 +401,12 @@ function GatewayServer(opts) {
 					res.write(data.slice(4));
 					res.bytes += data.length;
 					res.expires = Date.now() + self.silenceTimeout;
+				} else {
+					var info = self.ws[id];
+					if (info) {
+						var payload = data.slice(4);
+						info.ws.send(payload);
+					}
 				}
 			}
 		});
@@ -520,6 +672,7 @@ GatewayServer.prototype.inspect = function(name, serviceOpts) {
 		name: name,
 		inspector: inspector,
 		ress: {},
+		wsconn: {},
 		opts: {},
 		throttle: {},
 		blocks: [],

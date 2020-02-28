@@ -32,7 +32,8 @@ var app = express();
 
 var wsid = 0;
 
-var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend');
+var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend'),
+	COMMA = /, */;
 
 exports = module.exports = InspectionServer;
 
@@ -103,6 +104,7 @@ function Inspector(server, opts) {
 	this.serviceError = null;
 	this.reqn = 0;
 	this.reqs = {};
+	this.ws = {};
 	this.lastGC = Date.now();
 	this.gcFreqMs = opts.gcFreqMs || 1000*60*15;
 	this.gcFreqCount = opts.gcFreqCount || 500;
@@ -481,6 +483,225 @@ function Inspector(server, opts) {
 
 				break;
 
+			case 'ws':
+
+				var proto = self.target.protocol;
+				if (proto == 'same:') proto = msg.proto + ':';
+				else if (proto == 'https:') proto = 'wss:';
+				else proto = 'ws:';
+
+				var port = parseInt(self.target.port, 10) || (proto == 'wss:' ? 443 : 80);
+				if ((proto == 'http:' && port == 80) || (proto == 'wss:' && port == 443)) port = '';
+				else port = ':' + port;
+
+				var subproto = null;
+				if (msg.headers['sec-websocket-protocol']) subproto = msg.headers['sec-websocket-protocol'].split(COMMA);
+
+				var wsurl = proto + '//' + self.target.hostname + port + msg.url;
+
+				var headers = Object.assign({}, msg.headers);
+				delete headers.host;
+				delete headers.connection;
+				delete headers.upgrade;
+				for (var k in headers) {
+					if (k.substr(0, 14) == 'sec-websocket-') delete headers[k];
+				}
+				headers.Host = opts.hostHeader ? opts.hostHeader : self.target.host;
+
+				var ws = new WebSocket(wsurl, subproto, {
+					headers: headers,
+					rejectUnauthorized: !opts.insecure,
+					ca: opts.ca
+				});
+
+				var info = self.ws[msg.id] = {
+					msg: msg,
+					ws: ws
+				};
+
+				ws.on('close', function() {
+					send({
+						m: 'wsclose',
+						id: msg.id
+					});
+					delete self.ws[msg.id];
+					info.ws = null;
+					self.broadcast({
+						method: 'Network.webSocketClosed',
+						requestId: msg.id,
+						timestamp: Date.now() / 1000
+					});
+				});
+
+				ws.on('error', function(err) {
+					self.console.error('WebSocket error: ' + err);
+				});
+
+				ws.on('upgrade', function(res) {
+					send({
+						m: 'wsupg',
+						id: msg.id,
+						headers: res.headers
+					});
+					self.broadcast({
+						method: 'Network.webSocketHandshakeResponseReceived',
+						params: {
+							requestId: msg.id,
+							timestamp: Date.now() / 1000,
+							response: {
+								status: res.statusCode,
+								statusText: res.statusMessage,
+								headers: res.headers,
+								headersText: 'TODO',
+								requestHeaders: msg.headers,
+								requestHeadersText: 'TODO'
+							}
+						}
+					});
+				});
+
+				ws.on('open', function() {
+					send({
+						m: 'wsopen',
+						id: msg.id
+					});
+				});
+
+				ws.on('message', function(data) {
+					if (typeof data == 'string') {
+						send({
+							m: 'wsm',
+							id: msg.id,
+							d: data
+						});
+						self.broadcast({
+							method: 'Network.webSocketFrameReceived',
+							params: {
+								requestId: msg.id,
+								timestamp: Date.now() / 1000,
+								response: {
+									opcode: 1,
+									mask: false,
+									payloadData: data
+								}
+							}
+						});
+					} else {
+						sendBin(msg.id, data);
+						self.broadcast({
+							method: 'Network.webSocketFrameReceived',
+							params: {
+								requestId: msg.id,
+								timestamp: Date.now() / 1000,
+								response: {
+									opcode: 2,
+									mask: false,
+									payloadData: data.toString('base64')
+								}
+							}
+						});
+
+					}
+				});
+
+				ws.on('ping', function(data) {
+					send({
+						m: 'wsping',
+						id: msg.id,
+						d: data
+					});
+				});
+
+				ws.on('pong', function(data) {
+					send({
+						m: 'wspong',
+						id: msg.id,
+						d: data
+					});
+				});
+
+				ws.on('unexpected-response', function(req, res) {
+					send({
+						m: 'wserr',
+						id: msg.id,
+						code: res.statusCode,
+						msg: res.statusMessage,
+						headers: res.headers
+					});
+					self.broadcast({
+						method: 'Network.webSocketFrameError',
+						params: {
+							requestId: msg.id,
+							timestamp: Date.now() / 1000,
+							errorMessage: 'Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage
+						}
+					});
+					self.console.error('WebSocket connection to ' + wsurl + ' failed: Error during WebSocket handshake: Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage);
+				});
+
+				self.broadcast({
+					method: 'Network.webSocketCreated',
+					params: {
+						requestId: msg.id,
+						url: wsurl,
+						initiator: {}
+					}
+				});
+
+				self.broadcast({
+					method: 'Network.webSocketWillSendHandshakeRequest',
+					params: {
+						requestId: msg.id,
+						timestamp: Date.now() / 1000,
+						wallTime: Date.now() / 1000,
+						request: {
+							headers: msg.headers
+						}
+					}
+				});
+
+				send({
+					m: 'wsack',
+					id: msg.id
+				});
+
+
+				break;
+
+			case 'wsm':
+				var info = self.ws[msg.id];
+				if (!info) return;
+				info.ws.send(msg.d);
+				self.broadcast({
+					method: 'Network.webSocketFrameSent',
+					params: {
+						requestId: msg.id,
+						timestamp: Date.now() / 1000,
+						response: {
+							opcode: 1,
+							mask: false,
+							payloadData: msg.d
+						}
+					}
+				});
+				break;
+
+			case 'wsping':
+				var info = self.ws[msg.id];
+				if (info) info.ws.ping(msg.d);
+				break;
+
+			case 'wspong':
+				var info = self.ws[msg.id];
+				if (info) info.ws.pong(msg.d);
+				break;
+
+			case 'wsclose':
+				var info = self.ws[msg.id];
+				if (info) info.ws.close();
+				break;
+
+
 			case 'e':
 				var info = self.reqs[msg.id];
 				if (info) {
@@ -603,9 +824,12 @@ function Inspector(server, opts) {
 
 		service.on('message', function(data) {
 			if (typeof data == 'string') {
-				var msg = JSON.parse(data);
-				handleMsg(msg);
-
+				try {
+					var msg = JSON.parse(data);
+					handleMsg(msg);
+				} catch (ex) {
+					console.error('error handling', msg || data, ex);
+				}
 			} else {
 				if (data.length > 4) {
 					var id = data.readUInt32LE(0);
@@ -623,6 +847,21 @@ function Inspector(server, opts) {
 								}
 							});
 						}
+					} else if (!info && (info = self.ws[id])) {
+						var payload = data.slice(4);
+						info.ws.send(payload);
+						self.broadcast({
+							method: 'Network.webSocketFrameSent',
+							params: {
+								requestId: id,
+								timestamp: Date.now() / 1000,
+								response: {
+									opcode: 2,
+									mask: false,
+									payloadData: payload.toString('base64')
+								}
+							}
+						});
 					}
 				}
 			}
@@ -1381,7 +1620,7 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 		function onerror(err) {
 			gateway.http.removeListener('listening', onlistening);
 			if (cb) cb(err);
-			else self.emit('error', err);
+			else console.error('error', err);
 		}
 		function onlistening() {
 			gateway.http.removeListener('error', onerror);
