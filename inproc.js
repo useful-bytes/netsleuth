@@ -138,7 +138,7 @@ function attach(opts, readyCb) {
 			options = Object.assign({}, input, options);
 		}
 
-		var protocol = options.protocol || '';
+		var protocol = (options.uri && options.uri.protocol) || options.protocol || '';
 		if (self.agent && self.agent.protocol) protocol = self.agent.protocol || '';
 		self.__protocol = protocol;
 
@@ -434,7 +434,6 @@ function attach(opts, readyCb) {
 		});
 
 		ws.on('open', function() {
-			if (ws._socket && opts.unref !== false) ws._socket.unref();
 			if (pending.length) {
 				var ops = pending;
 				pending = [];
@@ -454,6 +453,7 @@ function attach(opts, readyCb) {
 						readyCb();
 						readyCb = null;
 					}
+					if (ws._socket && opts.unref !== false) ws._socket.unref();
 					break;
 
 				case 'config':
