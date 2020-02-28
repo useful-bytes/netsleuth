@@ -21,8 +21,8 @@ req /foo -> http://127.0.0.1/foo
 req :3000/foo -> http://127.0.0.1:3000/foo
 ```
 
-### //
-Shortcut for `http://`.
+### // and s//
+Shortcut for `http://` and `https://`.
 ```
 req //host/foo -> http://host/foo
 ```

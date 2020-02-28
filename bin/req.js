@@ -31,11 +31,11 @@ var yargs = exports.yargs = require('yargs')
 	})
 	.command('*', 'req', function(yargs) {
 		yargs
-		.option('follow', {
+		.option('no-follow', {
 			alias: 'F',
 			group: 'HTTP Behavior',
 			boolean: true,
-			describe: 'Follow HTTP 3xx redirects'
+			describe: 'Do not follow HTTP 3xx redirects'
 		})
 		.option('continue', {
 			boolean: true,
@@ -299,6 +299,7 @@ var uri = args.shift();
 
 if (uri[0] == ':') uri = 'http://' + defaultHost + uri;
 else if (uri.substr(0,2) == '//') uri = 'http:' + uri;
+else if (uri.substr(0,3) == 's//') uri = 'https:' + uri.substr(1);
 
 var diff, stdinIsBody = true;
 if (argv.diff) {
@@ -503,22 +504,37 @@ function request(method, uri, isRedirect, noBody) {
 			if (isRedirect) {
 				return fatal('Invalid redirect location.  Cannot follow.', 107);
 			} else if (opts.pathname[0] != '/') {
+				if (opts.pathname.indexOf('/') == -1) {
+					opts.path += '/';
+					opts.pathname += '/';
+				}
 				var profileName = opts.pathname.substr(0, opts.pathname.indexOf('/'));
 				opts.path = opts.path.substr(profileName.length);
 				opts.pathname = opts.pathname.substr(profileName.length);
-				profile = config.profiles && config.profiles[profileName];
-				if (!profile) {
-					return fatal('Unknown profile "' + profileName + '".  See help for information about profiles.', 108);
+
+				if (profileName.indexOf('.') > 0) {
+					// looks like a domain name
+					opts.protocol = argv.secure ? 'https:' : 'http:';
+					opts.hostname = profileName;
+					opts.port = argv.secure ? '443' : '80';
 
 				} else {
-					opts.profile = profile;
-					var phost = url.parse(profile.host);
-					opts.protocol = phost.protocol;
-					opts.hostname = phost.hostname;
-					opts.port = phost.port;
-					opts.auth = phost.auth;
-					setProfile(profile);
+
+					profile = config.profiles && config.profiles[profileName];
+					if (!profile) {
+						return fatal('Unknown profile "' + profileName + '".  See help for information about profiles.', 108);
+
+					} else {
+						opts.profile = profile;
+						var phost = url.parse(profile.host);
+						opts.protocol = phost.protocol;
+						opts.hostname = phost.hostname;
+						opts.port = phost.port;
+						opts.auth = phost.auth;
+						setProfile(profile);
+					}
 				}
+
 			} else {
 				opts.hostname = defaultHost;
 			}
@@ -825,7 +841,7 @@ function request(method, uri, isRedirect, noBody) {
 			if (res.statusCode >= 200 && res.statusCode < 300) scolor = c.green;
 			if (res.statusCode >= 300 && res.statusCode < 400) {
 				scolor = c.cyan;
-				if (argv.follow && res.headers.location) {
+				if (!argv.noFollow && res.headers.location) {
 					redir = true;
 					output = process.stderr;
 				}
@@ -1220,7 +1236,7 @@ function charConv(streamOrBuffer, from, to) {
 }
 
 function done(res, opts) {
-	if (res && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && argv.follow) {
+	if (res && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && !argv.noFollow) {
 		var method = opts.method,
 			newUri = url.parse(url.resolve(opts, res.headers.location)),
 			noBody = false;

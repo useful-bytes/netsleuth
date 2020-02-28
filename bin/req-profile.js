@@ -32,6 +32,7 @@ exports.yargs = function(yargs) {
 		profileOptions(yargs)
 		.help();
 	}, function(argv) {
+		if (argv.name.indexOf('.') >= 0) return fatal('Profile names may not contain dots.');
 		if (!config.profiles) config.profiles = {};
 		// if (config.profiles[argv.name]) return fatal('There is already a profile named "' + argv.name + '".');
 
