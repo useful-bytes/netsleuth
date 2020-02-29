@@ -872,6 +872,7 @@ function Inspector(server, opts) {
 
 		service.on('error', function(err) {
 			if (self.serviceState < Inspector.SERVICE_STATE.DISCONNECTED) {
+				self.emit('temp-error', err);
 				console.error('Gateway connection error.', err);
 				self.console.error('Gateway connection error: ' + err.message);
 			}
@@ -962,7 +963,7 @@ function Inspector(server, opts) {
 					});
 				}
 			}
-			if (self.serviceState < Inspector.SERVICE_STATE.ERROR) setTimeout(connect, 5000);
+			if (self.serviceState < Inspector.SERVICE_STATE.ERROR) self._connto = setTimeout(connect, 5000);
 		});
 
 		service.on('pong', function() {
@@ -989,11 +990,11 @@ function Inspector(server, opts) {
 				ready = true;
 				send({ m: 'ready' });
 				console.log('target ready', self.target.hostname);
-			} else setTimeout(checkTarget, 5000);
+			} else self._connto = setTimeout(checkTarget, 5000);
 		});
 
 		req.on('error', function(err) {
-			setTimeout(checkTarget, 5000);
+			self._connto = setTimeout(checkTarget, 5000);
 		});
 
 		req.end();
@@ -1047,7 +1048,7 @@ function Inspector(server, opts) {
 
 		function retry(err) {
 			self.emit('temp-error', err);
-			setTimeout(preconnect, 5000);
+			self._connto = setTimeout(preconnect, 5000);
 		}
 
 	}
@@ -1117,6 +1118,7 @@ Inspector.prototype.close = function() {
 	this.shutdown = true;
 	this.serviceState = Inspector.SERVICE_STATE.CLOSED;
 	clearInterval(this._gctimer);
+	clearTimeout(this._connto);
 	this.reqs = {};
 	if (this.service) this.service.close();
 	if (this.gateway && this.gateway._local) this.gateway.close();

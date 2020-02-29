@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+if (process.env.NETSLEUTH_DAEMON_INSPECT) require('../inproc').attach('netsleuth-daemon');
+
 var fs = require('fs'),
 	os = require('os'),
 	dialog = require('dialog'),
@@ -107,11 +109,20 @@ server.app.post('/ipc/add', isLocal, function(req, res) {
 			if (err) ierr(err);
 			else {
 
+				var lastErr, timeout = setTimeout(function() {
+					var msg = 'Timed out waiting for host to come online.';
+					if (lastErr) msg += ' Last error: ' + lastErr.message;
+					ierr(new Error(msg));
+				}, 15000);
+
 
 				inspector.on('error', ierr);
+				inspector.on('temp-error', problem);
 
 				inspector.on('hostname', function(host) {
+					clearTimeout(timeout);
 					inspector.removeListener('error', ierr);
+					inspector.removeListener('temp-error', problem);
 
 					if (ip) {
 						req.body.ip = ip;
@@ -137,12 +148,20 @@ server.app.post('/ipc/add', isLocal, function(req, res) {
 				
 			}
 
+			function problem(err) {
+				console.error('insp problem', err);
+				lastErr = err;
+			}
+
 			function ierr(err) {
+				clearTimeout(timeout);
 				console.error('ierr', err);
-				if (inspector) inspector.removeListener('error', ierr);
+				if (inspector) {
+					inspector.removeListener('error', ierr);
+					inspector.close();
+				}
 				res.status(err.status || 500).send({ message: err.message });
 				if (req.body.host) server.remove(req.body.host);
-				else if (inspector) inspector.close();
 			}
 		});
 
