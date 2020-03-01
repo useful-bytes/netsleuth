@@ -1315,7 +1315,7 @@ Inspector.prototype.connection = function(ws, req) {
 		params: {
 			context: {
 				id: 1,
-				name: 'default',
+				name: 'netsleuth',
 				origin: 'origin'
 			}
 		}
