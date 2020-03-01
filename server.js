@@ -1672,6 +1672,7 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 			host: opts.host || ip,
 			target: opts.target,
 			gateway: gateway.inspect(opts.host || ip, opts.serviceOpts),
+			insecure: opts.insecure,
 			ca: opts.ca,
 			hostsfile: opts.hostsfile,
 			ip: opts.ip

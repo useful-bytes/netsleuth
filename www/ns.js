@@ -269,8 +269,10 @@ $('#acadd').click(function() {
 	}
 
 	var tls = $('#actls').val();
-	if (tls == 'insecure') opts.insecure = true;
-	else if (tls == 'ca') {
+	if (tls == 'insecure') {
+		opts.insecure = true;
+		go();
+	} else if (tls == 'ca') {
 		if (usefcert) {
 			opts.ca = [fcert];
 			go();
