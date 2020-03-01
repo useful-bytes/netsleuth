@@ -23,24 +23,32 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Common from '../common/common.js';
+import * as DataGrid from '../data_grid/data_grid.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
  */
-Resources.DatabaseTableView = class extends UI.SimpleView {
+export class DatabaseTableView extends UI.View.SimpleView {
   constructor(database, tableName) {
-    super(Common.UIString('Database'));
+    super(Common.UIString.UIString('Database'));
 
     this.database = database;
     this.tableName = tableName;
 
     this.element.classList.add('storage-view', 'table');
 
-    this._visibleColumnsSetting = Common.settings.createSetting('databaseTableViewVisibleColumns', {});
+    this._visibleColumnsSetting = self.Common.settings.createSetting('databaseTableViewVisibleColumns', {});
 
-    this.refreshButton = new UI.ToolbarButton(Common.UIString('Refresh'), 'largeicon-refresh');
-    this.refreshButton.addEventListener(UI.ToolbarButton.Events.Click, this._refreshButtonClicked, this);
-    this._visibleColumnsInput = new UI.ToolbarInput(Common.UIString('Visible columns'), 1);
-    this._visibleColumnsInput.addEventListener(UI.ToolbarInput.Event.TextChanged, this._onVisibleColumnsChanged, this);
+    this.refreshButton = new UI.Toolbar.ToolbarButton(Common.UIString.UIString('Refresh'), 'largeicon-refresh');
+    this.refreshButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this._refreshButtonClicked, this);
+    this._visibleColumnsInput = new UI.Toolbar.ToolbarInput(Common.UIString.UIString('Visible columns'), '', 1);
+    this._visibleColumnsInput.addEventListener(
+        UI.Toolbar.ToolbarInput.Event.TextChanged, this._onVisibleColumnsChanged, this);
+
+    /** @type {?DataGrid.DataGrid.DataGridImpl} */
+    this._dataGrid;
   }
 
   /**
@@ -52,9 +60,9 @@ Resources.DatabaseTableView = class extends UI.SimpleView {
 
   /**
    * @override
-   * @return {!Array.<!UI.ToolbarItem>}
+   * @return {!Promise<!Array<!UI.Toolbar.ToolbarItem>>}
    */
-  syncToolbarItems() {
+  async toolbarItems() {
     return [this.refreshButton, this._visibleColumnsInput];
   }
 
@@ -76,10 +84,10 @@ Resources.DatabaseTableView = class extends UI.SimpleView {
     this.detachChildWidgets();
     this.element.removeChildren();
 
-    this._dataGrid = DataGrid.SortableDataGrid.create(columnNames, values);
+    this._dataGrid = DataGrid.SortableDataGrid.SortableDataGrid.create(columnNames, values, ls`Database`);
     this._visibleColumnsInput.setVisible(!!this._dataGrid);
     if (!this._dataGrid) {
-      this._emptyWidget = new UI.EmptyWidget(Common.UIString('The “%s”\ntable is empty.', this.tableName));
+      this._emptyWidget = new UI.EmptyWidget.EmptyWidget(ls`The "${this.tableName}"\ntable is empty.`);
       this._emptyWidget.show(this.element);
       return;
     }
@@ -88,37 +96,41 @@ Resources.DatabaseTableView = class extends UI.SimpleView {
     this._dataGrid.autoSizeColumns(5);
 
     this._columnsMap = new Map();
-    for (var i = 1; i < columnNames.length; ++i)
+    for (let i = 1; i < columnNames.length; ++i) {
       this._columnsMap.set(columnNames[i], String(i));
+    }
     this._lastVisibleColumns = '';
-    var visibleColumnsText = this._visibleColumnsSetting.get()[this.tableName] || '';
+    const visibleColumnsText = this._visibleColumnsSetting.get()[this.tableName] || '';
     this._visibleColumnsInput.setValue(visibleColumnsText);
     this._onVisibleColumnsChanged();
   }
 
   _onVisibleColumnsChanged() {
-    if (!this._dataGrid)
+    if (!this._dataGrid) {
       return;
-    var text = this._visibleColumnsInput.value();
-    var parts = text.split(/[\s,]+/);
-    var matches = new Set();
-    var columnsVisibility = {};
+    }
+    const text = this._visibleColumnsInput.value();
+    const parts = text.split(/[\s,]+/);
+    const matches = new Set();
+    const columnsVisibility = {};
     columnsVisibility['0'] = true;
-    for (var i = 0; i < parts.length; ++i) {
-      var part = parts[i];
+    for (let i = 0; i < parts.length; ++i) {
+      const part = parts[i];
       if (this._columnsMap.has(part)) {
         matches.add(part);
         columnsVisibility[this._columnsMap.get(part)] = true;
       }
     }
-    var newVisibleColumns = matches.valuesArray().sort().join(', ');
+    const newVisibleColumns = [...matches].sort().join(', ');
     if (newVisibleColumns.length === 0) {
-      for (var v of this._columnsMap.values())
+      for (const v of this._columnsMap.values()) {
         columnsVisibility[v] = true;
+      }
     }
-    if (newVisibleColumns === this._lastVisibleColumns)
+    if (newVisibleColumns === this._lastVisibleColumns) {
       return;
-    var visibleColumnsRegistry = this._visibleColumnsSetting.get();
+    }
+    const visibleColumnsRegistry = this._visibleColumnsSetting.get();
     visibleColumnsRegistry[this.tableName] = text;
     this._visibleColumnsSetting.set(visibleColumnsRegistry);
     this._dataGrid.setColumnsVisiblity(columnsVisibility);
@@ -129,16 +141,16 @@ Resources.DatabaseTableView = class extends UI.SimpleView {
     this.detachChildWidgets();
     this.element.removeChildren();
 
-    var errorMsgElement = createElement('div');
+    const errorMsgElement = createElement('div');
     errorMsgElement.className = 'storage-table-error';
-    errorMsgElement.textContent = Common.UIString('An error occurred trying to\nread the “%s” table.', this.tableName);
+    errorMsgElement.textContent = ls`An error occurred trying to\nread the "${this.tableName}" table.`;
     this.element.appendChild(errorMsgElement);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _refreshButtonClicked(event) {
     this.update();
   }
-};
+}

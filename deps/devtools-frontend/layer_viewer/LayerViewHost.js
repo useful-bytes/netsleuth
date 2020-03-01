@@ -1,37 +1,40 @@
-/*
- * Copyright 2015 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file.
- */
+// Copyright 2015 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as SDK from '../sdk/sdk.js';
+import * as UI from '../ui/ui.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @interface
  */
-LayerViewer.LayerView = function() {};
-
-LayerViewer.LayerView.prototype = {
+export class LayerView {
   /**
-   * @param {?LayerViewer.LayerView.Selection} selection
+   * @param {?Selection} selection
    */
-  hoverObject(selection) {},
+  hoverObject(selection) {
+  }
 
   /**
-   * @param {?LayerViewer.LayerView.Selection} selection
+   * @param {?Selection} selection
    */
-  selectObject(selection) {},
+  selectObject(selection) {
+  }
 
   /**
-   * @param {?SDK.LayerTreeBase} layerTree
+   * @param {?SDK.LayerTreeBase.LayerTreeBase} layerTree
    */
   setLayerTree(layerTree) {}
-};
+}
 
 /**
  * @unrestricted
  */
-LayerViewer.LayerView.Selection = class {
+export class Selection {
   /**
-   * @param {!LayerViewer.LayerView.Selection.Type} type
-   * @param {!SDK.Layer} layer
+   * @param {!Type} type
+   * @param {!SDK.LayerTreeBase.Layer} layer
    */
   constructor(type, layer) {
     this._type = type;
@@ -39,7 +42,7 @@ LayerViewer.LayerView.Selection = class {
   }
 
   /**
-   * @param {?LayerViewer.LayerView.Selection} a
+   * @param {?Selection} a
    * @param {?LayerViewer.LayerView.Selection} b
    * @return {boolean}
    */
@@ -48,196 +51,217 @@ LayerViewer.LayerView.Selection = class {
   }
 
   /**
-   * @return {!LayerViewer.LayerView.Selection.Type}
+   * @return {!Type}
    */
   type() {
     return this._type;
   }
 
   /**
-   * @return {!SDK.Layer}
+   * @return {!SDK.LayerTreeBase.Layer}
    */
   layer() {
     return this._layer;
   }
 
   /**
-   * @param {!LayerViewer.LayerView.Selection} other
+   * @param {!Selection} other
    * @return {boolean}
    */
   _isEqual(other) {
     return false;
   }
-};
+}
 
 /**
  * @enum {symbol}
  */
-LayerViewer.LayerView.Selection.Type = {
+export const Type = {
   Layer: Symbol('Layer'),
   ScrollRect: Symbol('ScrollRect'),
   Snapshot: Symbol('Snapshot')
 };
 
-
 /**
  * @unrestricted
  */
-LayerViewer.LayerView.LayerSelection = class extends LayerViewer.LayerView.Selection {
+export class LayerSelection extends Selection {
   /**
-   * @param {!SDK.Layer} layer
+   * @param {!SDK.LayerTreeBase.Layer} layer
    */
   constructor(layer) {
     console.assert(layer, 'LayerSelection with empty layer');
-    super(LayerViewer.LayerView.Selection.Type.Layer, layer);
+    super(Type.Layer, layer);
   }
 
   /**
    * @override
-   * @param {!LayerViewer.LayerView.Selection} other
+   * @param {!Selection} other
    * @return {boolean}
    */
   _isEqual(other) {
-    return other._type === LayerViewer.LayerView.Selection.Type.Layer && other.layer().id() === this.layer().id();
+    return other._type === Type.Layer && other.layer().id() === this.layer().id();
   }
-};
+}
 
 /**
  * @unrestricted
  */
-LayerViewer.LayerView.ScrollRectSelection = class extends LayerViewer.LayerView.Selection {
+export class ScrollRectSelection extends Selection {
   /**
-   * @param {!SDK.Layer} layer
+   * @param {!SDK.LayerTreeBase.Layer} layer
    * @param {number} scrollRectIndex
    */
   constructor(layer, scrollRectIndex) {
-    super(LayerViewer.LayerView.Selection.Type.ScrollRect, layer);
+    super(Type.ScrollRect, layer);
     this.scrollRectIndex = scrollRectIndex;
   }
 
   /**
    * @override
-   * @param {!LayerViewer.LayerView.Selection} other
+   * @param {!Selection} other
    * @return {boolean}
    */
   _isEqual(other) {
-    return other._type === LayerViewer.LayerView.Selection.Type.ScrollRect &&
-        this.layer().id() === other.layer().id() && this.scrollRectIndex === other.scrollRectIndex;
+    return other._type === Type.ScrollRect && this.layer().id() === other.layer().id() &&
+        this.scrollRectIndex === other.scrollRectIndex;
   }
-};
+}
 
 /**
  * @unrestricted
  */
-LayerViewer.LayerView.SnapshotSelection = class extends LayerViewer.LayerView.Selection {
+export class SnapshotSelection extends Selection {
   /**
-   * @param {!SDK.Layer} layer
-   * @param {!SDK.SnapshotWithRect} snapshot
+   * @param {!SDK.LayerTreeBase.Layer} layer
+   * @param {!SDK.PaintProfiler.SnapshotWithRect} snapshot
    */
   constructor(layer, snapshot) {
-    super(LayerViewer.LayerView.Selection.Type.Snapshot, layer);
+    super(Type.Snapshot, layer);
     this._snapshot = snapshot;
   }
 
   /**
    * @override
-   * @param {!LayerViewer.LayerView.Selection} other
+   * @param {!Selection} other
    * @return {boolean}
    */
   _isEqual(other) {
-    return other._type === LayerViewer.LayerView.Selection.Type.Snapshot && this.layer().id() === other.layer().id() &&
+    return other._type === Type.Snapshot && this.layer().id() === other.layer().id() &&
         this._snapshot === other._snapshot;
   }
 
   /**
-   * @return {!SDK.SnapshotWithRect}
+   * @return {!SDK.PaintProfiler.SnapshotWithRect}
    */
   snapshot() {
     return this._snapshot;
   }
-};
+}
 
 /**
  * @unrestricted
  */
-LayerViewer.LayerViewHost = class {
+export class LayerViewHost {
   constructor() {
-    /** @type {!Array.<!LayerViewer.LayerView>} */
+    /** @type {!Array.<!LayerView>} */
     this._views = [];
     this._selectedObject = null;
     this._hoveredObject = null;
-    this._showInternalLayersSetting = Common.settings.createSetting('layersShowInternalLayers', false);
+    this._showInternalLayersSetting = self.Common.settings.createSetting('layersShowInternalLayers', false);
   }
 
   /**
-   * @param {!LayerViewer.LayerView} layerView
+   * @param {!LayerView} layerView
    */
   registerView(layerView) {
     this._views.push(layerView);
   }
 
   /**
-   * @param {?SDK.LayerTreeBase} layerTree
+   * @param {!Map<!SDK.LayerTreeBase.Layer, !SnapshotSelection>} snapshotLayers
+   */
+  setLayerSnapshotMap(snapshotLayers) {
+    this._snapshotLayers = snapshotLayers;
+  }
+
+  /**
+   * @return {!Map<!SDK.LayerTreeBase.Layer, !SnapshotSelection>}
+   */
+  getLayerSnapshotMap() {
+    return this._snapshotLayers;
+  }
+
+  /**
+   * @param {?SDK.LayerTreeBase.LayerTreeBase} layerTree
    */
   setLayerTree(layerTree) {
     this._target = layerTree.target();
-    var selectedLayer = this._selectedObject && this._selectedObject.layer();
-    if (selectedLayer && (!layerTree || !layerTree.layerById(selectedLayer.id())))
+    const selectedLayer = this._selectedObject && this._selectedObject.layer();
+    if (selectedLayer && (!layerTree || !layerTree.layerById(selectedLayer.id()))) {
       this.selectObject(null);
-    var hoveredLayer = this._hoveredObject && this._hoveredObject.layer();
-    if (hoveredLayer && (!layerTree || !layerTree.layerById(hoveredLayer.id())))
+    }
+    const hoveredLayer = this._hoveredObject && this._hoveredObject.layer();
+    if (hoveredLayer && (!layerTree || !layerTree.layerById(hoveredLayer.id()))) {
       this.hoverObject(null);
-    for (var view of this._views)
+    }
+    for (const view of this._views) {
       view.setLayerTree(layerTree);
+    }
   }
 
   /**
-   * @param {?LayerViewer.LayerView.Selection} selection
+   * @param {?Selection} selection
    */
   hoverObject(selection) {
-    if (LayerViewer.LayerView.Selection.isEqual(this._hoveredObject, selection))
+    if (Selection.isEqual(this._hoveredObject, selection)) {
       return;
+    }
     this._hoveredObject = selection;
-    var layer = selection && selection.layer();
+    const layer = selection && selection.layer();
     this._toggleNodeHighlight(layer ? layer.nodeForSelfOrAncestor() : null);
-    for (var view of this._views)
+    for (const view of this._views) {
       view.hoverObject(selection);
+    }
   }
 
   /**
-   * @param {?LayerViewer.LayerView.Selection} selection
+   * @param {?Selection} selection
    */
   selectObject(selection) {
-    if (LayerViewer.LayerView.Selection.isEqual(this._selectedObject, selection))
+    if (Selection.isEqual(this._selectedObject, selection)) {
       return;
+    }
     this._selectedObject = selection;
-    for (var view of this._views)
+    for (const view of this._views) {
       view.selectObject(selection);
+    }
   }
 
   /**
-   * @return {?LayerViewer.LayerView.Selection}
+   * @return {?Selection}
    */
   selection() {
     return this._selectedObject;
   }
 
   /**
-   * @param {!UI.ContextMenu} contextMenu
-   * @param {?LayerViewer.LayerView.Selection} selection
+   * @param {!UI.ContextMenu.ContextMenu} contextMenu
+   * @param {?Selection} selection
    */
   showContextMenu(contextMenu, selection) {
-    contextMenu.appendCheckboxItem(
-        Common.UIString('Show internal layers'), this._toggleShowInternalLayers.bind(this),
+    contextMenu.defaultSection().appendCheckboxItem(
+        Common.UIString.UIString('Show internal layers'), this._toggleShowInternalLayers.bind(this),
         this._showInternalLayersSetting.get());
-    var node = selection && selection.layer() && selection.layer().nodeForSelfOrAncestor();
-    if (node)
+    const node = selection && selection.layer() && selection.layer().nodeForSelfOrAncestor();
+    if (node) {
       contextMenu.appendApplicableItems(node);
+    }
     contextMenu.show();
   }
 
   /**
-   * @return {!Common.Setting}
+   * @return {!Common.Settings.Setting}
    */
   showInternalLayersSetting() {
     return this._showInternalLayersSetting;
@@ -248,13 +272,13 @@ LayerViewer.LayerViewHost = class {
   }
 
   /**
-   * @param {?SDK.DOMNode} node
+   * @param {?SDK.DOMModel.DOMNode} node
    */
   _toggleNodeHighlight(node) {
     if (node) {
       node.highlightForTwoSeconds();
       return;
     }
-    SDK.OverlayModel.hideDOMNodeHighlight();
+    SDK.OverlayModel.OverlayModel.hideDOMNodeHighlight();
   }
-};
+}

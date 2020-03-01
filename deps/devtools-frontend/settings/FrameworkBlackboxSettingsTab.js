@@ -1,42 +1,49 @@
-/*
- * Copyright 2014 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file.
- */
+// Copyright 2014 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @implements {UI.ListWidget.Delegate}
  * @unrestricted
  */
-Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
+export class FrameworkBlackboxSettingsTab extends UI.Widget.VBox {
   constructor() {
     super(true);
     this.registerRequiredCSS('settings/frameworkBlackboxSettingsTab.css');
 
-    this.contentElement.createChild('div', 'header').textContent = Common.UIString('Framework Blackbox Patterns');
-    this.contentElement.createChild('div', 'blackbox-content-scripts')
-        .appendChild(UI.SettingsUI.createSettingCheckbox(
-            Common.UIString('Blackbox content scripts'), Common.moduleSetting('skipContentScripts'), true));
+    const header = this.contentElement.createChild('div', 'header');
+    header.textContent = ls`Framework Blackboxing`;
+    UI.ARIAUtils.markAsHeading(header, 1);
+    this.contentElement.createChild('div', 'intro').textContent =
+        ls`Debugger will skip through the scripts and will not stop on exceptions thrown by them.`;
 
-    this._blackboxLabel = Common.UIString('Blackbox');
-    this._disabledLabel = Common.UIString('Disabled');
+    const blackboxContentScripts = this.contentElement.createChild('div', 'blackbox-content-scripts');
+    blackboxContentScripts.appendChild(UI.SettingsUI.createSettingCheckbox(
+        ls`Blackbox content scripts`, self.Common.settings.moduleSetting('skipContentScripts'), true));
+    blackboxContentScripts.title = ls`Blackbox content scripts (extension scripts in the page)`;
 
-    this._list = new UI.ListWidget(this);
+    this._blackboxLabel = Common.UIString.UIString('Blackbox');
+    this._disabledLabel = Common.UIString.UIString('Disabled');
+
+    this._list = new UI.ListWidget.ListWidget(this);
     this._list.element.classList.add('blackbox-list');
     this._list.registerRequiredCSS('settings/frameworkBlackboxSettingsTab.css');
 
-    var placeholder = createElementWithClass('div', 'blackbox-list-empty');
-    placeholder.textContent = Common.UIString('No blackboxed patterns');
+    const placeholder = createElementWithClass('div', 'blackbox-list-empty');
+    placeholder.textContent = Common.UIString.UIString('No blackboxed patterns');
     this._list.setEmptyPlaceholder(placeholder);
     this._list.show(this.contentElement);
-    var addPatternButton =
-        UI.createTextButton(Common.UIString('Add pattern...'), this._addButtonClicked.bind(this), 'add-button');
+    const addPatternButton = UI.UIUtils.createTextButton(
+        Common.UIString.UIString('Add pattern...'), this._addButtonClicked.bind(this), 'add-button');
     this.contentElement.appendChild(addPatternButton);
 
-    this._setting = Common.moduleSetting('skipStackFramesPattern');
+    this._setting = self.Common.settings.moduleSetting('skipStackFramesPattern');
     this._setting.addChangeListener(this._settingUpdated, this);
 
     this.setDefaultFocusedElement(addPatternButton);
-    this.contentElement.tabIndex = 0;
   }
 
   /**
@@ -49,9 +56,10 @@ Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
 
   _settingUpdated() {
     this._list.clear();
-    var patterns = this._setting.getAsArray();
-    for (var i = 0; i < patterns.length; ++i)
+    const patterns = this._setting.getAsArray();
+    for (let i = 0; i < patterns.length; ++i) {
       this._list.appendItem(patterns[i], true);
+    }
   }
 
   _addButtonClicked() {
@@ -65,15 +73,16 @@ Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
    * @return {!Element}
    */
   renderItem(item, editable) {
-    var element = createElementWithClass('div', 'blackbox-list-item');
-    var pattern = element.createChild('div', 'blackbox-pattern');
+    const element = createElementWithClass('div', 'blackbox-list-item');
+    const pattern = element.createChild('div', 'blackbox-pattern');
     pattern.textContent = item.pattern;
-    pattern.title = item.pattern;
+    pattern.title = ls`Blackbox scripts whose names match '${item.pattern}'`;
     element.createChild('div', 'blackbox-separator');
     element.createChild('div', 'blackbox-behavior').textContent =
         item.disabled ? this._disabledLabel : this._blackboxLabel;
-    if (item.disabled)
+    if (item.disabled) {
       element.classList.add('blackbox-disabled');
+    }
     return element;
   }
 
@@ -83,7 +92,7 @@ Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
    * @param {number} index
    */
   removeItemRequested(item, index) {
-    var patterns = this._setting.getAsArray();
+    const patterns = this._setting.getAsArray();
     patterns.splice(index, 1);
     this._setting.setAsArray(patterns);
   }
@@ -98,9 +107,10 @@ Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
     item.pattern = editor.control('pattern').value.trim();
     item.disabled = editor.control('behavior').value === this._disabledLabel;
 
-    var list = this._setting.getAsArray();
-    if (isNew)
+    const list = this._setting.getAsArray();
+    if (isNew) {
       list.push(item);
+    }
     this._setting.setAsArray(list);
   }
 
@@ -110,7 +120,7 @@ Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
    * @return {!UI.ListWidget.Editor}
    */
   beginEdit(item) {
-    var editor = this._createEditor();
+    const editor = this._createEditor();
     editor.control('pattern').value = item.pattern;
     editor.control('behavior').value = item.disabled ? this._disabledLabel : this._blackboxLabel;
     return editor;
@@ -120,24 +130,27 @@ Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
    * @return {!UI.ListWidget.Editor}
    */
   _createEditor() {
-    if (this._editor)
+    if (this._editor) {
       return this._editor;
+    }
 
-    var editor = new UI.ListWidget.Editor();
+    const editor = new UI.ListWidget.Editor();
     this._editor = editor;
-    var content = editor.contentElement();
+    const content = editor.contentElement();
 
-    var titles = content.createChild('div', 'blackbox-edit-row');
-    titles.createChild('div', 'blackbox-pattern').textContent = Common.UIString('Pattern');
+    const titles = content.createChild('div', 'blackbox-edit-row');
+    titles.createChild('div', 'blackbox-pattern').textContent = Common.UIString.UIString('Pattern');
     titles.createChild('div', 'blackbox-separator blackbox-separator-invisible');
-    titles.createChild('div', 'blackbox-behavior').textContent = Common.UIString('Behavior');
+    titles.createChild('div', 'blackbox-behavior').textContent = Common.UIString.UIString('Behavior');
 
-    var fields = content.createChild('div', 'blackbox-edit-row');
-    fields.createChild('div', 'blackbox-pattern')
-        .appendChild(editor.createInput('pattern', 'text', '/framework\\.js$', patternValidator.bind(this)));
+    const fields = content.createChild('div', 'blackbox-edit-row');
+    const pattern = editor.createInput('pattern', 'text', '/framework\\.js$', patternValidator.bind(this));
+    UI.ARIAUtils.setAccessibleName(pattern, ls`Pattern`);
+    fields.createChild('div', 'blackbox-pattern').appendChild(pattern);
     fields.createChild('div', 'blackbox-separator blackbox-separator-invisible');
-    fields.createChild('div', 'blackbox-behavior')
-        .appendChild(editor.createSelect('behavior', [this._blackboxLabel, this._disabledLabel], behaviorValidator));
+    const behavior = editor.createSelect('behavior', [this._blackboxLabel, this._disabledLabel], behaviorValidator);
+    UI.ARIAUtils.setAccessibleName(behavior, ls`Behavior`);
+    fields.createChild('div', 'blackbox-behavior').appendChild(behavior);
 
     return editor;
 
@@ -145,33 +158,42 @@ Settings.FrameworkBlackboxSettingsTab = class extends UI.VBox {
      * @param {*} item
      * @param {number} index
      * @param {!HTMLInputElement|!HTMLSelectElement} input
-     * @this {Settings.FrameworkBlackboxSettingsTab}
-     * @return {boolean}
+     * @this {FrameworkBlackboxSettingsTab}
+     * @return {!UI.ListWidget.ValidatorResult}
      */
     function patternValidator(item, index, input) {
-      var pattern = input.value.trim();
-      var patterns = this._setting.getAsArray();
-      for (var i = 0; i < patterns.length; ++i) {
-        if (i !== index && patterns[i].pattern === pattern)
-          return false;
+      const pattern = input.value.trim();
+      const patterns = this._setting.getAsArray();
+
+      if (!pattern.length) {
+        return {valid: false, errorMessage: ls`Pattern cannot be empty`};
       }
 
-      var regex;
+      for (let i = 0; i < patterns.length; ++i) {
+        if (i !== index && patterns[i].pattern === pattern) {
+          return {valid: false, errorMessage: ls`Pattern already exists`};
+        }
+      }
+
+      let regex;
       try {
         regex = new RegExp(pattern);
       } catch (e) {
       }
-      return !!(pattern && regex);
+      if (!regex) {
+        return {valid: false, errorMessage: ls`Pattern must be a valid regular expression`};
+      }
+      return {valid: true};
     }
 
     /**
      * @param {*} item
      * @param {number} index
      * @param {!HTMLInputElement|!HTMLSelectElement} input
-     * @return {boolean}
+     * @return {!UI.ListWidget.ValidatorResult}
      */
     function behaviorValidator(item, index, input) {
-      return true;
+      return {valid: true};
     }
   }
-};
+}

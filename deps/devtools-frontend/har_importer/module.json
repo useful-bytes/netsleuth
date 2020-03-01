@@ -1,10 +1,11 @@
 {
     "dependencies": [
         "common",
-        "network_log",
-        "sdk"
+        "browser_sdk"
     ],
-    "scripts": [
+    "modules": [
+        "har_importer.js",
+        "har_importer-legacy.js",
         "HARFormat.js",
         "HARImporter.js"
     ]

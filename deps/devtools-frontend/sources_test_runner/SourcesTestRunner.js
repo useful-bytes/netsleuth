@@ -19,35 +19,39 @@ SourcesTestRunner.dumpNavigatorView = function(navigatorView, dumpIcons) {
    * @param {!UI.TreeElement} treeElement
    */
   function dumpNavigatorTreeElement(prefix, treeElement) {
-    var titleText = '';
+    let titleText = '';
     if (treeElement._leadingIconsElement && dumpIcons) {
-      var icons = treeElement._leadingIconsElement.querySelectorAll('[is=ui-icon]');
+      let icons = treeElement._leadingIconsElement.querySelectorAll('[is=ui-icon]');
       icons = Array.prototype.slice.call(icons);
-      var iconTypes = icons.map(icon => icon._iconType);
-      if (iconTypes.length)
+      const iconTypes = icons.map(icon => icon._iconType);
+      if (iconTypes.length) {
         titleText = titleText + '[' + iconTypes.join(', ') + '] ';
+      }
     }
     titleText += treeElement.title;
     if (treeElement._nodeType === Sources.NavigatorView.Types.FileSystem ||
         treeElement._nodeType === Sources.NavigatorView.Types.FileSystemFolder) {
-      var hasMappedFiles = treeElement.listItemElement.classList.contains('has-mapped-files');
-      if (!hasMappedFiles)
+      const hasMappedFiles = treeElement.listItemElement.classList.contains('has-mapped-files');
+      if (!hasMappedFiles) {
         titleText += ' [dimmed]';
+      }
     }
     TestRunner.addResult(prefix + titleText);
     treeElement.expand();
-    var children = treeElement.children();
-    for (var i = 0; i < children.length; ++i)
+    const children = treeElement.children();
+    for (let i = 0; i < children.length; ++i) {
       dumpNavigatorTreeElement(prefix + '  ', children[i]);
+    }
   }
 
   /**
    * @param {!UI.TreeOutline} treeOutline
    */
   function dumpNavigatorTreeOutline(treeOutline) {
-    var children = treeOutline.rootElement().children();
-    for (var i = 0; i < children.length; ++i)
+    const children = treeOutline.rootElement().children();
+    for (let i = 0; i < children.length; ++i) {
       dumpNavigatorTreeElement('', children[i]);
+    }
   }
 };
 
@@ -64,48 +68,13 @@ SourcesTestRunner.dumpNavigatorViewInAllModes = function(view) {
  * @param {string} mode
  */
 SourcesTestRunner.dumpNavigatorViewInMode = function(view, mode) {
-  TestRunner.addResult(view instanceof Sources.SourcesNavigatorView ? 'Sources:' : 'Content Scripts:');
+  TestRunner.addResult(view instanceof Sources.NetworkNavigatorView ? 'Sources:' : 'Content Scripts:');
   view._groupByFrame = mode.includes('frame');
   view._groupByDomain = mode.includes('domain');
   view._groupByFolder = mode.includes('folder');
   view._resetForTest();
   TestRunner.addResult('-------- Setting mode: [' + mode + ']');
   SourcesTestRunner.dumpNavigatorView(view);
-};
-
-/**
- * @param {string} urlSuffix
- * @param {!Workspace.projectTypes=} projectType
- * @return {!Promise}
- */
-SourcesTestRunner.waitForUISourceCode = function(urlSuffix, projectType) {
-  /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @return {boolean}
-   */
-  function matches(uiSourceCode) {
-    if (projectType && uiSourceCode.project().type() !== projectType)
-      return false;
-    if (!projectType && uiSourceCode.project().type() === Workspace.projectTypes.Service)
-      return false;
-    if (urlSuffix && !uiSourceCode.url().endsWith(urlSuffix))
-      return false;
-    return true;
-  }
-
-  for (var uiSourceCode of Workspace.workspace.uiSourceCodes()) {
-    if (urlSuffix && matches(uiSourceCode))
-      return Promise.resolve(uiSourceCode);
-  }
-
-  return TestRunner.waitForEvent(Workspace.Workspace.Events.UISourceCodeAdded, Workspace.workspace, matches);
-};
-
-/**
- * @param {!Function} callback
- */
-SourcesTestRunner.waitForUISourceCodeRemoved = function(callback) {
-  Workspace.workspace.once(Workspace.Workspace.Events.UISourceCodeRemoved).then(callback);
 };
 
 /**
@@ -117,8 +86,82 @@ SourcesTestRunner.waitForUISourceCodeRemoved = function(callback) {
  */
 SourcesTestRunner.addScriptUISourceCode = function(url, content, isContentScript, worldId) {
   content += '\n//# sourceURL=' + url;
-  if (isContentScript)
+  if (isContentScript) {
     content = `testRunner.evaluateScriptInIsolatedWorld(${worldId}, \`${content}\`)`;
-  TestRunner.evaluateInPagePromise(content);
-  return SourcesTestRunner.waitForUISourceCode(url);
+  }
+  TestRunner.evaluateInPageAnonymously(content);
+  return TestRunner.waitForUISourceCode(url);
+};
+
+function testSourceMapping(text1, text2, mapping, testToken) {
+  const originalPosition = text1.indexOf(testToken);
+  TestRunner.assertTrue(originalPosition !== -1);
+
+  const text1LineEndings = TestRunner.findLineEndingIndexes(text1);
+  const text2LineEndings = TestRunner.findLineEndingIndexes(text2);
+
+  const originalLocation = Formatter.Formatter.positionToLocation(text1LineEndings, originalPosition);
+  const formattedLocation = mapping.originalToFormatted(originalLocation[0], originalLocation[1]);
+  const formattedPosition =
+      Formatter.Formatter.locationToPosition(text2LineEndings, formattedLocation[0], formattedLocation[1]);
+  const expectedFormattedPosition = text2.indexOf(testToken);
+
+  if (expectedFormattedPosition === formattedPosition) {
+    TestRunner.addResult(String.sprintf('Correct mapping for <%s>', testToken));
+  } else {
+    TestRunner.addResult(String.sprintf('ERROR: Wrong mapping for <%s>', testToken));
+  }
+}
+
+SourcesTestRunner.testPrettyPrint = function(mimeType, text, mappingQueries, next) {
+  new Formatter.ScriptFormatter(mimeType, text, didFormatContent);
+
+  function didFormatContent(formattedSource, mapping) {
+    TestRunner.addResult('====== 8< ------');
+    TestRunner.addResult(formattedSource);
+    TestRunner.addResult('------ >8 ======');
+
+    while (mappingQueries && mappingQueries.length) {
+      testSourceMapping(text, formattedSource, mapping, mappingQueries.shift());
+    }
+
+    next();
+  }
+};
+
+SourcesTestRunner.testJavascriptOutline = function(text) {
+  let fulfill;
+  const promise = new Promise(x => fulfill = x);
+  Formatter.formatterWorkerPool().javaScriptOutline(text, onChunk);
+  const items = [];
+  return promise;
+
+  function onChunk(isLastChunk, outlineItems) {
+    items.push(...outlineItems);
+
+    if (!isLastChunk) {
+      return;
+    }
+
+    TestRunner.addResult('Text:');
+    TestRunner.addResult(text.split('\n').map(line => '    ' + line).join('\n'));
+    TestRunner.addResult('Outline:');
+
+    for (const item of items) {
+      TestRunner.addResult('    ' + item.name + (item.arguments || '') + ':' + item.line + ':' + item.column);
+    }
+
+    fulfill();
+  }
+};
+
+SourcesTestRunner.dumpSwatchPositions = function(sourceFrame, bookmarkType) {
+  const textEditor = sourceFrame.textEditor;
+  const markers = textEditor.bookmarks(textEditor.fullRange(), bookmarkType);
+
+  for (let i = 0; i < markers.length; i++) {
+    const position = markers[i].position();
+    const text = markers[i]._marker.widgetNode.firstChild.textContent;
+    TestRunner.addResult('Line ' + position.startLine + ', Column ' + position.startColumn + ': ' + text);
+  }
 };

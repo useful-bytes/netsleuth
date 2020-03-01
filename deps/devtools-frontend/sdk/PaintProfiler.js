@@ -28,9 +28,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-SDK.PaintProfilerModel = class extends SDK.SDKModel {
+import {Capability, SDKModel, Target} from './SDKModel.js';  // eslint-disable-line no-unused-vars
+
+export class PaintProfilerModel extends SDKModel {
   /**
-   * @param {!SDK.Target} target
+   * @param {!Target} target
    */
   constructor(target) {
     super(target);
@@ -38,43 +40,36 @@ SDK.PaintProfilerModel = class extends SDK.SDKModel {
   }
 
   /**
-   * @param {!Array.<!SDK.PictureFragment>} fragments
-   * @return {!Promise<?SDK.PaintProfilerSnapshot>}
+   * @param {!Array.<!PictureFragment>} fragments
+   * @return {!Promise<?PaintProfilerSnapshot>}
    */
   async loadSnapshotFromFragments(fragments) {
-    var snapshotId = await this._layerTreeAgent.loadSnapshot(fragments);
-    return snapshotId && new SDK.PaintProfilerSnapshot(this, snapshotId);
+    const snapshotId = await this._layerTreeAgent.loadSnapshot(fragments);
+    return snapshotId && new PaintProfilerSnapshot(this, snapshotId);
   }
 
   /**
    * @param {string} encodedPicture
-   * @return {!Promise<?SDK.PaintProfilerSnapshot>}
+   * @return {!Promise<?PaintProfilerSnapshot>}
    */
   loadSnapshot(encodedPicture) {
-    var fragment = {x: 0, y: 0, picture: encodedPicture};
+    const fragment = {x: 0, y: 0, picture: encodedPicture};
     return this.loadSnapshotFromFragments([fragment]);
   }
 
   /**
    * @param {string} layerId
-   * @return {!Promise<?SDK.PaintProfilerSnapshot>}
+   * @return {!Promise<?PaintProfilerSnapshot>}
    */
   async makeSnapshot(layerId) {
-    var snapshotId = await this._layerTreeAgent.makeSnapshot(layerId);
-    return snapshotId && new SDK.PaintProfilerSnapshot(this, snapshotId);
+    const snapshotId = await this._layerTreeAgent.makeSnapshot(layerId);
+    return snapshotId && new PaintProfilerSnapshot(this, snapshotId);
   }
-};
+}
 
-SDK.SDKModel.register(SDK.PaintProfilerModel, SDK.Target.Capability.DOM, false);
-
-/**
- * @typedef {!{x: number, y: number, picture: string}}
- */
-SDK.PictureFragment;
-
-SDK.PaintProfilerSnapshot = class {
+export class PaintProfilerSnapshot {
   /**
-   * @param {!SDK.PaintProfilerModel} paintProfilerModel
+   * @param {!PaintProfilerModel} paintProfilerModel
    * @param {string} snapshotId
    */
   constructor(paintProfilerModel, snapshotId) {
@@ -85,8 +80,9 @@ SDK.PaintProfilerSnapshot = class {
 
   release() {
     console.assert(this._refCount > 0, 'release is already called on the object');
-    if (!--this._refCount)
+    if (!--this._refCount) {
       this._paintProfilerModel._layerTreeAgent.releaseSnapshot(this._id);
+    }
   }
 
   addReference() {
@@ -113,25 +109,21 @@ SDK.PaintProfilerSnapshot = class {
   }
 
   /**
-   * @return {!Promise<?Array<!SDK.PaintProfilerLogItem>>}
+   * @return {!Promise<?Array<!PaintProfilerLogItem>>}
    */
   async commandLog() {
-    var log = await this._paintProfilerModel._layerTreeAgent.snapshotCommandLog(this._id);
-    return log && log.map((entry, index) => new SDK.PaintProfilerLogItem(entry, index));
+    const log = await this._paintProfilerModel._layerTreeAgent.snapshotCommandLog(this._id);
+    return log &&
+        log.map((entry, index) => new PaintProfilerLogItem(/** @type {!RawPaintProfilerLogItem} */ (entry), index));
   }
-};
-
-/**
- * @typedef {!{method: string, params: ?Object<string, *>}}
- */
-SDK.RawPaintProfilerLogItem;
+}
 
 /**
  * @unrestricted
  */
-SDK.PaintProfilerLogItem = class {
+export class PaintProfilerLogItem {
   /**
-   * @param {!SDK.RawPaintProfilerLogItem} rawEntry
+   * @param {!RawPaintProfilerLogItem} rawEntry
    * @param {number} commandIndex
    */
   constructor(rawEntry, commandIndex) {
@@ -139,4 +131,23 @@ SDK.PaintProfilerLogItem = class {
     this.params = rawEntry.params;
     this.commandIndex = commandIndex;
   }
-};
+}
+
+SDKModel.register(PaintProfilerModel, Capability.DOM, false);
+
+/** @typedef {!{
+        rect: !Protocol.DOM.Rect,
+        snapshot: !PaintProfilerSnapshot
+    }}
+*/
+export let SnapshotWithRect;
+
+/**
+ * @typedef {!{x: number, y: number, picture: string}}
+ */
+export let PictureFragment;
+
+/**
+ * @typedef {!{method: string, params: ?Object<string, *>}}
+ */
+export let RawPaintProfilerLogItem;

@@ -1,13 +1,14 @@
-/*
- * Copyright 2014 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file.
- */
+// Copyright 2014 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as UI from '../ui/ui.js';
 
 /**
  * @unrestricted
  */
-LayerViewer.TransformController = class extends Common.Object {
+export class TransformController extends Common.ObjectWrapper.ObjectWrapper {
   /**
    * @param {!Element} element
    * @param {boolean=} disableRotate
@@ -16,80 +17,65 @@ LayerViewer.TransformController = class extends Common.Object {
     super();
     this._shortcuts = {};
     this.element = element;
-    if (this.element.tabIndex < 0)
-      this.element.tabIndex = 0;
     this._registerShortcuts();
-    UI.installDragHandle(
+    UI.UIUtils.installDragHandle(
         element, this._onDragStart.bind(this), this._onDrag.bind(this), this._onDragEnd.bind(this), 'move', null);
     element.addEventListener('keydown', this._onKeyDown.bind(this), false);
-    element.addEventListener('keyup', this._onKeyUp.bind(this), false);
     element.addEventListener('mousewheel', this._onMouseWheel.bind(this), false);
     this._minScale = 0;
     this._maxScale = Infinity;
 
-    this._controlPanelToolbar = new UI.Toolbar('transform-control-panel');
+    this._controlPanelToolbar = new UI.Toolbar.Toolbar('transform-control-panel');
 
-    /** @type {!Object<string, !UI.ToolbarToggle>} */
+    /** @type {!Object<string, !UI.Toolbar.ToolbarToggle>} */
     this._modeButtons = {};
     if (!disableRotate) {
-      var panModeButton = new UI.ToolbarToggle(Common.UIString('Pan mode (X)'), 'largeicon-pan');
-      panModeButton.addEventListener(
-          UI.ToolbarButton.Events.Click, this._setMode.bind(this, LayerViewer.TransformController.Modes.Pan));
-      this._modeButtons[LayerViewer.TransformController.Modes.Pan] = panModeButton;
+      const panModeButton = new UI.Toolbar.ToolbarToggle(Common.UIString.UIString('Pan mode (X)'), 'largeicon-pan');
+      panModeButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this._setMode.bind(this, Modes.Pan));
+      this._modeButtons[Modes.Pan] = panModeButton;
       this._controlPanelToolbar.appendToolbarItem(panModeButton);
-      var rotateModeButton = new UI.ToolbarToggle(Common.UIString('Rotate mode (V)'), 'largeicon-rotate');
-      rotateModeButton.addEventListener(
-          UI.ToolbarButton.Events.Click, this._setMode.bind(this, LayerViewer.TransformController.Modes.Rotate));
-      this._modeButtons[LayerViewer.TransformController.Modes.Rotate] = rotateModeButton;
+      const rotateModeButton =
+          new UI.Toolbar.ToolbarToggle(Common.UIString.UIString('Rotate mode (V)'), 'largeicon-rotate');
+      rotateModeButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this._setMode.bind(this, Modes.Rotate));
+      this._modeButtons[Modes.Rotate] = rotateModeButton;
       this._controlPanelToolbar.appendToolbarItem(rotateModeButton);
     }
-    this._setMode(LayerViewer.TransformController.Modes.Pan);
+    this._setMode(Modes.Pan);
 
-    var resetButton = new UI.ToolbarButton(Common.UIString('Reset transform (0)'), 'largeicon-center');
-    resetButton.addEventListener(UI.ToolbarButton.Events.Click, this.resetAndNotify.bind(this, undefined));
+    const resetButton =
+        new UI.Toolbar.ToolbarButton(Common.UIString.UIString('Reset transform (0)'), 'largeicon-center');
+    resetButton.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, this.resetAndNotify.bind(this, undefined));
     this._controlPanelToolbar.appendToolbarItem(resetButton);
 
     this._reset();
   }
 
   /**
-   * @return {!UI.Toolbar}
+   * @return {!UI.Toolbar.Toolbar}
    */
   toolbar() {
     return this._controlPanelToolbar;
   }
 
   _onKeyDown(event) {
-    if (event.keyCode === UI.KeyboardShortcut.Keys.Shift.code) {
-      this._toggleMode();
-      return;
-    }
-
-    var shortcutKey = UI.KeyboardShortcut.makeKeyFromEventIgnoringModifiers(event);
-    var handler = this._shortcuts[shortcutKey];
-    if (handler && handler(event))
+    const shortcutKey = UI.KeyboardShortcut.KeyboardShortcut.makeKeyFromEventIgnoringModifiers(event);
+    const handler = this._shortcuts[shortcutKey];
+    if (handler && handler(event)) {
       event.consume();
-  }
-
-  _onKeyUp(event) {
-    if (event.keyCode === UI.KeyboardShortcut.Keys.Shift.code)
-      this._toggleMode();
+    }
   }
 
   _addShortcuts(keys, handler) {
-    for (var i = 0; i < keys.length; ++i)
+    for (let i = 0; i < keys.length; ++i) {
       this._shortcuts[keys[i].key] = handler;
+    }
   }
 
   _registerShortcuts() {
     this._addShortcuts(UI.ShortcutsScreen.LayersPanelShortcuts.ResetView, this.resetAndNotify.bind(this));
-    this._addShortcuts(
-        UI.ShortcutsScreen.LayersPanelShortcuts.PanMode,
-        this._setMode.bind(this, LayerViewer.TransformController.Modes.Pan));
-    this._addShortcuts(
-        UI.ShortcutsScreen.LayersPanelShortcuts.RotateMode,
-        this._setMode.bind(this, LayerViewer.TransformController.Modes.Rotate));
-    var zoomFactor = 1.1;
+    this._addShortcuts(UI.ShortcutsScreen.LayersPanelShortcuts.PanMode, this._setMode.bind(this, Modes.Pan));
+    this._addShortcuts(UI.ShortcutsScreen.LayersPanelShortcuts.RotateMode, this._setMode.bind(this, Modes.Rotate));
+    const zoomFactor = 1.1;
     this._addShortcuts(UI.ShortcutsScreen.LayersPanelShortcuts.ZoomIn, this._onKeyboardZoom.bind(this, zoomFactor));
     this._addShortcuts(
         UI.ShortcutsScreen.LayersPanelShortcuts.ZoomOut, this._onKeyboardZoom.bind(this, 1 / zoomFactor));
@@ -100,7 +86,7 @@ LayerViewer.TransformController = class extends Common.Object {
   }
 
   _postChangeEvent() {
-    this.dispatchEventToListeners(LayerViewer.TransformController.Events.TransformChanged);
+    this.dispatchEventToListeners(Events.TransformChanged);
   }
 
   _reset() {
@@ -111,26 +97,21 @@ LayerViewer.TransformController = class extends Common.Object {
     this._rotateY = 0;
   }
 
-  _toggleMode() {
-    this._setMode(
-        this._mode === LayerViewer.TransformController.Modes.Pan ? LayerViewer.TransformController.Modes.Rotate :
-                                                                   LayerViewer.TransformController.Modes.Pan);
-  }
-
   /**
-   * @param {!LayerViewer.TransformController.Modes} mode
+   * @param {!Modes} mode
    */
   _setMode(mode) {
-    if (this._mode === mode)
+    if (this._mode === mode) {
       return;
+    }
     this._mode = mode;
     this._updateModeButtons();
-    this.element.focus();
   }
 
   _updateModeButtons() {
-    for (var mode in this._modeButtons)
+    for (const mode in this._modeButtons) {
       this._modeButtons[mode].setToggled(mode === this._mode);
+    }
   }
 
   /**
@@ -139,8 +120,9 @@ LayerViewer.TransformController = class extends Common.Object {
   resetAndNotify(event) {
     this._reset();
     this._postChangeEvent();
-    if (event)
+    if (event) {
       event.preventDefault();
+    }
     this.element.focus();
   }
 
@@ -245,10 +227,10 @@ LayerViewer.TransformController = class extends Common.Object {
    * @param {number} yMultiplier
    */
   _onKeyboardPanOrRotate(xMultiplier, yMultiplier) {
-    var panStepInPixels = 6;
-    var rotateStepInDegrees = 5;
+    const panStepInPixels = 6;
+    const rotateStepInDegrees = 5;
 
-    if (this._mode === LayerViewer.TransformController.Modes.Rotate) {
+    if (this._mode === Modes.Rotate) {
       // Sic! _onRotate treats X and Y as "rotate around X" and "rotate around Y", so swap X/Y multiplers.
       this._onRotate(
           this._rotateX + yMultiplier * rotateStepInDegrees, this._rotateY + xMultiplier * rotateStepInDegrees);
@@ -262,10 +244,10 @@ LayerViewer.TransformController = class extends Common.Object {
    */
   _onMouseWheel(event) {
     /** @const */
-    var zoomFactor = 1.1;
+    const zoomFactor = 1.1;
     /** @const */
-    var mouseWheelZoomSpeed = 1 / 120;
-    var scaleFactor = Math.pow(zoomFactor, event.wheelDeltaY * mouseWheelZoomSpeed);
+    const mouseWheelZoomSpeed = 1 / 120;
+    const scaleFactor = Math.pow(zoomFactor, event.wheelDeltaY * mouseWheelZoomSpeed);
     this._onScale(
         scaleFactor, event.clientX - this.element.totalOffsetLeft(), event.clientY - this.element.totalOffsetTop());
   }
@@ -274,7 +256,7 @@ LayerViewer.TransformController = class extends Common.Object {
    * @param {!Event} event
    */
   _onDrag(event) {
-    if (this._mode === LayerViewer.TransformController.Modes.Rotate) {
+    if (this._mode === Modes.Rotate) {
       this._onRotate(
           this._oldRotateX + (this._originY - event.clientY) / this.element.clientHeight * 180,
           this._oldRotateY - (this._originX - event.clientX) / this.element.clientWidth * 180);
@@ -303,17 +285,17 @@ LayerViewer.TransformController = class extends Common.Object {
     delete this._oldRotateX;
     delete this._oldRotateY;
   }
-};
+}
 
 /** @enum {symbol} */
-LayerViewer.TransformController.Events = {
+export const Events = {
   TransformChanged: Symbol('TransformChanged')
 };
 
 /**
  * @enum {string}
  */
-LayerViewer.TransformController.Modes = {
+export const Modes = {
   Pan: 'Pan',
   Rotate: 'Rotate',
 };

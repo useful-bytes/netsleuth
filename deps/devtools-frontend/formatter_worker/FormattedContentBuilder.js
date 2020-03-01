@@ -1,16 +1,18 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
 /**
  * @unrestricted
  */
-FormatterWorker.FormattedContentBuilder = class {
+export class FormattedContentBuilder {
   /**
    * @param {string} indentString
    */
   constructor(indentString) {
     this._lastOriginalPosition = 0;
 
+    /** @type {!Array.<string>} */
     this._formattedContent = [];
     this._formattedContentLength = 0;
     this._lastFormattedPosition = 0;
@@ -23,6 +25,7 @@ FormatterWorker.FormattedContentBuilder = class {
     /** @type {!Map<number, string>} */
     this._cachedIndents = new Map();
 
+    /** @type {number} */
     this._newLines = 0;
     this._softSpace = false;
     this._hardSpaces = 0;
@@ -34,7 +37,7 @@ FormatterWorker.FormattedContentBuilder = class {
    * @return {boolean}
    */
   setEnforceSpaceBetweenWords(value) {
-    var oldValue = this._enforceSpaceBetweenWords;
+    const oldValue = this._enforceSpaceBetweenWords;
     this._enforceSpaceBetweenWords = value;
     return oldValue;
   }
@@ -44,9 +47,10 @@ FormatterWorker.FormattedContentBuilder = class {
    * @param {number} offset
    */
   addToken(token, offset) {
-    var last = this._formattedContent.peekLast();
-    if (this._enforceSpaceBetweenWords && last && /\w/.test(last[last.length - 1]) && /\w/.test(token))
+    const last = this._formattedContent.peekLast();
+    if (this._enforceSpaceBetweenWords && last && /\w/.test(last[last.length - 1]) && /\w/.test(token)) {
       this.addSoftSpace();
+    }
 
     this._appendFormatting();
 
@@ -56,8 +60,9 @@ FormatterWorker.FormattedContentBuilder = class {
   }
 
   addSoftSpace() {
-    if (!this._hardSpaces)
+    if (!this._hardSpaces) {
       this._softSpace = true;
+    }
   }
 
   addHardSpace() {
@@ -70,12 +75,14 @@ FormatterWorker.FormattedContentBuilder = class {
    */
   addNewLine(noSquash) {
     // Avoid leading newlines.
-    if (!this._formattedContentLength)
+    if (!this._formattedContentLength) {
       return;
-    if (noSquash)
+    }
+    if (noSquash) {
       ++this._newLines;
-    else
+    } else {
       this._newLines = this._newLines || 1;
+    }
   }
 
   increaseNestingLevel() {
@@ -83,21 +90,24 @@ FormatterWorker.FormattedContentBuilder = class {
   }
 
   decreaseNestingLevel() {
-    if (this._nestingLevel > 0)
+    if (this._nestingLevel > 0) {
       this._nestingLevel -= 1;
+    }
   }
 
   _appendFormatting() {
     if (this._newLines) {
-      for (var i = 0; i < this._newLines; ++i)
+      for (let i = 0; i < this._newLines; ++i) {
         this._addText('\n');
+      }
       this._addText(this._indent());
     } else if (this._softSpace) {
       this._addText(' ');
     }
     if (this._hardSpaces) {
-      for (var i = 0; i < this._hardSpaces; ++i)
+      for (let i = 0; i < this._hardSpaces; ++i) {
         this._addText(' ');
+      }
     }
     this._newLines = 0;
     this._softSpace = false;
@@ -122,17 +132,20 @@ FormatterWorker.FormattedContentBuilder = class {
    * @return {string}
    */
   _indent() {
-    var cachedValue = this._cachedIndents.get(this._nestingLevel);
-    if (cachedValue)
+    const cachedValue = this._cachedIndents.get(this._nestingLevel);
+    if (cachedValue) {
       return cachedValue;
+    }
 
-    var fullIndent = '';
-    for (var i = 0; i < this._nestingLevel; ++i)
+    let fullIndent = '';
+    for (let i = 0; i < this._nestingLevel; ++i) {
       fullIndent += this._indentString;
+    }
 
     // Cache a maximum of 20 nesting level indents.
-    if (this._nestingLevel <= 20)
+    if (this._nestingLevel <= 20) {
       this._cachedIndents.set(this._nestingLevel, fullIndent);
+    }
     return fullIndent;
   }
 
@@ -148,11 +161,12 @@ FormatterWorker.FormattedContentBuilder = class {
    * @param {number} originalPosition
    */
   _addMappingIfNeeded(originalPosition) {
-    if (originalPosition - this._lastOriginalPosition === this._formattedContentLength - this._lastFormattedPosition)
+    if (originalPosition - this._lastOriginalPosition === this._formattedContentLength - this._lastFormattedPosition) {
       return;
+    }
     this._mapping.original.push(originalPosition);
     this._lastOriginalPosition = originalPosition;
     this._mapping.formatted.push(this._formattedContentLength);
     this._lastFormattedPosition = this._formattedContentLength;
   }
-};
+}

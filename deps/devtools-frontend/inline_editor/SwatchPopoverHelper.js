@@ -1,13 +1,17 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
  */
-InlineEditor.SwatchPopoverHelper = class extends Common.Object {
+export class SwatchPopoverHelper extends Common.ObjectWrapper.ObjectWrapper {
   constructor() {
     super();
-    this._popover = new UI.GlassPane();
+    this._popover = new UI.GlassPane.GlassPane();
     this._popover.registerRequiredCSS('inline_editor/swatchPopover.css');
     this._popover.setSizeBehavior(UI.GlassPane.SizeBehavior.MeasureContent);
     this._popover.setMarginBehavior(UI.GlassPane.MarginBehavior.Arrow);
@@ -23,8 +27,9 @@ InlineEditor.SwatchPopoverHelper = class extends Common.Object {
    * @param {!Event} event
    */
   _onFocusOut(event) {
-    if (!event.relatedTarget || event.relatedTarget.isSelfOrDescendant(this._view.contentElement))
+    if (!event.relatedTarget || event.relatedTarget.isSelfOrDescendant(this._view.contentElement)) {
       return;
+    }
     this._hideProxy();
   }
 
@@ -36,14 +41,15 @@ InlineEditor.SwatchPopoverHelper = class extends Common.Object {
   }
 
   /**
-   * @param {!UI.Widget} view
+   * @param {!UI.Widget.Widget} view
    * @param {!Element} anchorElement
    * @param {function(boolean)=} hiddenCallback
    */
   show(view, anchorElement, hiddenCallback) {
     if (this._popover.isShowing()) {
-      if (this._anchorElement === anchorElement)
+      if (this._anchorElement === anchorElement) {
         return;
+      }
 
       // Reopen the picker for another anchor element.
       this.hide(true);
@@ -56,7 +62,7 @@ InlineEditor.SwatchPopoverHelper = class extends Common.Object {
     this.reposition();
     view.focus();
 
-    var document = this._popover.element.ownerDocument;
+    const document = this._popover.element.ownerDocument;
     document.addEventListener('mousedown', this._hideProxy, false);
     document.defaultView.addEventListener('resize', this._hideProxy, false);
     this._view.contentElement.addEventListener('keydown', this._boundOnKeyDown, false);
@@ -69,25 +75,28 @@ InlineEditor.SwatchPopoverHelper = class extends Common.Object {
     this._popover.setContentAnchorBox(this._anchorElement.boxInWindow());
     this._popover.show(this._anchorElement.ownerDocument);
     this._view.contentElement.addEventListener('focusout', this._boundFocusOut, false);
-    if (!this._focusRestorer)
-      this._focusRestorer = new UI.WidgetFocusRestorer(this._view);
+    if (!this._focusRestorer) {
+      this._focusRestorer = new UI.Widget.WidgetFocusRestorer(this._view);
+    }
   }
 
   /**
    * @param {boolean=} commitEdit
    */
   hide(commitEdit) {
-    if (this._isHidden)
+    if (this._isHidden) {
       return;
-    var document = this._popover.element.ownerDocument;
+    }
+    const document = this._popover.element.ownerDocument;
     this._isHidden = true;
     this._popover.hide();
 
     document.removeEventListener('mousedown', this._hideProxy, false);
     document.defaultView.removeEventListener('resize', this._hideProxy, false);
 
-    if (this._hiddenCallback)
+    if (this._hiddenCallback) {
       this._hiddenCallback.call(null, !!commitEdit);
+    }
 
     this._focusRestorer.restore();
     delete this._anchorElement;
@@ -113,4 +122,4 @@ InlineEditor.SwatchPopoverHelper = class extends Common.Object {
       event.consume(true);
     }
   }
-};
+}

@@ -2,8 +2,12 @@
     "dependencies": [
         "platform"
     ],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "text_utils.js",
+        "text_utils-legacy.js",
         "Text.js",
+        "TextCursor.js",
         "TextUtils.js",
         "TextRange.js"
     ]

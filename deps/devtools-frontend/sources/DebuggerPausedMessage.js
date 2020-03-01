@@ -1,14 +1,21 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Bindings from '../bindings/bindings.js';  // eslint-disable-line no-unused-vars
+import * as Common from '../common/common.js';
+import * as SDK from '../sdk/sdk.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
  */
-Sources.DebuggerPausedMessage = class {
+export class DebuggerPausedMessage {
   constructor() {
     this._element = createElementWithClass('div', 'paused-message flex-none');
-    var root = UI.createShadowRootWithCoreStyles(this._element, 'sources/debuggerPausedMessage.css');
-    this._contentElement = root.createChild('div', 'paused-status');
+    const root = UI.Utils.createShadowRootWithCoreStyles(this._element, 'sources/debuggerPausedMessage.css');
+    this._contentElement = root.createChild('div');
+    UI.ARIAUtils.markAsPoliteLiveRegion(this._element, false);
   }
 
   /**
@@ -19,52 +26,107 @@ Sources.DebuggerPausedMessage = class {
   }
 
   /**
-   * @param {?SDK.DebuggerPausedDetails} details
-   * @param {!Bindings.DebuggerWorkspaceBinding} debuggerWorkspaceBinding
-   * @param {!Bindings.BreakpointManager} breakpointManager
+   * @param {string} description
    */
-  render(details, debuggerWorkspaceBinding, breakpointManager) {
-    var status = this._contentElement;
-    status.hidden = !details;
-    status.removeChildren();
-    if (!details)
-      return;
+  static _descriptionWithoutStack(description) {
+    const firstCallFrame = /^\s+at\s/m.exec(description);
+    return firstCallFrame ? description.substring(0, firstCallFrame.index - 1) :
+                            description.substring(0, description.lastIndexOf('\n'));
+  }
 
-    var errorLike = details.reason === SDK.DebuggerModel.BreakReason.Exception ||
+  /**
+   * @param {!SDK.DebuggerModel.DebuggerPausedDetails} details
+   * @return {!Promise<!Element>}
+   */
+  static async _createDOMBreakpointHitMessage(details) {
+    const messageWrapper = createElement('span');
+    const domDebuggerModel = details.debuggerModel.target().model(SDK.DOMDebuggerModel.DOMDebuggerModel);
+    if (!details.auxData || !domDebuggerModel) {
+      return messageWrapper;
+    }
+    const data = domDebuggerModel.resolveDOMBreakpointData(/** @type {!Object} */ (details.auxData));
+    if (!data) {
+      return messageWrapper;
+    }
+
+    const mainElement = messageWrapper.createChild('div', 'status-main');
+    mainElement.appendChild(UI.Icon.Icon.create('smallicon-info', 'status-icon'));
+    const breakpointType = BreakpointTypeNouns.get(data.type);
+    mainElement.appendChild(createTextNode(ls`Paused on ${breakpointType}`));
+
+    const subElement = messageWrapper.createChild('div', 'status-sub monospace');
+    const linkifiedNode = await Common.Linkifier.Linkifier.linkify(data.node);
+    subElement.appendChild(linkifiedNode);
+
+    if (data.targetNode) {
+      const targetNodeLink = await Common.Linkifier.Linkifier.linkify(data.targetNode);
+      let messageElement;
+      if (data.insertion) {
+        if (data.targetNode === data.node) {
+          messageElement = UI.UIUtils.formatLocalized('Child %s added', [targetNodeLink]);
+        } else {
+          messageElement = UI.UIUtils.formatLocalized('Descendant %s added', [targetNodeLink]);
+        }
+      } else {
+        messageElement = UI.UIUtils.formatLocalized('Descendant %s removed', [targetNodeLink]);
+      }
+      subElement.appendChild(createElement('br'));
+      subElement.appendChild(messageElement);
+    }
+    return messageWrapper;
+  }
+
+  /**
+   * @param {?SDK.DebuggerModel.DebuggerPausedDetails} details
+   * @param {!Bindings.DebuggerWorkspaceBinding.DebuggerWorkspaceBinding} debuggerWorkspaceBinding
+   * @param {!Bindings.BreakpointManager.BreakpointManager} breakpointManager
+   * @return {!Promise}
+   */
+  async render(details, debuggerWorkspaceBinding, breakpointManager) {
+    this._contentElement.removeChildren();
+    this._contentElement.hidden = !details;
+    if (!details) {
+      return;
+    }
+
+    const status = this._contentElement.createChild('div', 'paused-status');
+
+    const errorLike = details.reason === SDK.DebuggerModel.BreakReason.Exception ||
         details.reason === SDK.DebuggerModel.BreakReason.PromiseRejection ||
         details.reason === SDK.DebuggerModel.BreakReason.Assert || details.reason === SDK.DebuggerModel.BreakReason.OOM;
-    var messageWrapper;
+    let messageWrapper;
     if (details.reason === SDK.DebuggerModel.BreakReason.DOM) {
-      messageWrapper = Components.DOMBreakpointsSidebarPane.createBreakpointHitMessage(details);
+      messageWrapper = await DebuggerPausedMessage._createDOMBreakpointHitMessage(details);
     } else if (details.reason === SDK.DebuggerModel.BreakReason.EventListener) {
-      var eventNameForUI = '';
+      let eventNameForUI = '';
       if (details.auxData) {
         eventNameForUI =
-            SDK.domDebuggerManager.resolveEventListenerBreakpointTitle(/** @type {!Object} */ (details.auxData));
+            self.SDK.domDebuggerManager.resolveEventListenerBreakpointTitle(/** @type {!Object} */ (details.auxData));
       }
-      messageWrapper = buildWrapper(Common.UIString('Paused on event listener'), eventNameForUI);
+      messageWrapper = buildWrapper(Common.UIString.UIString('Paused on event listener'), eventNameForUI);
     } else if (details.reason === SDK.DebuggerModel.BreakReason.XHR) {
-      messageWrapper = buildWrapper(Common.UIString('Paused on XMLHttpRequest'), details.auxData['url'] || '');
+      messageWrapper = buildWrapper(Common.UIString.UIString('Paused on XHR or fetch'), details.auxData['url'] || '');
     } else if (details.reason === SDK.DebuggerModel.BreakReason.Exception) {
-      var description = details.auxData['description'] || details.auxData['value'] || '';
-      var descriptionFirstLine = description.split('\n', 1)[0];
-      messageWrapper = buildWrapper(Common.UIString('Paused on exception'), descriptionFirstLine, description);
+      const description = details.auxData['description'] || details.auxData['value'] || '';
+      const descriptionWithoutStack = DebuggerPausedMessage._descriptionWithoutStack(description);
+      messageWrapper =
+          buildWrapper(Common.UIString.UIString('Paused on exception'), descriptionWithoutStack, description);
     } else if (details.reason === SDK.DebuggerModel.BreakReason.PromiseRejection) {
-      var description = details.auxData['description'] || details.auxData['value'] || '';
-      var descriptionFirstLine = description.split('\n', 1)[0];
-      messageWrapper = buildWrapper(Common.UIString('Paused on promise rejection'), descriptionFirstLine, description);
+      const description = details.auxData['description'] || details.auxData['value'] || '';
+      const descriptionWithoutStack = DebuggerPausedMessage._descriptionWithoutStack(description);
+      messageWrapper =
+          buildWrapper(Common.UIString.UIString('Paused on promise rejection'), descriptionWithoutStack, description);
     } else if (details.reason === SDK.DebuggerModel.BreakReason.Assert) {
-      messageWrapper = buildWrapper(Common.UIString('Paused on assertion'));
+      messageWrapper = buildWrapper(Common.UIString.UIString('Paused on assertion'));
     } else if (details.reason === SDK.DebuggerModel.BreakReason.DebugCommand) {
-      messageWrapper = buildWrapper(Common.UIString('Paused on debugged function'));
+      messageWrapper = buildWrapper(Common.UIString.UIString('Paused on debugged function'));
     } else if (details.reason === SDK.DebuggerModel.BreakReason.OOM) {
-      messageWrapper = buildWrapper(Common.UIString('Paused before potential out-of-memory crash'));
+      messageWrapper = buildWrapper(Common.UIString.UIString('Paused before potential out-of-memory crash'));
     } else if (details.callFrames.length) {
-      var uiLocation = debuggerWorkspaceBinding.rawLocationToUILocation(details.callFrames[0].location());
-      var breakpoint = uiLocation ?
-          breakpointManager.findBreakpoint(uiLocation.uiSourceCode, uiLocation.lineNumber, uiLocation.columnNumber) :
-          null;
-      var defaultText = breakpoint ? Common.UIString('Paused on breakpoint') : Common.UIString('Debugger paused');
+      const uiLocation = await debuggerWorkspaceBinding.rawLocationToUILocation(details.callFrames[0].location());
+      const breakpoint = uiLocation ? breakpointManager.findBreakpoint(uiLocation) : null;
+      const defaultText =
+          breakpoint ? Common.UIString.UIString('Paused on breakpoint') : Common.UIString.UIString('Debugger paused');
       messageWrapper = buildWrapper(defaultText);
     } else {
       console.warn(
@@ -72,8 +134,9 @@ Sources.DebuggerPausedMessage = class {
     }
 
     status.classList.toggle('error-reason', errorLike);
-    if (messageWrapper)
+    if (messageWrapper) {
       status.appendChild(messageWrapper);
+    }
 
     /**
      * @param  {string} mainText
@@ -82,17 +145,23 @@ Sources.DebuggerPausedMessage = class {
      * @return {!Element}
      */
     function buildWrapper(mainText, subText, title) {
-      var messageWrapper = createElement('span');
-      var mainElement = messageWrapper.createChild('div', 'status-main');
-      var icon = UI.Icon.create(errorLike ? 'smallicon-error' : 'smallicon-info', 'status-icon');
+      const messageWrapper = createElement('span');
+      const mainElement = messageWrapper.createChild('div', 'status-main');
+      const icon = UI.Icon.Icon.create(errorLike ? 'smallicon-error' : 'smallicon-info', 'status-icon');
       mainElement.appendChild(icon);
       mainElement.appendChild(createTextNode(mainText));
       if (subText) {
-        var subElement = messageWrapper.createChild('div', 'status-sub monospace');
+        const subElement = messageWrapper.createChild('div', 'status-sub monospace');
         subElement.textContent = subText;
         subElement.title = title || subText;
       }
       return messageWrapper;
     }
   }
-};
+}
+
+export const BreakpointTypeNouns = new Map([
+  [Protocol.DOMDebugger.DOMBreakpointType.SubtreeModified, Common.UIString.UIString('subtree modifications')],
+  [Protocol.DOMDebugger.DOMBreakpointType.AttributeModified, Common.UIString.UIString('attribute modifications')],
+  [Protocol.DOMDebugger.DOMBreakpointType.NodeRemoved, Common.UIString.UIString('node removal')],
+]);

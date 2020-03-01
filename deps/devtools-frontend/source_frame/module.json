@@ -40,13 +40,16 @@
         "object_ui",
         "workspace_diff"
     ],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "source_frame.js",
+        "source_frame-legacy.js",
+        "BinaryResourceViewFactory.js",
         "SourcesTextEditor.js",
         "FontView.js",
         "ImageView.js",
         "SourceFrame.js",
         "ResourceSourceFrame.js",
-        "UISourceCodeFrame.js",
         "JSONView.js",
         "XMLView.js",
         "PreviewFactory.js",
@@ -55,8 +58,10 @@
     "resources": [
         "fontView.css",
         "imageView.css",
+        "jsonView.css",
         "messagesPopover.css",
         "xmlTree.css",
-        "xmlView.css"
+        "xmlView.css",
+        "resourceSourceFrame.css"
     ]
 }

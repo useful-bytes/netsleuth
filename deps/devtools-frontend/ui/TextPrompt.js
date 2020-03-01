@@ -26,11 +26,19 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import * as Common from '../common/common.js';
+
+import * as ARIAUtils from './ARIAUtils.js';
+import {SuggestBox, SuggestBoxDelegate, Suggestion, Suggestions} from './SuggestBox.js';  // eslint-disable-line no-unused-vars
+import {ElementFocusRestorer} from './UIUtils.js';
+import {appendStyle} from './utils/append-style.js';
+
 /**
- * @implements {UI.SuggestBoxDelegate}
+ * @implements {SuggestBoxDelegate}
  * @unrestricted
  */
-UI.TextPrompt = class extends Common.Object {
+export class TextPrompt extends Common.ObjectWrapper.ObjectWrapper {
   constructor() {
     super();
     /**
@@ -38,18 +46,19 @@ UI.TextPrompt = class extends Common.Object {
      */
     this._proxyElement;
     this._proxyElementDisplay = 'inline-block';
-    this._autocompletionTimeout = UI.TextPrompt.DefaultAutocompletionTimeout;
+    this._autocompletionTimeout = DefaultAutocompletionTimeout;
     this._title = '';
     this._queryRange = null;
     this._previousText = '';
-    this._currentSuggestion = '';
+    this._currentSuggestion = null;
     this._completionRequestId = 0;
     this._ghostTextElement = createElementWithClass('span', 'auto-complete-text');
     this._ghostTextElement.setAttribute('contenteditable', 'false');
+    ARIAUtils.markAsHidden(this._ghostTextElement);
   }
 
   /**
-   * @param {(function(string, string, boolean=):!Promise<!UI.SuggestBox.Suggestions>)} completions
+   * @param {(function(this:null, string, string, boolean=):!Promise<!Suggestions>)} completions
    * @param {string=} stopCharacters
    */
   initialize(completions, stopCharacters) {
@@ -90,7 +99,7 @@ UI.TextPrompt = class extends Common.Object {
    * @return {!Element}
    */
   attachAndStartEditing(element, blurListener) {
-    var proxyElement = this._attachInternal(element);
+    const proxyElement = this._attachInternal(element);
     this._startEditing(blurListener);
     return proxyElement;
   }
@@ -100,8 +109,9 @@ UI.TextPrompt = class extends Common.Object {
    * @return {!Element}
    */
   _attachInternal(element) {
-    if (this._proxyElement)
+    if (this._proxyElement) {
       throw 'Cannot attach an attached TextPrompt';
+    }
     this._element = element;
 
     this._boundOnKeyDown = this.onKeyDown.bind(this);
@@ -109,13 +119,13 @@ UI.TextPrompt = class extends Common.Object {
     this._boundOnMouseWheel = this.onMouseWheel.bind(this);
     this._boundClearAutocomplete = this.clearAutocomplete.bind(this);
     this._proxyElement = element.ownerDocument.createElement('span');
-    var shadowRoot = UI.createShadowRootWithCoreStyles(this._proxyElement, 'ui/textPrompt.css');
-    this._contentElement = shadowRoot.createChild('div', 'text-prompt-root');
-    this._contentElement.createChild('content');
+    appendStyle(this._proxyElement, 'ui/textPrompt.css');
+    this._contentElement = this._proxyElement.createChild('div', 'text-prompt-root');
     this._proxyElement.style.display = this._proxyElementDisplay;
     element.parentElement.insertBefore(this._proxyElement, element);
-    this._proxyElement.appendChild(element);
+    this._contentElement.appendChild(element);
     this._element.classList.add('text-prompt');
+    ARIAUtils.markAsTextBox(this._element);
     this._element.setAttribute('contenteditable', 'plaintext-only');
     this._element.addEventListener('keydown', this._boundOnKeyDown, false);
     this._element.addEventListener('input', this._boundOnInput, false);
@@ -123,10 +133,11 @@ UI.TextPrompt = class extends Common.Object {
     this._element.addEventListener('selectstart', this._boundClearAutocomplete, false);
     this._element.addEventListener('blur', this._boundClearAutocomplete, false);
 
-    this._suggestBox = new UI.SuggestBox(this, 20, true);
+    this._suggestBox = new SuggestBox(this, 20);
 
-    if (this._title)
+    if (this._title) {
       this._proxyElement.title = this._title;
+    }
 
     return this._proxyElement;
   }
@@ -139,26 +150,28 @@ UI.TextPrompt = class extends Common.Object {
     delete this._proxyElement;
     this._element.classList.remove('text-prompt');
     this._element.removeAttribute('contenteditable');
+    this._element.removeAttribute('role');
   }
 
   /**
    * @return {string}
    */
   textWithCurrentSuggestion() {
-    var text = this.text();
-    if (!this._queryRange)
+    const text = this.text();
+    if (!this._queryRange || !this._currentSuggestion) {
       return text;
-    return text.substring(0, this._queryRange.startColumn) + this._currentSuggestion +
-        text.substring(this._queryRange.endColumn);
+    }
+    const suggestion = this._currentSuggestion.text;
+    return text.substring(0, this._queryRange.startColumn) + suggestion + text.substring(this._queryRange.endColumn);
   }
 
   /**
    * @return {string}
    */
   text() {
-    var text = this._element.textContent;
+    let text = this._element.textContent;
     if (this._ghostTextElement.parentNode) {
-      var addition = this._ghostTextElement.textContent;
+      const addition = this._ghostTextElement.textContent;
       text = text.substring(0, text.length - addition.length);
     }
     return text;
@@ -171,9 +184,14 @@ UI.TextPrompt = class extends Common.Object {
     this.clearAutocomplete();
     this._element.textContent = text;
     this._previousText = this.text();
+    if (this._element.hasFocus()) {
+      this.moveCaretToEndOfPrompt();
+      this._element.scrollIntoView();
+    }
+  }
 
-    this.moveCaretToEndOfPrompt();
-    this._element.scrollIntoView();
+  focus() {
+    this._element.focus();
   }
 
   /**
@@ -188,18 +206,37 @@ UI.TextPrompt = class extends Common.Object {
    */
   setTitle(title) {
     this._title = title;
-    if (this._proxyElement)
+    if (this._proxyElement) {
       this._proxyElement.title = title;
+    }
   }
 
   /**
    * @param {string} placeholder
+   * @param {string=} ariaPlaceholder
    */
-  setPlaceholder(placeholder) {
-    if (placeholder)
+  setPlaceholder(placeholder, ariaPlaceholder) {
+    if (placeholder) {
       this._element.setAttribute('data-placeholder', placeholder);
-    else
+      // TODO(https://github.com/nvaccess/nvda/issues/10164): Remove ariaPlaceholder once the NVDA bug is fixed
+      // ariaPlaceholder and placeholder may differ, like in case the placeholder contains a '?'
+      ARIAUtils.setPlaceholder(this._element, ariaPlaceholder || placeholder);
+    } else {
       this._element.removeAttribute('data-placeholder');
+      ARIAUtils.setPlaceholder(this._element, null);
+    }
+  }
+
+  /**
+   * @param {boolean} enabled
+   */
+  setEnabled(enabled) {
+    if (enabled) {
+      this._element.setAttribute('contenteditable', 'plaintext-only');
+    } else {
+      this._element.removeAttribute('contenteditable');
+    }
+    this._element.classList.toggle('disabled', !enabled);
   }
 
   _removeFromElement() {
@@ -208,10 +245,12 @@ UI.TextPrompt = class extends Common.Object {
     this._element.removeEventListener('input', this._boundOnInput, false);
     this._element.removeEventListener('selectstart', this._boundClearAutocomplete, false);
     this._element.removeEventListener('blur', this._boundClearAutocomplete, false);
-    if (this._isEditing)
+    if (this._isEditing) {
       this._stopEditing();
-    if (this._suggestBox)
+    }
+    if (this._suggestBox) {
       this._suggestBox.hide();
+    }
   }
 
   /**
@@ -225,17 +264,20 @@ UI.TextPrompt = class extends Common.Object {
       this._element.addEventListener('blur', this._blurListener, false);
     }
     this._oldTabIndex = this._element.tabIndex;
-    if (this._element.tabIndex < 0)
+    if (this._element.tabIndex < 0) {
       this._element.tabIndex = 0;
-    this._focusRestorer = new UI.ElementFocusRestorer(this._element);
-    if (!this.text())
+    }
+    this._focusRestorer = new ElementFocusRestorer(this._element);
+    if (!this.text()) {
       this.autoCompleteSoon();
+    }
   }
 
   _stopEditing() {
     this._element.tabIndex = this._oldTabIndex;
-    if (this._blurListener)
+    if (this._blurListener) {
       this._element.removeEventListener('blur', this._blurListener, false);
+    }
     this._contentElement.classList.remove('text-prompt-editing');
     delete this._isEditing;
   }
@@ -251,25 +293,34 @@ UI.TextPrompt = class extends Common.Object {
    * @param {!Event} event
    */
   onKeyDown(event) {
-    var handled = false;
+    let handled = false;
+    if (this.isSuggestBoxVisible() && this._suggestBox.keyPressed(event)) {
+      event.consume(true);
+      return;
+    }
 
     switch (event.key) {
       case 'Tab':
         handled = this.tabKeyPressed(event);
         break;
       case 'ArrowLeft':
+      case 'ArrowUp':
+      case 'PageUp':
       case 'Home':
         this.clearAutocomplete();
         break;
+      case 'PageDown':
       case 'ArrowRight':
+      case 'ArrowDown':
       case 'End':
-        if (this._isCaretAtEndOfPrompt())
+        if (this._isCaretAtEndOfPrompt()) {
           handled = this.acceptAutoComplete();
-        else
+        } else {
           this.clearAutocomplete();
+        }
         break;
       case 'Escape':
-        if (this._isSuggestBoxVisible()) {
+        if (this.isSuggestBoxVisible()) {
           this.clearAutocomplete();
           handled = true;
         }
@@ -280,31 +331,49 @@ UI.TextPrompt = class extends Common.Object {
           handled = true;
         }
         break;
-      case 'Alt':
-      case 'Meta':
-      case 'Shift':
-      case 'Control':
-        break;
     }
 
-    if (!handled && this._isSuggestBoxVisible())
-      handled = this._suggestBox.keyPressed(event);
+    if (isEnterKey(event)) {
+      event.preventDefault();
+    }
 
-    if (handled)
+    if (handled) {
       event.consume(true);
+    }
+  }
+
+  /**
+   * @param {string} key
+   * @return {boolean}
+   */
+  _acceptSuggestionOnStopCharacters(key) {
+    if (!this._currentSuggestion || !this._queryRange || key.length !== 1 ||
+        !this._completionStopCharacters.includes(key)) {
+      return false;
+    }
+
+    const query = this.text().substring(this._queryRange.startColumn, this._queryRange.endColumn);
+    if (query && this._currentSuggestion.text.startsWith(query + key)) {
+      this._queryRange.endColumn += 1;
+      return this.acceptAutoComplete();
+    }
+    return false;
   }
 
   /**
    * @param {!Event} event
    */
   onInput(event) {
-    var text = this.text();
-    var hasCommonPrefix = text.startsWith(this._previousText) || this._previousText.startsWith(text);
-    if (this._queryRange && hasCommonPrefix)
-      this._queryRange.endColumn += text.length - this._previousText.length;
+    const text = this.text();
+    if (event.data && !this._acceptSuggestionOnStopCharacters(event.data)) {
+      const hasCommonPrefix = text.startsWith(this._previousText) || this._previousText.startsWith(text);
+      if (this._queryRange && hasCommonPrefix) {
+        this._queryRange.endColumn += text.length - this._previousText.length;
+      }
+    }
     this._refreshGhostText();
     this._previousText = text;
-    this.dispatchEventToListeners(UI.TextPrompt.Events.TextChanged);
+    this.dispatchEventToListeners(Events.TextChanged);
 
     this.autoCompleteSoon();
   }
@@ -313,33 +382,41 @@ UI.TextPrompt = class extends Common.Object {
    * @return {boolean}
    */
   acceptAutoComplete() {
-    var result = false;
-    if (this._isSuggestBoxVisible())
+    let result = false;
+    if (this.isSuggestBoxVisible()) {
       result = this._suggestBox.acceptSuggestion();
-    if (!result)
+    }
+    if (!result) {
       result = this._acceptSuggestionInternal();
+    }
 
     return result;
   }
 
   clearAutocomplete() {
-    var beforeText = this.textWithCurrentSuggestion();
+    const beforeText = this.textWithCurrentSuggestion();
 
-    if (this._isSuggestBoxVisible())
+    if (this.isSuggestBoxVisible()) {
       this._suggestBox.hide();
+    }
     this._clearAutocompleteTimeout();
     this._queryRange = null;
     this._refreshGhostText();
 
-    if (beforeText !== this.textWithCurrentSuggestion())
-      this.dispatchEventToListeners(UI.TextPrompt.Events.TextChanged);
+    if (beforeText !== this.textWithCurrentSuggestion()) {
+      this.dispatchEventToListeners(Events.TextChanged);
+    }
   }
 
   _refreshGhostText() {
-    if (this._queryRange && this._isCaretAtEndOfPrompt() &&
-        this._currentSuggestion.startsWith(this.text().substring(this._queryRange.startColumn))) {
+    if (this._currentSuggestion && this._currentSuggestion.hideGhostText) {
+      this._ghostTextElement.remove();
+      return;
+    }
+    if (this._queryRange && this._currentSuggestion && this._isCaretAtEndOfPrompt() &&
+        this._currentSuggestion.text.startsWith(this.text().substring(this._queryRange.startColumn))) {
       this._ghostTextElement.textContent =
-          this._currentSuggestion.substring(this._queryRange.endColumn - this._queryRange.startColumn);
+          this._currentSuggestion.text.substring(this._queryRange.endColumn - this._queryRange.startColumn);
       this._element.appendChild(this._ghostTextElement);
     } else {
       this._ghostTextElement.remove();
@@ -358,7 +435,7 @@ UI.TextPrompt = class extends Common.Object {
    * @param {boolean=} force
    */
   autoCompleteSoon(force) {
-    var immediately = this._isSuggestBoxVisible() || force;
+    const immediately = this.isSuggestBoxVisible() || force;
     if (!this._completeTimeout) {
       this._completeTimeout =
           setTimeout(this.complete.bind(this, force), immediately ? 0 : this._autocompletionTimeout);
@@ -367,43 +444,37 @@ UI.TextPrompt = class extends Common.Object {
 
   /**
    * @param {boolean=} force
-   * @param {boolean=} reverse
    */
-  complete(force, reverse) {
+  async complete(force) {
     this._clearAutocompleteTimeout();
-    var selection = this._element.getComponentSelection();
-    var selectionRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
-    if (!selectionRange)
+    const selection = this._element.getComponentSelection();
+    const selectionRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    if (!selectionRange) {
       return;
+    }
 
-    var shouldExit;
+    let shouldExit;
 
-    if (!force && !this._isCaretAtEndOfPrompt() && !this._isSuggestBoxVisible()) {
+    if (!force && !this._isCaretAtEndOfPrompt() && !this.isSuggestBoxVisible()) {
       shouldExit = true;
     } else if (!selection.isCollapsed) {
       shouldExit = true;
-    } else if (!force) {
-      // BUG72018: Do not show suggest box if caret is followed by a non-stop character.
-      var wordSuffixRange = selectionRange.startContainer.rangeOfWord(
-          selectionRange.endOffset, this._completionStopCharacters, this._element, 'forward');
-      var autocompleteTextLength = this._ghostTextElement.parentNode ? this._ghostTextElement.textContent.length : 0;
-      if (wordSuffixRange.toString().length !== autocompleteTextLength)
-        shouldExit = true;
     }
+
     if (shouldExit) {
       this.clearAutocomplete();
       return;
     }
 
-    var wordQueryRange = selectionRange.startContainer.rangeOfWord(
+    const wordQueryRange = selectionRange.startContainer.rangeOfWord(
         selectionRange.startOffset, this._completionStopCharacters, this._element, 'backward');
 
-    var expressionRange = wordQueryRange.cloneRange();
+    const expressionRange = wordQueryRange.cloneRange();
     expressionRange.collapse(true);
-    expressionRange.setStartBefore(this._proxyElement);
-    this._loadCompletions(expressionRange.toString(), wordQueryRange.toString(), !!force)
-        .then(this._completionsReady.bind(
-            this, ++this._completionRequestId, selection, wordQueryRange, !!reverse, !!force));
+    expressionRange.setStartBefore(this._element);
+    const completionRequestId = ++this._completionRequestId;
+    const completions = await this._loadCompletions(expressionRange.toString(), wordQueryRange.toString(), !!force);
+    this._completionsReady(completionRequestId, selection, wordQueryRange, !!force, completions);
   }
 
   disableDefaultSuggestionForEmptyInput() {
@@ -415,11 +486,11 @@ UI.TextPrompt = class extends Common.Object {
    * @param {!Range} textRange
    */
   _boxForAnchorAtStart(selection, textRange) {
-    var rangeCopy = selection.getRangeAt(0).cloneRange();
-    var anchorElement = createElement('span');
+    const rangeCopy = selection.getRangeAt(0).cloneRange();
+    const anchorElement = createElement('span');
     anchorElement.textContent = '\u200B';
     textRange.insertNode(anchorElement);
-    var box = anchorElement.boxInWindow(window);
+    const box = anchorElement.boxInWindow(window);
     anchorElement.remove();
     selection.removeAllRanges();
     selection.addRange(rangeCopy);
@@ -436,7 +507,7 @@ UI.TextPrompt = class extends Common.Object {
 
   /**
    * @param {string} query
-   * @return {!UI.SuggestBox.Suggestions}
+   * @return {!Suggestions}
    */
   additionalCompletions(query) {
     return [];
@@ -446,25 +517,26 @@ UI.TextPrompt = class extends Common.Object {
    * @param {number} completionRequestId
    * @param {!Selection} selection
    * @param {!Range} originalWordQueryRange
-   * @param {boolean} reverse
    * @param {boolean} force
-   * @param {!UI.SuggestBox.Suggestions} completions
+   * @param {!Suggestions} completions
    */
-  _completionsReady(completionRequestId, selection, originalWordQueryRange, reverse, force, completions) {
-    if (this._completionRequestId !== completionRequestId)
+  _completionsReady(completionRequestId, selection, originalWordQueryRange, force, completions) {
+    if (this._completionRequestId !== completionRequestId) {
       return;
+    }
 
-    var query = originalWordQueryRange.toString();
+    const query = originalWordQueryRange.toString();
 
     // Filter out dupes.
-    var store = new Set();
+    const store = new Set();
     completions = completions.filter(item => !store.has(item.text) && !!store.add(item.text));
 
     if (query || force) {
-      if (query)
+      if (query) {
         completions = completions.concat(this.additionalCompletions(query));
-      else
+      } else {
         completions = this.additionalCompletions(query).concat(completions);
+      }
     }
 
     if (!completions.length) {
@@ -472,22 +544,23 @@ UI.TextPrompt = class extends Common.Object {
       return;
     }
 
-    var selectionRange = selection.getRangeAt(0);
+    const selectionRange = selection.getRangeAt(0);
 
-    var fullWordRange = this._createRange();
+    const fullWordRange = this._createRange();
     fullWordRange.setStart(originalWordQueryRange.startContainer, originalWordQueryRange.startOffset);
     fullWordRange.setEnd(selectionRange.endContainer, selectionRange.endOffset);
 
-    if (query + selectionRange.toString() !== fullWordRange.toString())
+    if (query + selectionRange.toString() !== fullWordRange.toString()) {
       return;
+    }
 
-    var beforeRange = this._createRange();
+    const beforeRange = this._createRange();
     beforeRange.setStart(this._element, 0);
     beforeRange.setEnd(fullWordRange.startContainer, fullWordRange.startOffset);
     this._queryRange = new TextUtils.TextRange(
         0, beforeRange.toString().length, 0, beforeRange.toString().length + fullWordRange.toString().length);
 
-    var shouldSelect = !this._disableDefaultSuggestionForEmptyInput || !!this.text();
+    const shouldSelect = !this._disableDefaultSuggestionForEmptyInput || !!this.text();
     if (this._suggestBox) {
       this._suggestBox.updateSuggestions(
           this._boxForAnchorAtStart(selection, fullWordRange), completions, shouldSelect, !this._isCaretAtEndOfPrompt(),
@@ -497,16 +570,15 @@ UI.TextPrompt = class extends Common.Object {
 
   /**
    * @override
-   * @param {string} suggestion
+   * @param {?Suggestion} suggestion
    * @param {boolean=} isIntermediateSuggestion
    */
   applySuggestion(suggestion, isIntermediateSuggestion) {
-    if (!this._queryRange)
-      return;
     this._currentSuggestion = suggestion;
     this._refreshGhostText();
-    if (isIntermediateSuggestion)
-      this.dispatchEventToListeners(UI.TextPrompt.Events.TextChanged);
+    if (isIntermediateSuggestion) {
+      this.dispatchEventToListeners(Events.TextChanged);
+    }
   }
 
   /**
@@ -520,16 +592,19 @@ UI.TextPrompt = class extends Common.Object {
    * @return {boolean}
    */
   _acceptSuggestionInternal() {
-    if (!this._queryRange)
+    if (!this._queryRange) {
       return false;
+    }
 
+    const suggestionLength = this._currentSuggestion ? this._currentSuggestion.text.length : 0;
+    const selectionRange = this._currentSuggestion ? this._currentSuggestion.selectionRange : null;
+    const endColumn = selectionRange ? selectionRange.endColumn : suggestionLength;
+    const startColumn = selectionRange ? selectionRange.startColumn : suggestionLength;
     this._element.textContent = this.textWithCurrentSuggestion();
-    this.setDOMSelection(
-        this._queryRange.startColumn + this._currentSuggestion.length,
-        this._queryRange.startColumn + this._currentSuggestion.length);
+    this.setDOMSelection(this._queryRange.startColumn + startColumn, this._queryRange.startColumn + endColumn);
 
     this.clearAutocomplete();
-    this.dispatchEventToListeners(UI.TextPrompt.Events.TextChanged);
+    this.dispatchEventToListeners(Events.TextChanged);
 
     return true;
   }
@@ -540,21 +615,23 @@ UI.TextPrompt = class extends Common.Object {
    */
   setDOMSelection(startColumn, endColumn) {
     this._element.normalize();
-    var node = this._element.childNodes[0];
-    if (!node || node === this._ghostTextElement)
+    const node = this._element.childNodes[0];
+    if (!node || node === this._ghostTextElement) {
       return;
-    var range = this._createRange();
+    }
+    const range = this._createRange();
     range.setStart(node, startColumn);
     range.setEnd(node, endColumn);
-    var selection = this._element.getComponentSelection();
+    const selection = this._element.getComponentSelection();
     selection.removeAllRanges();
     selection.addRange(range);
   }
 
   /**
+   * @protected
    * @return {boolean}
    */
-  _isSuggestBoxVisible() {
+  isSuggestBoxVisible() {
     return this._suggestBox && this._suggestBox.visible();
   }
 
@@ -562,11 +639,12 @@ UI.TextPrompt = class extends Common.Object {
    * @return {boolean}
    */
   isCaretInsidePrompt() {
-    var selection = this._element.getComponentSelection();
+    const selection = this._element.getComponentSelection();
     // @see crbug.com/602541
-    var selectionRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
-    if (!selectionRange || !selection.isCollapsed)
+    const selectionRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    if (!selectionRange || !selection.isCollapsed) {
       return false;
+    }
     return selectionRange.startContainer.isSelfOrDescendant(this._element);
   }
 
@@ -574,26 +652,31 @@ UI.TextPrompt = class extends Common.Object {
    * @return {boolean}
    */
   _isCaretAtEndOfPrompt() {
-    var selection = this._element.getComponentSelection();
-    var selectionRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
-    if (!selectionRange || !selection.isCollapsed)
+    const selection = this._element.getComponentSelection();
+    const selectionRange = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    if (!selectionRange || !selection.isCollapsed) {
       return false;
+    }
 
-    var node = selectionRange.startContainer;
-    if (!node.isSelfOrDescendant(this._element))
+    let node = selectionRange.startContainer;
+    if (!node.isSelfOrDescendant(this._element)) {
       return false;
+    }
 
-    if (this._ghostTextElement.isAncestor(node))
+    if (this._ghostTextElement.isAncestor(node)) {
       return true;
+    }
 
-    if (node.nodeType === Node.TEXT_NODE && selectionRange.startOffset < node.nodeValue.length)
+    if (node.nodeType === Node.TEXT_NODE && selectionRange.startOffset < node.nodeValue.length) {
       return false;
+    }
 
-    var foundNextText = false;
+    let foundNextText = false;
     while (node) {
       if (node.nodeType === Node.TEXT_NODE && node.nodeValue.length) {
-        if (foundNextText && !this._ghostTextElement.isAncestor(node))
+        if (foundNextText && !this._ghostTextElement.isAncestor(node)) {
           return false;
+        }
         foundNextText = true;
       }
 
@@ -604,13 +687,14 @@ UI.TextPrompt = class extends Common.Object {
   }
 
   moveCaretToEndOfPrompt() {
-    var selection = this._element.getComponentSelection();
-    var selectionRange = this._createRange();
+    const selection = this._element.getComponentSelection();
+    const selectionRange = this._createRange();
 
-    var container = this._element;
-    while (container.childNodes.length)
+    let container = this._element;
+    while (container.childNodes.length) {
       container = container.lastChild;
-    var offset = container.nodeType === Node.TEXT_NODE ? container.textContent.length : 0;
+    }
+    const offset = container.nodeType === Node.TEXT_NODE ? container.textContent.length : 0;
     selectionRange.setStart(container, offset);
     selectionRange.setEnd(container, offset);
 
@@ -632,11 +716,11 @@ UI.TextPrompt = class extends Common.Object {
   proxyElementForTests() {
     return this._proxyElement || null;
   }
-};
+}
 
-UI.TextPrompt.DefaultAutocompletionTimeout = 250;
+const DefaultAutocompletionTimeout = 250;
 
 /** @enum {symbol} */
-UI.TextPrompt.Events = {
+export const Events = {
   TextChanged: Symbol('TextChanged')
 };

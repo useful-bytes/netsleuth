@@ -21,7 +21,7 @@
 .tree-outline li.selected:focus .lock-icon,
 .tree-outline .security-sidebar-tree-item.selected:focus .icon
 {
-    background-color: white;
+    background-color: var(--selection-fg-color);
 }
 
 .tree-outline .security-main-view-sidebar-tree-item {
@@ -71,4 +71,15 @@
 .security-main-view-reload-message .tree-element-title {
     color: rgba(0, 0, 0, 0.5);
     padding-left: 8px;
+}
+
+@media (forced-colors: active) {
+    .tree-outline .lock-icon,
+    .tree-outline .security-property {
+        forced-color-adjust: none;
+    }
+    .tree-outline li.selected:focus .lock-icon,
+    .tree-outline .security-sidebar-tree-item.selected:focus .icon {
+        background-color: HighlightText;
+    }
 }

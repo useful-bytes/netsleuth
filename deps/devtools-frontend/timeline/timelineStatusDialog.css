@@ -10,9 +10,7 @@
     padding: 16px 16px 12px 16px;
     align-self: center;
     background-color: white;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2),
-                0 2px 4px rgba(0, 0, 0, 0.2),
-                0 2px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--drop-shadow);
 }
 
 .status-dialog-line {
@@ -36,7 +34,6 @@
     height: 8px;
     background-color: #f4f4f4;
     display: inline-block;
-    margin: 0 10px 0 0;
 }
 
 .timeline-status-dialog .progress .indicator {
@@ -49,9 +46,23 @@
 .timeline-status-dialog .stop-button {
     margin-top: 8px;
     height: 100%;
-    align-self: center;
+    align-self: flex-end;
 }
 
 .timeline-status-dialog .stop-button button {
     min-width: 80px;
+}
+
+@media (forced-colors: active) {
+    .timeline-status-dialog {
+        border: 1px solid CanvasText;
+    }
+    .timeline-status-dialog .progress .indicator-container {
+        border: 1px solid ButtonText;
+        background-color: ButtonFace;
+    }
+    .timeline-status-dialog .progress .indicator {
+        forced-color-adjust: none;
+        background-color: ButtonText;
+    }
 }

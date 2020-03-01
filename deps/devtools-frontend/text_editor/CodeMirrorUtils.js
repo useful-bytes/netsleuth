@@ -28,35 +28,36 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-TextEditor.CodeMirrorUtils = {};
+import * as TextUtils from '../text_utils/text_utils.js';
+
 /**
- * @param {!TextUtils.TextRange} range
+ * @param {!TextUtils.TextRange.TextRange} range
  * @return {!{start: !CodeMirror.Pos, end: !CodeMirror.Pos}}
  */
-TextEditor.CodeMirrorUtils.toPos = function(range) {
+export function toPos(range) {
   return {
     start: new CodeMirror.Pos(range.startLine, range.startColumn),
     end: new CodeMirror.Pos(range.endLine, range.endColumn)
   };
-};
+}
 
 /**
  * @param {!CodeMirror.Pos} start
  * @param {!CodeMirror.Pos} end
- * @return {!TextUtils.TextRange}
+ * @return {!TextUtils.TextRange.TextRange}
  */
-TextEditor.CodeMirrorUtils.toRange = function(start, end) {
-  return new TextUtils.TextRange(start.line, start.ch, end.line, end.ch);
-};
+export function toRange(start, end) {
+  return new TextUtils.TextRange.TextRange(start.line, start.ch, end.line, end.ch);
+}
 
 /**
  * @param {!CodeMirror.ChangeObject} changeObject
- * @return {{oldRange: !TextUtils.TextRange, newRange: !TextUtils.TextRange}}
+ * @return {{oldRange: !TextUtils.TextRange.TextRange, newRange: !TextUtils.TextRange.TextRange}}
  */
-TextEditor.CodeMirrorUtils.changeObjectToEditOperation = function(changeObject) {
-  var oldRange = TextEditor.CodeMirrorUtils.toRange(changeObject.from, changeObject.to);
-  var newRange = oldRange.clone();
-  var linesAdded = changeObject.text.length;
+export function changeObjectToEditOperation(changeObject) {
+  const oldRange = toRange(changeObject.from, changeObject.to);
+  const newRange = oldRange.clone();
+  const linesAdded = changeObject.text.length;
   if (linesAdded === 0) {
     newRange.endLine = newRange.startLine;
     newRange.endColumn = newRange.startColumn;
@@ -68,15 +69,15 @@ TextEditor.CodeMirrorUtils.changeObjectToEditOperation = function(changeObject) 
     newRange.endColumn = changeObject.text[linesAdded - 1].length;
   }
   return {oldRange: oldRange, newRange: newRange};
-};
+}
 
 /**
  * @param {!CodeMirror} codeMirror
  * @param {number} linesCount
  * @return {!Array.<string>}
  */
-TextEditor.CodeMirrorUtils.pullLines = function(codeMirror, linesCount) {
-  var lines = [];
+export function pullLines(codeMirror, linesCount) {
+  const lines = [];
   codeMirror.eachLine(0, linesCount, onLineHandle);
   return lines;
 
@@ -86,72 +87,30 @@ TextEditor.CodeMirrorUtils.pullLines = function(codeMirror, linesCount) {
   function onLineHandle(lineHandle) {
     lines.push(lineHandle.text);
   }
-};
+}
 
 /**
- * @param {!Element} element
- */
-TextEditor.CodeMirrorUtils.appendThemeStyle = function(element) {
-  if (UI.themeSupport.hasTheme())
-    return;
-  var backgroundColor = InspectorFrontendHost.getSelectionBackgroundColor();
-  var backgroundColorRule =
-      backgroundColor ? '.CodeMirror .CodeMirror-selected { background-color: ' + backgroundColor + ';}' : '';
-  var foregroundColor = InspectorFrontendHost.getSelectionForegroundColor();
-  var foregroundColorRule = foregroundColor ?
-      '.CodeMirror .CodeMirror-selectedtext:not(.CodeMirror-persist-highlight) { color: ' + foregroundColor +
-          '!important;}' :
-      '';
-
-  var selectionRule = (foregroundColor && backgroundColor) ?
-      '.CodeMirror-line::selection, .CodeMirror-line > span::selection, .CodeMirror-line > span > span::selection { background: ' +
-          backgroundColor + '; color: ' + foregroundColor + ' !important }' :
-      '';
-  var style = createElement('style');
-  if (foregroundColorRule || backgroundColorRule)
-    style.textContent = backgroundColorRule + foregroundColorRule + selectionRule;
-  element.appendChild(style);
-};
-
-
-/**
- * @implements {TextUtils.TokenizerFactory}
+ * @implements {TextUtils.TextUtils.TokenizerFactory}
  * @unrestricted
  */
-TextEditor.CodeMirrorUtils.TokenizerFactory = class {
+export class TokenizerFactory {
   /**
    * @override
    * @param {string} mimeType
    * @return {function(string, function(string, ?string, number, number))}
    */
   createTokenizer(mimeType) {
-    var mode = CodeMirror.getMode({indentUnit: 2}, mimeType);
-    var state = CodeMirror.startState(mode);
+    const mode = CodeMirror.getMode({indentUnit: 2}, mimeType);
+    const state = CodeMirror.startState(mode);
     function tokenize(line, callback) {
-      var stream = new CodeMirror.StringStream(line);
+      const stream = new CodeMirror.StringStream(line);
       while (!stream.eol()) {
-        var style = mode.token(stream, state);
-        var value = stream.current();
+        const style = mode.token(stream, state);
+        const value = stream.current();
         callback(value, style, stream.start, stream.start + value.length);
         stream.start = stream.pos;
       }
     }
     return tokenize;
   }
-};
-
-/**
- * @unrestricted
- */
-TextEditor.CodeMirrorCSSLoadView = class extends UI.VBox {
-  /**
-   * This bogus view is needed to load/unload CodeMirror-related CSS on demand.
-   */
-  constructor() {
-    super();
-    this.element.classList.add('hidden');
-    this.registerRequiredCSS('cm/codemirror.css');
-    this.registerRequiredCSS('text_editor/cmdevtools.css');
-    TextEditor.CodeMirrorUtils.appendThemeStyle(this.element);
-  }
-};
+}

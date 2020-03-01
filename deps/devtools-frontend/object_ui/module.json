@@ -1,7 +1,7 @@
 {
     "extensions": [
         {
-            "type": "@Common.Renderer",
+            "type": "@UI.Renderer",
             "contextTypes": [
                 "SDK.RemoteObject"
             ],
@@ -11,13 +11,18 @@
     "dependencies": [
         "ui",
         "sdk",
-        "components"
+        "components",
+        "formatter"
     ],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "object_ui.js",
+        "object_ui-legacy.js",
         "CustomPreviewComponent.js",
         "ObjectPopoverHelper.js",
         "ObjectPropertiesSection.js",
         "JavaScriptAutocomplete.js",
+        "JavaScriptREPL.js",
         "RemoteObjectPreviewFormatter.js"
     ],
     "resources": [

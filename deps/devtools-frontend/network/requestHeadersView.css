@@ -5,7 +5,7 @@
  */
 
 .request-headers-view {
-    -webkit-user-select: text;
+    user-select: text;
     overflow: auto;
 }
 
@@ -14,16 +14,7 @@
     margin-right: 3px;
 }
 
-.request-headers-view .filter-input {
-    outline: none !important;
-    border: none;
-    border-bottom: solid 1px #ccc;
-    flex: 0 0 19px;
-    padding: 0 4px;
-}
-
 .request-headers-tree {
-    padding: 0 0 0 4px;
     flex-grow: 1;
     overflow-y: auto;
     margin: 0;

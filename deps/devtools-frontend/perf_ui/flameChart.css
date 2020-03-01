@@ -18,6 +18,11 @@
     display: block;
 }
 
+.flame-chart-canvas[data-keyboard-focus="true"]:focus {
+    border-top: 1px solid var(--accent-color);
+    border-bottom: 1px solid var(--accent-color);
+}
+
 .flame-chart-highlight-element {
     position: absolute;
     pointer-events: none;
@@ -27,8 +32,12 @@
 .flame-chart-selected-element {
     position: absolute;
     pointer-events: none;
-    outline: 2px solid rgb(56, 121, 217);
+    outline: 2px solid var(--selection-bg-color);
     background-color: rgba(56, 121, 217, 0.1);
+}
+
+.flame-chart-unfocused-selected-element {
+    outline: 2px solid rgba(123, 123, 123, 1);
 }
 
 .chart-cursor-element {
@@ -37,7 +46,7 @@
     bottom: 0;
     z-index: 100;
     width: 2px;
-    background-color: rgb(56, 121, 217);
+    background-color: var(--selection-bg-color);
     pointer-events: none;
 }
 
@@ -49,9 +58,7 @@
     padding: 4px 8px;
     white-space: nowrap;
     max-width: 80%;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05),
-                0 2px 4px rgba(0, 0, 0, 0.2),
-                0 2px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--drop-shadow);
 }
 
 .flame-chart-entry-info table tr td:empty {

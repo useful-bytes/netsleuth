@@ -27,41 +27,42 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import * as Common from '../common/common.js';
+
+import {EventDescriptors, Events} from './InspectorFrontendHostAPI.js';
+import {streamWrite as resourceLoaderStreamWrite} from './ResourceLoader.js';
+
 /**
  * @implements {InspectorFrontendHostAPI}
  * @unrestricted
  */
-Host.InspectorFrontendHostStub = class {
+export class InspectorFrontendHostStub {
   /**
    * @suppressGlobalPropertiesCheck
    */
   constructor() {
     /**
      * @param {!Event} event
+     * @this {InspectorFrontendHostAPI}
      */
     function stopEventPropagation(event) {
       // Let browser handle Ctrl+/Ctrl- shortcuts in hosted mode.
-      var zoomModifier = Host.isMac() ? event.metaKey : event.ctrlKey;
-      if (zoomModifier && (event.keyCode === 187 || event.keyCode === 189))
+      const zoomModifier = this.platform() === 'mac' ? event.metaKey : event.ctrlKey;
+      if (zoomModifier && (event.keyCode === 187 || event.keyCode === 189)) {
         event.stopPropagation();
+      }
     }
-    document.addEventListener('keydown', stopEventPropagation, true);
-  }
+    document.addEventListener('keydown', stopEventPropagation.bind(this), true);
+    /**
+     * @type {!Map<string, !Array<string>>}
+     */
+    this._urlsBeingSaved = new Map();
 
-  /**
-   * @override
-   * @return {string}
-   */
-  getSelectionBackgroundColor() {
-    return '#6e86ff';
-  }
-
-  /**
-   * @override
-   * @return {string}
-   */
-  getSelectionForegroundColor() {
-    return '#ffffff';
+    /**
+     * @type {!Common.EventTarget.EventTarget}
+     */
+    this.events;
   }
 
   /**
@@ -69,12 +70,14 @@ Host.InspectorFrontendHostStub = class {
    * @return {string}
    */
   platform() {
-    var match = navigator.userAgent.match(/Windows NT/);
-    if (match)
+    let match = navigator.userAgent.match(/Windows NT/);
+    if (match) {
       return 'windows';
+    }
     match = navigator.userAgent.match(/Mac OS X/);
-    if (match)
+    if (match) {
       return 'mac';
+    }
     return 'linux';
   }
 
@@ -135,15 +138,30 @@ Host.InspectorFrontendHostStub = class {
    * @suppressGlobalPropertiesCheck
    */
   inspectedURLChanged(url) {
-    document.title = Common.UIString('Developer Tools - %s', url);
+    document.title = Common.UIString.UIString('DevTools - %s', url.replace(/^https?:\/\//, ''));
   }
 
   /**
    * @override
-   * @param {string} text
+   * @param {?(string|undefined)} text
+   * @suppressGlobalPropertiesCheck
    */
   copyText(text) {
-    Common.console.error('Clipboard is not enabled in hosted mode. Please inspect using chrome://inspect');
+    if (text === undefined || text === null) {
+      return;
+    }
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+    } else if (document.queryCommandSupported('copy')) {
+      const input = document.createElement('input');
+      input.value = text;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    } else {
+      self.Common.console.error('Clipboard is not enabled in hosted mode. Please inspect using chrome://inspect');
+    }
   }
 
   /**
@@ -156,13 +174,27 @@ Host.InspectorFrontendHostStub = class {
 
   /**
    * @override
+   * @param {string} fileSystemPath
+   */
+  showItemInFolder(fileSystemPath) {
+    self.Common.console.error(
+        'Show item in folder is not enabled in hosted mode. Please inspect using chrome://inspect');
+  }
+
+  /**
+   * @override
    * @param {string} url
    * @param {string} content
    * @param {boolean} forceSaveAs
    */
   save(url, content, forceSaveAs) {
-    Common.console.error('Saving files is not enabled in hosted mode. Please inspect using chrome://inspect');
-    this.events.dispatchEventToListeners(InspectorFrontendHostAPI.Events.CanceledSaveURL, url);
+    let buffer = this._urlsBeingSaved.get(url);
+    if (!buffer) {
+      buffer = [];
+      this._urlsBeingSaved.set(url, buffer);
+    }
+    buffer.push(content);
+    this.events.dispatchEventToListeners(Events.SavedURL, {url, fileSystemPath: url});
   }
 
   /**
@@ -171,7 +203,24 @@ Host.InspectorFrontendHostStub = class {
    * @param {string} content
    */
   append(url, content) {
-    Common.console.error('Saving files is not enabled in hosted mode. Please inspect using chrome://inspect');
+    const buffer = this._urlsBeingSaved.get(url);
+    buffer.push(content);
+    this.events.dispatchEventToListeners(Events.AppendedToURL, url);
+  }
+
+  /**
+   * @override
+   * @param {string} url
+   */
+  close(url) {
+    const buffer = this._urlsBeingSaved.get(url);
+    this._urlsBeingSaved.delete(url);
+    const fileName = url ? url.trimURL().removeURLFragment() : '';
+    const link = createElement('a');
+    link.download = fileName;
+    const blob = new Blob([buffer.join('')], {type: 'text/plain'});
+    link.href = URL.createObjectURL(blob);
+    link.click();
   }
 
   /**
@@ -192,16 +241,31 @@ Host.InspectorFrontendHostStub = class {
 
   /**
    * @override
+   * @param {string} histogramName
+   * @param {number} duration
    */
-  requestFileSystems() {
-    this.events.dispatchEventToListeners(InspectorFrontendHostAPI.Events.FileSystemsLoaded, []);
+  recordPerformanceHistogram(histogramName, duration) {
   }
 
   /**
    * @override
-   * @param {string=} fileSystemPath
+   * @param {string} umaName
    */
-  addFileSystem(fileSystemPath) {
+  recordUserMetricsAction(umaName) {
+  }
+
+  /**
+   * @override
+   */
+  requestFileSystems() {
+    this.events.dispatchEventToListeners(Events.FileSystemsLoaded, []);
+  }
+
+  /**
+   * @override
+   * @param {string=} type
+   */
+  addFileSystem(type) {
   }
 
   /**
@@ -229,9 +293,9 @@ Host.InspectorFrontendHostStub = class {
    * @param {function(!InspectorFrontendHostAPI.LoadNetworkResourceResult)} callback
    */
   loadNetworkResource(url, headers, streamId, callback) {
-    Runtime.loadResourcePromise(url)
+    Root.Runtime.loadResourcePromise(url)
         .then(function(text) {
-          Host.ResourceLoader.streamWrite(streamId, text);
+          resourceLoaderStreamWrite(streamId, text);
           callback({statusCode: 200});
         })
         .catch(function() {
@@ -244,9 +308,10 @@ Host.InspectorFrontendHostStub = class {
    * @param {function(!Object<string, string>)} callback
    */
   getPreferences(callback) {
-    var prefs = {};
-    for (var name in window.localStorage)
+    const prefs = {};
+    for (const name in window.localStorage) {
       prefs[name] = window.localStorage[name];
+    }
     callback(prefs);
   }
 
@@ -285,8 +350,9 @@ Host.InspectorFrontendHostStub = class {
    * @override
    * @param {number} requestId
    * @param {string} fileSystemPath
+   * @param {string} excludedFolders
    */
-  indexPath(requestId, fileSystemPath) {
+  indexPath(requestId, fileSystemPath, excludedFolders) {
   }
 
   /**
@@ -354,14 +420,6 @@ Host.InspectorFrontendHostStub = class {
 
   /**
    * @override
-   * @return {boolean}
-   */
-  isUnderTest() {
-    return false;
-  }
-
-  /**
-   * @override
    * @param {function()} callback
    */
   reattach(callback) {
@@ -371,6 +429,19 @@ Host.InspectorFrontendHostStub = class {
    * @override
    */
   readyForTest() {
+  }
+
+  /**
+   * @override
+   */
+  connectionReady() {
+  }
+
+  /**
+   * @override
+   * @param {boolean} value
+   */
+  setOpenNewWindowForPopups(value) {
   }
 
   /**
@@ -427,19 +498,33 @@ Host.InspectorFrontendHostStub = class {
   isHostedMode() {
     return true;
   }
-};
+
+  /**
+   * @override
+   * @param {function(!ExtensionDescriptor)} callback
+   */
+  setAddExtensionCallback(callback) {
+    // Extensions are not supported in hosted mode.
+  }
+}
+
+/**
+ * @type {!InspectorFrontendHostStub}
+ */
+export let InspectorFrontendHostInstance = window.InspectorFrontendHost;
 
 /**
  * @unrestricted
  */
-Host.InspectorFrontendAPIImpl = class {
+class InspectorFrontendAPIImpl {
   constructor() {
-    this._debugFrontend =
-        !!Runtime.queryParam('debugFrontend') || (window['InspectorTest'] && window['InspectorTest']['debugTest']);
+    this._debugFrontend = (self.Root && Root.Runtime && !!Root.Runtime.queryParam('debugFrontend')) ||
+        (window['InspectorTest'] && window['InspectorTest']['debugTest']);
 
-    var descriptors = InspectorFrontendHostAPI.EventDescriptors;
-    for (var i = 0; i < descriptors.length; ++i)
+    const descriptors = EventDescriptors;
+    for (let i = 0; i < descriptors.length; ++i) {
       this[descriptors[i][1]] = this._dispatch.bind(this, descriptors[i][0], descriptors[i][2], descriptors[i][3]);
+    }
   }
 
   /**
@@ -448,28 +533,30 @@ Host.InspectorFrontendAPIImpl = class {
    * @param {boolean} runOnceLoaded
    */
   _dispatch(name, signature, runOnceLoaded) {
-    var params = Array.prototype.slice.call(arguments, 3);
+    const params = Array.prototype.slice.call(arguments, 3);
 
-    if (this._debugFrontend)
+    if (this._debugFrontend) {
       setImmediate(innerDispatch);
-    else
+    } else {
       innerDispatch();
+    }
 
     function innerDispatch() {
       // Single argument methods get dispatched with the param.
       if (signature.length < 2) {
         try {
-          InspectorFrontendHost.events.dispatchEventToListeners(name, params[0]);
+          InspectorFrontendHostInstance.events.dispatchEventToListeners(name, params[0]);
         } catch (e) {
           console.error(e + ' ' + e.stack);
         }
         return;
       }
-      var data = {};
-      for (var i = 0; i < signature.length; ++i)
+      const data = {};
+      for (let i = 0; i < signature.length; ++i) {
         data[signature[i]] = params[i];
+      }
       try {
-        InspectorFrontendHost.events.dispatchEventToListeners(name, data);
+        InspectorFrontendHostInstance.events.dispatchEventToListeners(name, data);
       } catch (e) {
         console.error(e + ' ' + e.stack);
       }
@@ -481,67 +568,54 @@ Host.InspectorFrontendAPIImpl = class {
    * @param {string} chunk
    */
   streamWrite(id, chunk) {
-    Host.ResourceLoader.streamWrite(id, chunk);
+    resourceLoaderStreamWrite(id, chunk);
   }
-};
+}
 
-/**
- * @type {!InspectorFrontendHostAPI}
- */
-var InspectorFrontendHost = window.InspectorFrontendHost || null;
-window.InspectorFrontendHost = InspectorFrontendHost;
 (function() {
 
   function initializeInspectorFrontendHost() {
-    if (!InspectorFrontendHost) {
+    let proto;
+    if (!InspectorFrontendHostInstance) {
       // Instantiate stub for web-hosted mode if necessary.
-      window.InspectorFrontendHost = InspectorFrontendHost = new Host.InspectorFrontendHostStub();
+      window.InspectorFrontendHost = InspectorFrontendHostInstance = new InspectorFrontendHostStub();
     } else {
       // Otherwise add stubs for missing methods that are declared in the interface.
-      var proto = Host.InspectorFrontendHostStub.prototype;
-      for (var name in proto) {
-        var value = proto[name];
-        if (typeof value !== 'function' || InspectorFrontendHost[name])
+      proto = InspectorFrontendHostStub.prototype;
+      for (const name of Object.getOwnPropertyNames(proto)) {
+        const stub = proto[name];
+        if (typeof stub !== 'function' || InspectorFrontendHostInstance[name]) {
           continue;
+        }
 
-        InspectorFrontendHost[name] = stub.bind(null, name);
+        console.error(
+            'Incompatible embedder: method Host.InspectorFrontendHost.' + name + ' is missing. Using stub instead.');
+        InspectorFrontendHostInstance[name] = stub;
       }
     }
 
-    /**
-     * @param {string} name
-     * @return {?}
-     */
-    function stub(name) {
-      console.error('Incompatible embedder: method InspectorFrontendHost.' + name + ' is missing. Using stub instead.');
-      var args = Array.prototype.slice.call(arguments, 1);
-      return proto[name].apply(InspectorFrontendHost, args);
-    }
-
     // Attach the events object.
-    InspectorFrontendHost.events = new Common.Object();
+    InspectorFrontendHostInstance.events = new Common.ObjectWrapper.ObjectWrapper();
   }
 
   // FIXME: This file is included into both apps, since the devtools_app needs the InspectorFrontendHostAPI only,
   // so the host instance should not initialized there.
   initializeInspectorFrontendHost();
-  window.InspectorFrontendAPI = new Host.InspectorFrontendAPIImpl();
+  window.InspectorFrontendAPI = new InspectorFrontendAPIImpl();
 })();
-
-/**
- * @type {!Common.EventTarget}
- */
-InspectorFrontendHost.events;
 
 /**
  * @param {!Object<string, string>=} prefs
  * @return {boolean}
  */
-Host.isUnderTest = function(prefs) {
-  if (InspectorFrontendHost.isUnderTest())
+export function isUnderTest(prefs) {
+  // Integration tests rely on test queryParam.
+  if (Root.Runtime.queryParam('test')) {
     return true;
-
-  if (prefs)
+  }
+  // Browser tests rely on prefs.
+  if (prefs) {
     return prefs['isUnderTest'] === 'true';
-  return Common.settings.createSetting('isUnderTest', false).get();
-};
+  }
+  return self.Common.settings && self.Common.settings.createSetting('isUnderTest', false).get();
+}

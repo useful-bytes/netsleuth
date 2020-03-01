@@ -28,21 +28,24 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+import * as Workspace from '../workspace/workspace.js';
+
 /**
- * @implements {Workspace.Project}
+ * @implements {Workspace.Workspace.Project}
  * @unrestricted
  */
-Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
+export class ContentProviderBasedProject extends Workspace.Workspace.ProjectStore {
   /**
-   * @param {!Workspace.Workspace} workspace
+   * @param {!Workspace.Workspace.WorkspaceImpl} workspace
    * @param {string} id
-   * @param {!Workspace.projectTypes} type
+   * @param {!Workspace.Workspace.projectTypes} type
    * @param {string} displayName
    * @param {boolean} isServiceProject
    */
   constructor(workspace, id, type, displayName, isServiceProject) {
     super(workspace, id, type, displayName);
-    /** @type {!Object.<string, !Common.ContentProvider>} */
+    /** @type {!Object.<string, !Common.ContentProvider.ContentProvider>} */
     this._contentProviders = {};
     this._isServiceProject = isServiceProject;
     workspace.addProject(this);
@@ -50,12 +53,19 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @param {function(?string)} callback
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @returns {!Promise<!Common.ContentProvider.DeferredContent>}
    */
-  requestFileContent(uiSourceCode, callback) {
-    var contentProvider = this._contentProviders[uiSourceCode.url()];
-    contentProvider.requestContent().then(callback);
+  async requestFileContent(uiSourceCode) {
+    const contentProvider = this._contentProviders[uiSourceCode.url()];
+    try {
+      const [content, isEncoded] =
+          await Promise.all([contentProvider.requestContent(), contentProvider.contentEncoded()]);
+      return {content: content.content, isEncoded, error: content.error};
+    } catch (err) {
+      // TODO(rob.paveza): CRBug 1013683 - Consider propagating exceptions full-stack
+      return {isEncoded: false, error: err ? String(err) : ls`Unknown error loading file`};
+    }
   }
 
   /**
@@ -68,11 +78,11 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @return {!Promise<?Workspace.UISourceCodeMetadata>}
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {!Promise<?Workspace.UISourceCode.UISourceCodeMetadata>}
    */
   requestMetadata(uiSourceCode) {
-    return Promise.resolve(uiSourceCode[Bindings.ContentProviderBasedProject._metadata]);
+    return Promise.resolve(uiSourceCode[_metadata]);
   }
 
   /**
@@ -85,21 +95,21 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @param {string} newContent
-   * @param {function(?string)} callback
+   * @param {boolean} isBase64
+   * @return {!Promise}
    */
-  setFileContent(uiSourceCode, newContent, callback) {
-    callback(null);
+  async setFileContent(uiSourceCode, newContent, isBase64) {
   }
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @return {string}
    */
   fullDisplayName(uiSourceCode) {
-    var parentPath = uiSourceCode.parentURL().replace(/^(?:https?|file)\:\/\//, '');
+    let parentPath = uiSourceCode.parentURL().replace(/^(?:https?|file)\:\/\//, '');
     try {
       parentPath = decodeURI(parentPath);
     } catch (e) {
@@ -109,11 +119,11 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @return {string}
    */
   mimeType(uiSourceCode) {
-    return /** @type {string} */ (uiSourceCode[Bindings.ContentProviderBasedProject._mimeType]);
+    return /** @type {string} */ (uiSourceCode[_mimeType]);
   }
 
   /**
@@ -126,24 +136,24 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @param {string} newName
-   * @param {function(boolean, string=, string=, !Common.ResourceType=)} callback
+   * @param {function(boolean, string=, string=, !Common.ResourceType.ResourceType=)} callback
    */
   rename(uiSourceCode, newName, callback) {
-    var path = uiSourceCode.url();
+    const path = uiSourceCode.url();
     this.performRename(path, newName, innerCallback.bind(this));
 
     /**
      * @param {boolean} success
      * @param {string=} newName
-     * @this {Bindings.ContentProviderBasedProject}
+     * @this {ContentProviderBasedProject}
      */
     function innerCallback(success, newName) {
       if (success && newName) {
-        var copyOfPath = path.split('/');
+        const copyOfPath = path.split('/');
         copyOfPath[copyOfPath.length - 1] = newName;
-        var newPath = copyOfPath.join('/');
+        const newPath = copyOfPath.join('/');
         this._contentProviders[newPath] = this._contentProviders[path];
         delete this._contentProviders[path];
         this.renameUISourceCode(uiSourceCode, newName);
@@ -162,16 +172,34 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
   /**
    * @override
    * @param {string} path
-   * @param {?string} name
-   * @param {string} content
-   * @param {function(?Workspace.UISourceCode)} callback
+   * @return {boolean}
    */
-  createFile(path, name, content, callback) {
+  canExcludeFolder(path) {
+    return false;
   }
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {string} path
+   * @param {?string} name
+   * @param {string} content
+   * @param {boolean=} isBase64
+   * @return {!Promise<?Workspace.UISourceCode.UISourceCode>}
+   */
+  createFile(path, name, content, isBase64) {
+  }
+
+  /**
+   * @override
+   * @return {boolean}
+   */
+  canCreateFile() {
+    return false;
+  }
+
+  /**
+   * @override
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   deleteFile(uiSourceCode) {
   }
@@ -193,26 +221,26 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @param {string} query
    * @param {boolean} caseSensitive
    * @param {boolean} isRegex
    * @return {!Promise<!Array<!Common.ContentProvider.SearchMatch>>}
    */
   searchInFileContent(uiSourceCode, query, caseSensitive, isRegex) {
-    var contentProvider = this._contentProviders[uiSourceCode.url()];
+    const contentProvider = this._contentProviders[uiSourceCode.url()];
     return contentProvider.searchInContent(query, caseSensitive, isRegex);
   }
 
   /**
    * @override
-   * @param {!Workspace.ProjectSearchConfig} searchConfig
+   * @param {!Workspace.Workspace.ProjectSearchConfig} searchConfig
    * @param {!Array<string>} filesMathingFileQuery
-   * @param {!Common.Progress} progress
+   * @param {!Common.Progress.Progress} progress
    * @return {!Promise<!Array<string>>}
    */
   async findFilesMatchingSearchRequest(searchConfig, filesMathingFileQuery, progress) {
-    var result = [];
+    const result = [];
     progress.setTotalWork(filesMathingFileQuery.length);
     await Promise.all(filesMathingFileQuery.map(searchInContent.bind(this)));
     progress.done();
@@ -220,53 +248,54 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
 
     /**
      * @param {string} path
-     * @this {Bindings.ContentProviderBasedProject}
+     * @this {ContentProviderBasedProject}
      */
     async function searchInContent(path) {
-      var provider = this._contentProviders[path];
-      var allMatchesFound = true;
-      for (var query of searchConfig.queries().slice()) {
-        var searchMatches = await provider.searchInContent(query, !searchConfig.ignoreCase(), searchConfig.isRegex());
+      const provider = this._contentProviders[path];
+      let allMatchesFound = true;
+      for (const query of searchConfig.queries().slice()) {
+        const searchMatches = await provider.searchInContent(query, !searchConfig.ignoreCase(), searchConfig.isRegex());
         if (!searchMatches.length) {
           allMatchesFound = false;
           break;
         }
       }
-      if (allMatchesFound)
+      if (allMatchesFound) {
         result.push(path);
+      }
       progress.worked(1);
     }
   }
 
   /**
    * @override
-   * @param {!Common.Progress} progress
+   * @param {!Common.Progress.Progress} progress
    */
   indexContent(progress) {
     setImmediate(progress.done.bind(progress));
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @param {!Common.ContentProvider} contentProvider
-   * @param {?Workspace.UISourceCodeMetadata} metadata
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @param {!Common.ContentProvider.ContentProvider} contentProvider
+   * @param {?Workspace.UISourceCode.UISourceCodeMetadata} metadata
    * @param {string} mimeType
    */
   addUISourceCodeWithProvider(uiSourceCode, contentProvider, metadata, mimeType) {
-    uiSourceCode[Bindings.ContentProviderBasedProject._mimeType] = mimeType;
+    uiSourceCode[_mimeType] = mimeType;
     this._contentProviders[uiSourceCode.url()] = contentProvider;
-    uiSourceCode[Bindings.ContentProviderBasedProject._metadata] = metadata;
-    this.addUISourceCode(uiSourceCode, true);
+    uiSourceCode[_metadata] = metadata;
+    this.addUISourceCode(uiSourceCode);
   }
 
   /**
    * @param {string} url
-   * @param {!Common.ContentProvider} contentProvider
+   * @param {!Common.ContentProvider.ContentProvider} contentProvider
    * @param {string} mimeType
-   * @return {!Workspace.UISourceCode}
+   * @return {!Workspace.UISourceCode.UISourceCode}
    */
   addContentProvider(url, contentProvider, mimeType) {
-    var uiSourceCode = this.createUISourceCode(url, contentProvider.contentType());
+    const uiSourceCode = this.createUISourceCode(url, contentProvider.contentType());
     this.addUISourceCodeWithProvider(uiSourceCode, contentProvider, null, mimeType);
     return uiSourceCode;
   }
@@ -289,7 +318,7 @@ Bindings.ContentProviderBasedProject = class extends Workspace.ProjectStore {
     this._contentProviders = {};
     this.removeProject();
   }
-};
+}
 
-Bindings.ContentProviderBasedProject._metadata = Symbol('ContentProviderBasedProject.Metadata');
-Bindings.ContentProviderBasedProject._mimeType = Symbol('Bindings.ContentProviderBasedProject._mimeType');
+const _metadata = Symbol('ContentProviderBasedProject.Metadata');
+const _mimeType = Symbol('ContentProviderBasedProject.MimeType');

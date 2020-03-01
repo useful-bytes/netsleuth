@@ -2,40 +2,46 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-TimelineModel.TimelineJSProfileProcessor = class {
+import * as SDK from '../sdk/sdk.js';
+
+import {RecordType, TimelineModelImpl} from './TimelineModel.js';
+
+export class TimelineJSProfileProcessor {
   /**
-   * @param {!SDK.CPUProfileDataModel} jsProfileModel
+   * @param {!SDK.CPUProfileDataModel.CPUProfileDataModel} jsProfileModel
    * @param {!SDK.TracingModel.Thread} thread
    * @return {!Array<!SDK.TracingModel.Event>}
    */
   static generateTracingEventsFromCpuProfile(jsProfileModel, thread) {
-    var idleNode = jsProfileModel.idleNode;
-    var programNode = jsProfileModel.programNode;
-    var gcNode = jsProfileModel.gcNode;
-    var samples = jsProfileModel.samples;
-    var timestamps = jsProfileModel.timestamps;
-    var jsEvents = [];
+    const idleNode = jsProfileModel.idleNode;
+    const programNode = jsProfileModel.programNode;
+    const gcNode = jsProfileModel.gcNode;
+    const samples = jsProfileModel.samples;
+    const timestamps = jsProfileModel.timestamps;
+    const jsEvents = [];
     /** @type {!Map<!Object, !Array<!Protocol.Runtime.CallFrame>>} */
-    var nodeToStackMap = new Map();
+    const nodeToStackMap = new Map();
     nodeToStackMap.set(programNode, []);
-    for (var i = 0; i < samples.length; ++i) {
-      var node = jsProfileModel.nodeByIndex(i);
+    for (let i = 0; i < samples.length; ++i) {
+      let node = jsProfileModel.nodeByIndex(i);
       if (!node) {
         console.error(`Node with unknown id ${samples[i]} at index ${i}`);
         continue;
       }
-      if (node === gcNode || node === idleNode)
+      if (node === gcNode || node === idleNode) {
         continue;
-      var callFrames = nodeToStackMap.get(node);
+      }
+      let callFrames = nodeToStackMap.get(node);
       if (!callFrames) {
         callFrames = /** @type {!Array<!Protocol.Runtime.CallFrame>} */ (new Array(node.depth + 1));
         nodeToStackMap.set(node, callFrames);
-        for (var j = 0; node.parent; node = node.parent)
+        for (let j = 0; node.parent; node = node.parent) {
           callFrames[j++] = /** @type {!Protocol.Runtime.CallFrame} */ (node);
+        }
       }
-      var jsSampleEvent = new SDK.TracingModel.Event(
-          SDK.TracingModel.DevToolsTimelineEventCategory, TimelineModel.TimelineModel.RecordType.JSSample,
-          SDK.TracingModel.Phase.Instant, timestamps[i], thread);
+      const jsSampleEvent = new SDK.TracingModel.Event(
+          SDK.TracingModel.DevToolsTimelineEventCategory, RecordType.JSSample, SDK.TracingModel.Phase.Instant,
+          timestamps[i], thread);
       jsSampleEvent.args['data'] = {stackTrace: callFrames};
       jsEvents.push(jsSampleEvent);
     }
@@ -64,22 +70,24 @@ TimelineModel.TimelineJSProfileProcessor = class {
      */
     function isJSInvocationEvent(e) {
       switch (e.name) {
-        case TimelineModel.TimelineModel.RecordType.RunMicrotasks:
-        case TimelineModel.TimelineModel.RecordType.FunctionCall:
-        case TimelineModel.TimelineModel.RecordType.EvaluateScript:
-        case TimelineModel.TimelineModel.RecordType.EventDispatch:
+        case RecordType.RunMicrotasks:
+        case RecordType.FunctionCall:
+        case RecordType.EvaluateScript:
+        case RecordType.EvaluateModule:
+        case RecordType.EventDispatch:
+        case RecordType.V8Execute:
           return true;
       }
       return false;
     }
 
-    var jsFrameEvents = [];
-    var jsFramesStack = [];
-    var lockedJsStackDepth = [];
-    var ordinal = 0;
-    const showAllEvents = Runtime.experiments.isEnabled('timelineShowAllEvents');
-    const showRuntimeCallStats = Runtime.experiments.isEnabled('timelineV8RuntimeCallStats');
-    const showNativeFunctions = Common.moduleSetting('showNativeFunctionsInJSProfile').get();
+    const jsFrameEvents = [];
+    const jsFramesStack = [];
+    const lockedJsStackDepth = [];
+    let ordinal = 0;
+    const showAllEvents = Root.Runtime.experiments.isEnabled('timelineShowAllEvents');
+    const showRuntimeCallStats = Root.Runtime.experiments.isEnabled('timelineV8RuntimeCallStats');
+    const showNativeFunctions = self.Common.settings.moduleSetting('showNativeFunctionsInJSProfile').get();
 
     /**
      * @param {!SDK.TracingModel.Event} e
@@ -97,8 +105,9 @@ TimelineModel.TimelineJSProfileProcessor = class {
      */
     function onInstantEvent(e, parent) {
       e.ordinal = ++ordinal;
-      if (parent && isJSInvocationEvent(parent))
+      if (parent && isJSInvocationEvent(parent)) {
         extractStackTrace(e);
+      }
     }
 
     /**
@@ -114,7 +123,7 @@ TimelineModel.TimelineJSProfileProcessor = class {
      */
     function truncateJSStack(depth, time) {
       if (lockedJsStackDepth.length) {
-        var lockedDepth = lockedJsStackDepth.peekLast();
+        const lockedDepth = lockedJsStackDepth.peekLast();
         if (depth < lockedDepth) {
           console.error(`Child stack is shallower (${depth}) than the parent stack (${lockedDepth}) at ${time}`);
           depth = lockedDepth;
@@ -124,8 +133,9 @@ TimelineModel.TimelineJSProfileProcessor = class {
         console.error(`Trying to truncate higher than the current stack size at ${time}`);
         depth = jsFramesStack.length;
       }
-      for (var k = 0; k < jsFramesStack.length; ++k)
+      for (let k = 0; k < jsFramesStack.length; ++k) {
         jsFramesStack[k].setEndTime(time);
+      }
       jsFramesStack.length = depth;
     }
 
@@ -134,29 +144,34 @@ TimelineModel.TimelineJSProfileProcessor = class {
      * @return {boolean}
      */
     function showNativeName(name) {
-      return showRuntimeCallStats && !!TimelineModel.TimelineJSProfileProcessor.nativeGroup(name);
+      return showRuntimeCallStats && !!TimelineJSProfileProcessor.nativeGroup(name);
     }
 
     /**
      * @param {!Array<!Protocol.Runtime.CallFrame>} stack
      */
     function filterStackFrames(stack) {
-      if (showAllEvents)
+      if (showAllEvents) {
         return;
-      var previousNativeFrameName = null;
-      for (var i = 0, j = 0; i < stack.length; ++i) {
+      }
+      let previousNativeFrameName = null;
+      let j = 0;
+      for (let i = 0; i < stack.length; ++i) {
         const frame = stack[i];
         const url = frame.url;
         const isNativeFrame = url && url.startsWith('native ');
-        if (!showNativeFunctions && isNativeFrame)
+        if (!showNativeFunctions && isNativeFrame) {
           continue;
-        var isNativeRuntimeFrame = TimelineModel.TimelineJSProfileProcessor.isNativeRuntimeFrame(frame);
-        if (isNativeRuntimeFrame && !showNativeName(frame.functionName))
+        }
+        const isNativeRuntimeFrame = TimelineJSProfileProcessor.isNativeRuntimeFrame(frame);
+        if (isNativeRuntimeFrame && !showNativeName(frame.functionName)) {
           continue;
-        var nativeFrameName =
-            isNativeRuntimeFrame ? TimelineModel.TimelineJSProfileProcessor.nativeGroup(frame.functionName) : null;
-        if (previousNativeFrameName && previousNativeFrameName === nativeFrameName)
+        }
+        const nativeFrameName =
+            isNativeRuntimeFrame ? TimelineJSProfileProcessor.nativeGroup(frame.functionName) : null;
+        if (previousNativeFrameName && previousNativeFrameName === nativeFrameName) {
           continue;
+        }
         previousNativeFrameName = nativeFrameName;
         stack[j++] = frame;
       }
@@ -167,19 +182,20 @@ TimelineModel.TimelineJSProfileProcessor = class {
      * @param {!SDK.TracingModel.Event} e
      */
     function extractStackTrace(e) {
-      const recordTypes = TimelineModel.TimelineModel.RecordType;
+      const recordTypes = RecordType;
       /** @type {!Array<!Protocol.Runtime.CallFrame>} */
       const callFrames = e.name === recordTypes.JSSample ? e.args['data']['stackTrace'].slice().reverse() :
                                                            jsFramesStack.map(frameEvent => frameEvent.args['data']);
       filterStackFrames(callFrames);
       const endTime = e.endTime || e.startTime;
       const minFrames = Math.min(callFrames.length, jsFramesStack.length);
-      var i;
+      let i;
       for (i = lockedJsStackDepth.peekLast() || 0; i < minFrames; ++i) {
         const newFrame = callFrames[i];
         const oldFrame = jsFramesStack[i].args['data'];
-        if (!equalFrames(newFrame, oldFrame))
+        if (!equalFrames(newFrame, oldFrame)) {
           break;
+        }
         jsFramesStack[i].setEndTime(Math.max(jsFramesStack[i].endTime, endTime));
       }
       truncateJSStack(i, e.startTime);
@@ -196,11 +212,9 @@ TimelineModel.TimelineJSProfileProcessor = class {
       }
     }
 
-    const firstTopLevelEvent = events.find(SDK.TracingModel.isTopLevelEvent);
-    if (firstTopLevelEvent) {
-      TimelineModel.TimelineModel.forEachEvent(
-          events, onStartEvent, onEndEvent, onInstantEvent, firstTopLevelEvent.startTime);
-    }
+    const firstTopLevelEvent = events.find(SDK.TracingModel.TracingModel.isTopLevelEvent);
+    const startTime = firstTopLevelEvent ? firstTopLevelEvent.startTime : 0;
+    TimelineModelImpl.forEachEvent(events, onStartEvent, onEndEvent, onInstantEvent, startTime);
     return jsFrameEvents;
   }
 
@@ -214,46 +228,60 @@ TimelineModel.TimelineJSProfileProcessor = class {
 
   /**
    * @param {string} nativeName
-   * @return {?TimelineModel.TimelineJSProfileProcessor.NativeGroups}
+   * @return {?TimelineJSProfileProcessor.NativeGroups}
    */
   static nativeGroup(nativeName) {
-    if (nativeName.startsWith('Parse'))
-      return TimelineModel.TimelineJSProfileProcessor.NativeGroups.Parse;
-    if (nativeName.startsWith('Compile') || nativeName.startsWith('Recompile'))
-      return TimelineModel.TimelineJSProfileProcessor.NativeGroups.Compile;
+    if (nativeName.startsWith('Parse')) {
+      return TimelineJSProfileProcessor.NativeGroups.Parse;
+    }
+    if (nativeName.startsWith('Compile') || nativeName.startsWith('Recompile')) {
+      return TimelineJSProfileProcessor.NativeGroups.Compile;
+    }
     return null;
   }
 
   /**
    * @param {*} profile
+   * @param {number} tid
+   * @param {boolean} injectPageEvent
+   * @param {?string=} name
    * @return {!Array<!SDK.TracingManager.EventPayload>}
    */
-  static buildTraceProfileFromCpuProfile(profile) {
-    if (!profile)
-      return [];
-    var events = [];
-    appendEvent('TracingStartedInPage', {'sessionId': '1'}, 0, 0, 'M');
-    var idToNode = new Map();
-    var nodes = profile['nodes'];
-    for (var i = 0; i < nodes.length; ++i)
+  static buildTraceProfileFromCpuProfile(profile, tid, injectPageEvent, name) {
+    const events = [];
+    if (injectPageEvent) {
+      appendEvent('TracingStartedInPage', {data: {'sessionId': '1'}}, 0, 0, 'M');
+    }
+    if (!name) {
+      name = ls`Thread ${tid}`;
+    }
+    appendEvent(SDK.TracingModel.MetadataEvent.ThreadName, {name}, 0, 0, 'M', '__metadata');
+    if (!profile) {
+      return events;
+    }
+    const idToNode = new Map();
+    const nodes = profile['nodes'];
+    for (let i = 0; i < nodes.length; ++i) {
       idToNode.set(nodes[i].id, nodes[i]);
-    var programEvent = null;
-    var functionEvent = null;
-    var nextTime = profile.startTime;
-    var currentTime;
-    var samples = profile['samples'];
-    var timeDeltas = profile['timeDeltas'];
-    for (var i = 0; i < samples.length; ++i) {
+    }
+    let programEvent = null;
+    let functionEvent = null;
+    let nextTime = profile.startTime;
+    let currentTime;
+    const samples = profile['samples'];
+    const timeDeltas = profile['timeDeltas'];
+    for (let i = 0; i < samples.length; ++i) {
       currentTime = nextTime;
       nextTime += timeDeltas[i];
-      var node = idToNode.get(samples[i]);
-      var name = node.callFrame.functionName;
+      const node = idToNode.get(samples[i]);
+      const name = node.callFrame.functionName;
       if (name === '(idle)') {
         closeEvents();
         continue;
       }
-      if (!programEvent)
+      if (!programEvent) {
         programEvent = appendEvent('MessageLoop::RunTask', {}, currentTime, 0, 'X', 'toplevel');
+      }
       if (name === '(program)') {
         if (functionEvent) {
           functionEvent.dur = currentTime - functionEvent.ts;
@@ -261,52 +289,49 @@ TimelineModel.TimelineJSProfileProcessor = class {
         }
       } else {
         // A JS function.
-        if (!functionEvent)
-          functionEvent = appendEvent('FunctionCall', {'sessionId': '1'}, currentTime);
+        if (!functionEvent) {
+          functionEvent = appendEvent('FunctionCall', {data: {'sessionId': '1'}}, currentTime);
+        }
       }
     }
     closeEvents();
-    appendEvent('CpuProfile', {'cpuProfile': profile}, profile.endTime, 0, 'I');
+    appendEvent('CpuProfile', {data: {'cpuProfile': profile}}, profile.endTime, 0, 'I');
     return events;
 
     function closeEvents() {
-      if (programEvent)
+      if (programEvent) {
         programEvent.dur = currentTime - programEvent.ts;
-      if (functionEvent)
+      }
+      if (functionEvent) {
         functionEvent.dur = currentTime - functionEvent.ts;
+      }
       programEvent = null;
       functionEvent = null;
     }
 
     /**
      * @param {string} name
-     * @param {*} data
+     * @param {*} args
      * @param {number} ts
      * @param {number=} dur
      * @param {string=} ph
      * @param {string=} cat
      * @return {!SDK.TracingManager.EventPayload}
      */
-    function appendEvent(name, data, ts, dur, ph, cat) {
-      var event = /** @type {!SDK.TracingManager.EventPayload} */ ({
-        cat: cat || 'disabled-by-default-devtools.timeline',
-        name: name,
-        ph: ph || 'X',
-        pid: 1,
-        tid: 1,
-        ts: ts,
-        args: {data: data}
-      });
-      if (dur)
+    function appendEvent(name, args, ts, dur, ph, cat) {
+      const event = /** @type {!SDK.TracingManager.EventPayload} */ (
+          {cat: cat || 'disabled-by-default-devtools.timeline', name, ph: ph || 'X', pid: 1, tid, ts, args});
+      if (dur) {
         event.dur = dur;
+      }
       events.push(event);
       return event;
     }
   }
-};
+}
 
 /** @enum {string} */
-TimelineModel.TimelineJSProfileProcessor.NativeGroups = {
+TimelineJSProfileProcessor.NativeGroups = {
   'Compile': 'Compile',
   'Parse': 'Parse'
 };

@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-TimelineModel.TimelineModelFilter = class {
+import * as SDK from '../sdk/sdk.js';  // eslint-disable-line no-unused-vars
+
+import {RecordType, TimelineModelImpl} from './TimelineModel.js';
+
+export class TimelineModelFilter {
   /**
    * @param {!SDK.TracingModel.Event} event
    * @return {boolean}
@@ -10,9 +14,9 @@ TimelineModel.TimelineModelFilter = class {
   accept(event) {
     return true;
   }
-};
+}
 
-TimelineModel.TimelineVisibleEventsFilter = class extends TimelineModel.TimelineModelFilter {
+export class TimelineVisibleEventsFilter extends TimelineModelFilter {
   /**
    * @param {!Array<string>} visibleTypes
    */
@@ -27,24 +31,27 @@ TimelineModel.TimelineVisibleEventsFilter = class extends TimelineModel.Timeline
    * @return {boolean}
    */
   accept(event) {
-    return this._visibleTypes.has(TimelineModel.TimelineVisibleEventsFilter._eventType(event));
+    return this._visibleTypes.has(TimelineVisibleEventsFilter._eventType(event));
   }
 
   /**
-   * @return {!TimelineModel.TimelineModel.RecordType}
+   * @return {!RecordType}
    */
   static _eventType(event) {
-    if (event.hasCategory(TimelineModel.TimelineModel.Category.Console))
-      return TimelineModel.TimelineModel.RecordType.ConsoleTime;
-    if (event.hasCategory(TimelineModel.TimelineModel.Category.UserTiming))
-      return TimelineModel.TimelineModel.RecordType.UserTiming;
-    if (event.hasCategory(TimelineModel.TimelineModel.Category.LatencyInfo))
-      return TimelineModel.TimelineModel.RecordType.LatencyInfo;
-    return /** @type !TimelineModel.TimelineModel.RecordType */ (event.name);
+    if (event.hasCategory(TimelineModelImpl.Category.Console)) {
+      return RecordType.ConsoleTime;
+    }
+    if (event.hasCategory(TimelineModelImpl.Category.UserTiming)) {
+      return RecordType.UserTiming;
+    }
+    if (event.hasCategory(TimelineModelImpl.Category.LatencyInfo)) {
+      return RecordType.LatencyInfo;
+    }
+    return /** @type !RecordType */ (event.name);
   }
-};
+}
 
-TimelineModel.TimelineInvisibleEventsFilter = class extends TimelineModel.TimelineModelFilter {
+export class TimelineInvisibleEventsFilter extends TimelineModelFilter {
   /**
    * @param {!Array<string>} invisibleTypes
    */
@@ -59,11 +66,11 @@ TimelineModel.TimelineInvisibleEventsFilter = class extends TimelineModel.Timeli
    * @return {boolean}
    */
   accept(event) {
-    return !this._invisibleTypes.has(TimelineModel.TimelineVisibleEventsFilter._eventType(event));
+    return !this._invisibleTypes.has(TimelineVisibleEventsFilter._eventType(event));
   }
-};
+}
 
-TimelineModel.ExclusiveNameFilter = class extends TimelineModel.TimelineModelFilter {
+export class ExclusiveNameFilter extends TimelineModelFilter {
   /**
    * @param {!Array<string>} excludeNames
    */
@@ -80,19 +87,4 @@ TimelineModel.ExclusiveNameFilter = class extends TimelineModel.TimelineModelFil
   accept(event) {
     return !this._excludeNames.has(event.name);
   }
-};
-
-TimelineModel.ExcludeTopLevelFilter = class extends TimelineModel.TimelineModelFilter {
-  constructor() {
-    super();
-  }
-
-  /**
-   * @override
-   * @param {!SDK.TracingModel.Event} event
-   * @return {boolean}
-   */
-  accept(event) {
-    return !SDK.TracingModel.isTopLevelEvent(event);
-  }
-};
+}

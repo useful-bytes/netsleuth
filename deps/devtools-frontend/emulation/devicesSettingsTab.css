@@ -4,18 +4,12 @@
  * found in the LICENSE file.
  */
 
-.devices-settings-tab .settings-tab.help-content {
+.devices-settings-tab .settings-tab.settings-content {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     height: 100%;
     margin: 0;
-}
-
-.devices-settings-tab .devices-title {
-    font-size: 120%;
-    color: #222;
-    flex: none;
 }
 
 .devices-settings-tab .devices-button-row {
@@ -51,12 +45,16 @@
     pointer-events: none;
 }
 
+.devices-list-checkbox:focus {
+    outline: auto 5px -webkit-focus-ring-color;
+}
+
 .devices-list-title {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     flex: auto;
-    -webkit-user-select: none;
+    user-select: none;
     color: #222;
 }
 

@@ -28,7 +28,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-Bindings.TempFile = class {
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+
+import * as SDK from '../sdk/sdk.js';  // eslint-disable-line no-unused-vars
+
+import {ChunkedFileReader, ChunkedReader} from './FileUtils.js';  // eslint-disable-line no-unused-vars
+
+export class TempFile {
   constructor() {
     /** @type {?Blob} */
     this._lastBlob = null;
@@ -38,8 +44,9 @@ Bindings.TempFile = class {
    * @param {!Array<string|!Blob>} pieces
    */
   write(pieces) {
-    if (this._lastBlob)
+    if (this._lastBlob) {
       pieces.unshift(this._lastBlob);
+    }
     this._lastBlob = new Blob(pieces, {type: 'text/plain'});
   }
 
@@ -64,14 +71,14 @@ Bindings.TempFile = class {
    */
   async readRange(startOffset, endOffset) {
     if (!this._lastBlob) {
-      Common.console.error('Attempt to read a temp file that was never written');
+      self.Common.console.error('Attempt to read a temp file that was never written');
       return Promise.resolve('');
     }
-    var blob = typeof startOffset === 'number' || typeof endOffset === 'number' ?
+    const blob = typeof startOffset === 'number' || typeof endOffset === 'number' ?
         this._lastBlob.slice(/** @type {number} */ (startOffset), /** @type {number} */ (endOffset)) :
         this._lastBlob;
 
-    var reader = new FileReader();
+    const reader = new FileReader();
     try {
       await new Promise((resolve, reject) => {
         reader.onloadend = resolve;
@@ -79,15 +86,15 @@ Bindings.TempFile = class {
         reader.readAsText(blob);
       });
     } catch (error) {
-      Common.console.error('Failed to read from temp file: ' + error.message);
+      self.Common.console.error('Failed to read from temp file: ' + error.message);
     }
 
-    return reader.result;
+    return /** @type {?string} */ (reader.result);
   }
 
   /**
-   * @param {!Common.OutputStream} outputStream
-   * @param {function(!Bindings.ChunkedReader)=} progress
+   * @param {!Common.StringOutputStream.OutputStream} outputStream
+   * @param {function(!ChunkedReader)=} progress
    * @return {!Promise<?FileError>}
    */
   copyToOutputStream(outputStream, progress) {
@@ -95,21 +102,21 @@ Bindings.TempFile = class {
       outputStream.close();
       return Promise.resolve(/** @type {?FileError} */ (null));
     }
-    var reader = new Bindings.ChunkedFileReader(/** @type {!Blob} */ (this._lastBlob), 10 * 1000 * 1000, progress);
+    const reader = new ChunkedFileReader(/** @type {!Blob} */ (this._lastBlob), 10 * 1000 * 1000, progress);
     return reader.read(outputStream).then(success => success ? null : reader.error());
   }
 
   remove() {
     this._lastBlob = null;
   }
-};
+}
 
 /**
- * @implements {SDK.BackingStorage}
+ * @implements {SDK.TracingModel.BackingStorage}
  */
-Bindings.TempFileBackingStorage = class {
+export class TempFileBackingStorage {
   constructor() {
-    /** @type {?Bindings.TempFile} */
+    /** @type {?TempFile} */
     this._file = null;
     /** @type {!Array<string>} */
     this._strings;
@@ -125,9 +132,10 @@ Bindings.TempFileBackingStorage = class {
   appendString(string) {
     this._strings.push(string);
     this._stringsLength += string.length;
-    var flushStringLength = 10 * 1024 * 1024;
-    if (this._stringsLength > flushStringLength)
+    const flushStringLength = 10 * 1024 * 1024;
+    if (this._stringsLength > flushStringLength) {
       this._flush();
+    }
   }
 
   /**
@@ -137,17 +145,19 @@ Bindings.TempFileBackingStorage = class {
    */
   appendAccessibleString(string) {
     this._flush();
-    var startOffset = this._file.size();
+    const startOffset = this._file.size();
     this._strings.push(string);
     this._flush();
     return this._file.readRange.bind(this._file, startOffset, this._file.size());
   }
 
   _flush() {
-    if (!this._strings.length)
+    if (!this._strings.length) {
       return;
-    if (!this._file)
-      this._file = new Bindings.TempFile();
+    }
+    if (!this._file) {
+      this._file = new TempFile();
+    }
     this._stringsLength = 0;
     this._file.write(this._strings.splice(0));
   }
@@ -163,8 +173,9 @@ Bindings.TempFileBackingStorage = class {
    * @override
    */
   reset() {
-    if (this._file)
+    if (this._file) {
       this._file.remove();
+    }
     this._file = null;
     /** @type {!Array<string>} */
     this._strings = [];
@@ -172,18 +183,10 @@ Bindings.TempFileBackingStorage = class {
   }
 
   /**
-   * @param {!Common.OutputStream} outputStream
+   * @param {!Common.StringOutputStream.OutputStream} outputStream
    * @return {!Promise<?FileError>}
    */
   writeToStream(outputStream) {
     return this._file ? this._file.copyToOutputStream(outputStream) : Promise.resolve(null);
   }
-};
-
-/**
- * @typedef {{
- *      startOffset: number,
- *      endOffset: number
- * }}
- */
-Bindings.TempFileBackingStorage.Chunk;
+}

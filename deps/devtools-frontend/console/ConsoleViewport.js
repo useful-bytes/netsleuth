@@ -28,12 +28,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Components from '../components/components.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
  */
-Console.ConsoleViewport = class {
+export class ConsoleViewport {
   /**
-   * @param {!Console.ConsoleViewportProvider} provider
+   * @param {!ConsoleViewportProvider} provider
    */
   constructor(provider) {
     this.element = createElement('div');
@@ -51,18 +54,27 @@ Console.ConsoleViewport = class {
     this._topGapElement.textContent = '\uFEFF';
     this._bottomGapElement.textContent = '\uFEFF';
 
+    UI.ARIAUtils.markAsHidden(this._topGapElement);
+    UI.ARIAUtils.markAsHidden(this._bottomGapElement);
+
     this._provider = provider;
     this.element.addEventListener('scroll', this._onScroll.bind(this), false);
     this.element.addEventListener('copy', this._onCopy.bind(this), false);
     this.element.addEventListener('dragstart', this._onDragStart.bind(this), false);
+    this._contentElement.addEventListener('focusin', this._onFocusIn.bind(this), false);
+    this._contentElement.addEventListener('focusout', this._onFocusOut.bind(this), false);
+    this._contentElement.addEventListener('keydown', this._onKeyDown.bind(this), false);
+    this._virtualSelectedIndex = -1;
+    this._contentElement.tabIndex = -1;
 
-    this._firstActiveIndex = 0;
+    this._firstActiveIndex = -1;
     this._lastActiveIndex = -1;
     this._renderedItems = [];
     this._anchorSelection = null;
     this._headSelection = null;
     this._itemCount = 0;
     this._cumulativeHeights = new Int32Array(0);
+    this._muteCopyHandler = false;
 
     // Listen for any changes to descendants and trigger a refresh. This ensures
     // that items updated asynchronously will not break stick-to-bottom behavior
@@ -83,19 +95,37 @@ Console.ConsoleViewport = class {
    */
   setStickToBottom(value) {
     this._stickToBottom = value;
-    if (this._stickToBottom)
+    if (this._stickToBottom) {
       this._observer.observe(this._contentElement, this._observerConfig);
-    else
+    } else {
       this._observer.disconnect();
+    }
+  }
+
+  /**
+   * @return {boolean}
+   */
+  hasVirtualSelection() {
+    return this._virtualSelectedIndex !== -1;
+  }
+
+  copyWithStyles() {
+    this._muteCopyHandler = true;
+    this.element.ownerDocument.execCommand('copy');
+    this._muteCopyHandler = false;
   }
 
   /**
    * @param {!Event} event
    */
   _onCopy(event) {
-    var text = this._selectedText();
-    if (!text)
+    if (this._muteCopyHandler) {
       return;
+    }
+    const text = this._selectedText();
+    if (!text) {
+      return;
+    }
     event.preventDefault();
     event.clipboardData.setData('text/plain', text);
   }
@@ -103,14 +133,131 @@ Console.ConsoleViewport = class {
   /**
    * @param {!Event} event
    */
+  _onFocusIn(event) {
+    const renderedIndex = this._renderedItems.findIndex(item => item.element().isSelfOrAncestor(event.target));
+    if (renderedIndex !== -1) {
+      this._virtualSelectedIndex = this._firstActiveIndex + renderedIndex;
+    }
+    let focusLastChild = false;
+    // Make default selection when moving from external (e.g. prompt) to the container.
+    if (this._virtualSelectedIndex === -1 && this._isOutsideViewport(/** @type {?Element} */ (event.relatedTarget)) &&
+        event.target === this._contentElement && this._itemCount) {
+      focusLastChild = true;
+      this._virtualSelectedIndex = this._itemCount - 1;
+
+      // Update stick to bottom before scrolling into view.
+      this.refresh();
+      this.scrollItemIntoView(this._virtualSelectedIndex);
+    }
+    this._updateFocusedItem(focusLastChild);
+  }
+
+  /**
+   * @param {!Event} event
+   */
+  _onFocusOut(event) {
+    // Remove selection when focus moves to external location (e.g. prompt).
+    if (this._isOutsideViewport(/** @type {?Element} */ (event.relatedTarget))) {
+      this._virtualSelectedIndex = -1;
+    }
+    this._updateFocusedItem();
+  }
+
+  /**
+   * @param {?Element} element
+   * @return {boolean}
+   */
+  _isOutsideViewport(element) {
+    return !!element && !element.isSelfOrDescendant(this._contentElement);
+  }
+
+  /**
+   * @param {!Event} event
+   */
   _onDragStart(event) {
-    var text = this._selectedText();
-    if (!text)
+    const text = this._selectedText();
+    if (!text) {
       return false;
+    }
     event.dataTransfer.clearData();
     event.dataTransfer.setData('text/plain', text);
     event.dataTransfer.effectAllowed = 'copy';
     return true;
+  }
+
+  /**
+   * @param {!Event} event
+   */
+  _onKeyDown(event) {
+    if (UI.UIUtils.isEditing() || !this._itemCount || event.shiftKey) {
+      return;
+    }
+    let isArrowUp = false;
+    switch (event.key) {
+      case 'ArrowUp':
+        if (this._virtualSelectedIndex > 0) {
+          isArrowUp = true;
+          this._virtualSelectedIndex--;
+        } else {
+          return;
+        }
+        break;
+      case 'ArrowDown':
+        if (this._virtualSelectedIndex < this._itemCount - 1) {
+          this._virtualSelectedIndex++;
+        } else {
+          return;
+        }
+        break;
+      case 'Home':
+        this._virtualSelectedIndex = 0;
+        break;
+      case 'End':
+        this._virtualSelectedIndex = this._itemCount - 1;
+        break;
+      default:
+        return;
+    }
+    event.consume(true);
+    this.scrollItemIntoView(this._virtualSelectedIndex);
+    this._updateFocusedItem(isArrowUp);
+  }
+
+  /**
+   * @param {boolean=} focusLastChild
+   */
+  _updateFocusedItem(focusLastChild) {
+    const selectedElement = this.renderedElementAt(this._virtualSelectedIndex);
+    const changed = this._lastSelectedElement !== selectedElement;
+    const containerHasFocus = this._contentElement === this.element.ownerDocument.deepActiveElement();
+    if (this._lastSelectedElement && changed) {
+      this._lastSelectedElement.classList.remove('console-selected');
+    }
+    if (selectedElement && (focusLastChild || changed || containerHasFocus) && this.element.hasFocus()) {
+      selectedElement.classList.add('console-selected');
+      // Do not focus the message if something within holds focus (e.g. object).
+      if (focusLastChild) {
+        this.setStickToBottom(false);
+        this._renderedItems[this._virtualSelectedIndex - this._firstActiveIndex].focusLastChildOrSelf();
+      } else if (!selectedElement.hasFocus()) {
+        focusWithoutScroll(selectedElement);
+      }
+    }
+    if (this._itemCount && !this._contentElement.hasFocus()) {
+      this._contentElement.tabIndex = 0;
+    } else {
+      this._contentElement.tabIndex = -1;
+    }
+    this._lastSelectedElement = selectedElement;
+
+    /**
+     * @suppress {checkTypes}
+     * @param {!Element} element
+     */
+    function focusWithoutScroll(element) {
+      // TODO(luoe): Closure has an outdated typedef for Element.prototype.focus.
+      element.focus({preventScroll: true});
+    }
   }
 
   /**
@@ -123,18 +270,22 @@ Console.ConsoleViewport = class {
   invalidate() {
     delete this._cachedProviderElements;
     this._itemCount = this._provider.itemCount();
+    if (this._virtualSelectedIndex > this._itemCount - 1) {
+      this._virtualSelectedIndex = this._itemCount - 1;
+    }
     this._rebuildCumulativeHeights();
     this.refresh();
   }
 
   /**
    * @param {number} index
-   * @return {?Console.ConsoleViewportElement}
+   * @return {?ConsoleViewportElement}
    */
   _providerElement(index) {
-    if (!this._cachedProviderElements)
+    if (!this._cachedProviderElements) {
       this._cachedProviderElements = new Array(this._itemCount);
-    var element = this._cachedProviderElements[index];
+    }
+    let element = this._cachedProviderElements[index];
     if (!element) {
       element = this._provider.itemElement(index);
       this._cachedProviderElements[index] = element;
@@ -143,16 +294,38 @@ Console.ConsoleViewport = class {
   }
 
   _rebuildCumulativeHeights() {
-    var firstActiveIndex = this._firstActiveIndex;
-    var lastActiveIndex = this._lastActiveIndex;
-    var height = 0;
+    const firstActiveIndex = this._firstActiveIndex;
+    const lastActiveIndex = this._lastActiveIndex;
+    let height = 0;
     this._cumulativeHeights = new Int32Array(this._itemCount);
-    for (var i = 0; i < this._itemCount; ++i) {
-      if (firstActiveIndex <= i && i <= lastActiveIndex)
+    for (let i = 0; i < this._itemCount; ++i) {
+      if (firstActiveIndex <= i && i - firstActiveIndex < this._renderedItems.length && i <= lastActiveIndex) {
         height += this._renderedItems[i - firstActiveIndex].element().offsetHeight;
-      else
+      } else {
         height += this._provider.fastHeight(i);
+      }
       this._cumulativeHeights[i] = height;
+    }
+  }
+
+  _rebuildCumulativeHeightsIfNeeded() {
+    let totalCachedHeight = 0;
+    let totalMeasuredHeight = 0;
+    // Check whether current items in DOM have changed heights. Tolerate 1-pixel
+    // error due to double-to-integer rounding errors.
+    for (let i = 0; i < this._renderedItems.length; ++i) {
+      const cachedItemHeight = this._cachedItemHeight(this._firstActiveIndex + i);
+      const measuredHeight = this._renderedItems[i].element().offsetHeight;
+      if (Math.abs(cachedItemHeight - measuredHeight) > 1) {
+        this._rebuildCumulativeHeights();
+        return;
+      }
+      totalMeasuredHeight += measuredHeight;
+      totalCachedHeight += cachedItemHeight;
+      if (Math.abs(totalCachedHeight - totalMeasuredHeight) > 1) {
+        this._rebuildCumulativeHeights();
+        return;
+      }
     }
   }
 
@@ -170,9 +343,10 @@ Console.ConsoleViewport = class {
    * @suppressGlobalPropertiesCheck
    */
   _isSelectionBackwards(selection) {
-    if (!selection || !selection.rangeCount)
+    if (!selection || !selection.rangeCount) {
       return false;
-    var range = document.createRange();
+    }
+    const range = document.createRange();
     range.setStart(selection.anchorNode, selection.anchorOffset);
     range.setEnd(selection.focusNode, selection.focusOffset);
     return range.collapsed;
@@ -192,20 +366,20 @@ Console.ConsoleViewport = class {
    * @param {?Selection} selection
    */
   _updateSelectionModel(selection) {
-    var range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
     if (!range || selection.isCollapsed || !this.element.hasSelection()) {
       this._headSelection = null;
       this._anchorSelection = null;
       return false;
     }
 
-    var firstSelected = Number.MAX_VALUE;
-    var lastSelected = -1;
+    let firstSelected = Number.MAX_VALUE;
+    let lastSelected = -1;
 
-    var hasVisibleSelection = false;
-    for (var i = 0; i < this._renderedItems.length; ++i) {
+    let hasVisibleSelection = false;
+    for (let i = 0; i < this._renderedItems.length; ++i) {
       if (range.intersectsNode(this._renderedItems[i].element())) {
-        var index = i + this._firstActiveIndex;
+        const index = i + this._firstActiveIndex;
         firstSelected = Math.min(firstSelected, index);
         lastSelected = Math.max(lastSelected, index);
         hasVisibleSelection = true;
@@ -217,8 +391,8 @@ Console.ConsoleViewport = class {
       lastSelected =
           this._createSelectionModel(lastSelected, /** @type {!Node} */ (range.endContainer), range.endOffset);
     }
-    var topOverlap = range.intersectsNode(this._topGapElement) && this._topGapElement._active;
-    var bottomOverlap = range.intersectsNode(this._bottomGapElement) && this._bottomGapElement._active;
+    const topOverlap = range.intersectsNode(this._topGapElement) && this._topGapElement._active;
+    const bottomOverlap = range.intersectsNode(this._bottomGapElement) && this._bottomGapElement._active;
     if (!topOverlap && !bottomOverlap && !hasVisibleSelection) {
       this._headSelection = null;
       this._anchorSelection = null;
@@ -231,9 +405,9 @@ Console.ConsoleViewport = class {
       this._selectionIsBackward = false;
     }
 
-    var isBackward = this._isSelectionBackwards(selection);
-    var startSelection = this._selectionIsBackward ? this._headSelection : this._anchorSelection;
-    var endSelection = this._selectionIsBackward ? this._anchorSelection : this._headSelection;
+    const isBackward = this._isSelectionBackwards(selection);
+    const startSelection = this._selectionIsBackward ? this._headSelection : this._anchorSelection;
+    const endSelection = this._selectionIsBackward ? this._anchorSelection : this._headSelection;
     if (topOverlap && bottomOverlap && hasVisibleSelection) {
       firstSelected = firstSelected.item < startSelection.item ? firstSelected : startSelection;
       lastSelected = lastSelected.item > endSelection.item ? lastSelected : endSelection;
@@ -261,29 +435,31 @@ Console.ConsoleViewport = class {
    * @param {?Selection} selection
    */
   _restoreSelection(selection) {
-    var anchorElement = null;
-    var anchorOffset;
+    let anchorElement = null;
+    let anchorOffset;
     if (this._firstActiveIndex <= this._anchorSelection.item && this._anchorSelection.item <= this._lastActiveIndex) {
       anchorElement = this._anchorSelection.node;
       anchorOffset = this._anchorSelection.offset;
     } else {
-      if (this._anchorSelection.item < this._firstActiveIndex)
+      if (this._anchorSelection.item < this._firstActiveIndex) {
         anchorElement = this._topGapElement;
-      else if (this._anchorSelection.item > this._lastActiveIndex)
+      } else if (this._anchorSelection.item > this._lastActiveIndex) {
         anchorElement = this._bottomGapElement;
+      }
       anchorOffset = this._selectionIsBackward ? 1 : 0;
     }
 
-    var headElement = null;
-    var headOffset;
+    let headElement = null;
+    let headOffset;
     if (this._firstActiveIndex <= this._headSelection.item && this._headSelection.item <= this._lastActiveIndex) {
       headElement = this._headSelection.node;
       headOffset = this._headSelection.offset;
     } else {
-      if (this._headSelection.item < this._firstActiveIndex)
+      if (this._headSelection.item < this._firstActiveIndex) {
         headElement = this._topGapElement;
-      else if (this._headSelection.item > this._lastActiveIndex)
+      } else if (this._headSelection.item > this._lastActiveIndex) {
         headElement = this._bottomGapElement;
+      }
       headOffset = this._selectionIsBackward ? 0 : 1;
     }
 
@@ -293,41 +469,38 @@ Console.ConsoleViewport = class {
   refresh() {
     this._observer.disconnect();
     this._innerRefresh();
-    if (this._stickToBottom)
+    if (this._stickToBottom) {
       this._observer.observe(this._contentElement, this._observerConfig);
+    }
   }
 
   _innerRefresh() {
-    if (!this._visibleHeight())
-      return;  // Do nothing for invisible controls.
+    if (!this._visibleHeight()) {
+      return;
+    }  // Do nothing for invisible controls.
 
     if (!this._itemCount) {
-      for (var i = 0; i < this._renderedItems.length; ++i)
+      for (let i = 0; i < this._renderedItems.length; ++i) {
         this._renderedItems[i].willHide();
+      }
       this._renderedItems = [];
       this._contentElement.removeChildren();
       this._topGapElement.style.height = '0px';
       this._bottomGapElement.style.height = '0px';
       this._firstActiveIndex = -1;
       this._lastActiveIndex = -1;
+      this._updateFocusedItem();
       return;
     }
 
-    var selection = this.element.getComponentSelection();
-    var shouldRestoreSelection = this._updateSelectionModel(selection);
+    const selection = this.element.getComponentSelection();
+    const shouldRestoreSelection = this._updateSelectionModel(selection);
 
-    var visibleFrom = this.element.scrollTop;
-    var visibleHeight = this._visibleHeight();
+    const visibleFrom = this.element.scrollTop;
+    const visibleHeight = this._visibleHeight();
+    const activeHeight = visibleHeight * 2;
+    this._rebuildCumulativeHeightsIfNeeded();
 
-    for (var i = 0; i < this._renderedItems.length; ++i) {
-      // Tolerate 1-pixel error due to double-to-integer rounding errors.
-      var cachedItemHeight = this._cachedItemHeight(this._firstActiveIndex + i);
-      if (Math.abs(cachedItemHeight - this._renderedItems[i].element().offsetHeight) > 1) {
-        this._rebuildCumulativeHeights();
-        break;
-      }
-    }
-    var activeHeight = visibleHeight * 2;
     // When the viewport is scrolled to the bottom, using the cumulative heights estimate is not
     // precise enough to determine next visible indices. This stickToBottom check avoids extra
     // calls to refresh in those cases.
@@ -336,21 +509,19 @@ Console.ConsoleViewport = class {
           Math.max(this._itemCount - Math.ceil(activeHeight / this._provider.minimumRowHeight()), 0);
       this._lastActiveIndex = this._itemCount - 1;
     } else {
-      this._firstActiveIndex = Math.max(
-          Int32Array.prototype.lowerBound.call(
-              this._cumulativeHeights, visibleFrom + 1 - (activeHeight - visibleHeight) / 2),
-          0);
+      this._firstActiveIndex =
+          Math.max(this._cumulativeHeights.lowerBound(visibleFrom + 1 - (activeHeight - visibleHeight) / 2), 0);
       // Proactively render more rows in case some of them will be collapsed without triggering refresh. @see crbug.com/390169
       this._lastActiveIndex = this._firstActiveIndex + Math.ceil(activeHeight / this._provider.minimumRowHeight()) - 1;
       this._lastActiveIndex = Math.min(this._lastActiveIndex, this._itemCount - 1);
     }
 
-    var topGapHeight = this._cumulativeHeights[this._firstActiveIndex - 1] || 0;
-    var bottomGapHeight =
+    const topGapHeight = this._cumulativeHeights[this._firstActiveIndex - 1] || 0;
+    const bottomGapHeight =
         this._cumulativeHeights[this._cumulativeHeights.length - 1] - this._cumulativeHeights[this._lastActiveIndex];
 
     /**
-     * @this {Console.ConsoleViewport}
+     * @this {ConsoleViewport}
      */
     function prepare() {
       this._topGapElement.style.height = topGapHeight + 'px';
@@ -363,42 +534,56 @@ Console.ConsoleViewport = class {
     this._partialViewportUpdate(prepare.bind(this));
     this._contentElement.style.removeProperty('height');
     // Should be the last call in the method as it might force layout.
-    if (shouldRestoreSelection)
+    if (shouldRestoreSelection) {
       this._restoreSelection(selection);
-    if (this._stickToBottom)
+    }
+    if (this._stickToBottom) {
       this.element.scrollTop = 10000000;
+    }
   }
 
   /**
    * @param {function()} prepare
    */
   _partialViewportUpdate(prepare) {
-    var itemsToRender = new Set();
-    for (var i = this._firstActiveIndex; i <= this._lastActiveIndex; ++i)
+    const itemsToRender = new Set();
+    for (let i = this._firstActiveIndex; i <= this._lastActiveIndex; ++i) {
       itemsToRender.add(this._providerElement(i));
-    var willBeHidden = this._renderedItems.filter(item => !itemsToRender.has(item));
-    for (var i = 0; i < willBeHidden.length; ++i)
+    }
+    const willBeHidden = this._renderedItems.filter(item => !itemsToRender.has(item));
+    for (let i = 0; i < willBeHidden.length; ++i) {
       willBeHidden[i].willHide();
+    }
     prepare();
-    for (var i = 0; i < willBeHidden.length; ++i)
+    let hadFocus = false;
+    for (let i = 0; i < willBeHidden.length; ++i) {
+      hadFocus = hadFocus || willBeHidden[i].element().hasFocus();
       willBeHidden[i].element().remove();
+    }
 
-    var wasShown = [];
-    var anchor = this._contentElement.firstChild;
-    for (var viewportElement of itemsToRender) {
-      var element = viewportElement.element();
+    const wasShown = [];
+    let anchor = this._contentElement.firstChild;
+    for (const viewportElement of itemsToRender) {
+      const element = viewportElement.element();
       if (element !== anchor) {
-        var shouldCallWasShown = !element.parentElement;
-        if (shouldCallWasShown)
+        const shouldCallWasShown = !element.parentElement;
+        if (shouldCallWasShown) {
           wasShown.push(viewportElement);
+        }
         this._contentElement.insertBefore(element, anchor);
       } else {
         anchor = anchor.nextSibling;
       }
     }
-    for (var i = 0; i < wasShown.length; ++i)
+    for (let i = 0; i < wasShown.length; ++i) {
       wasShown[i].wasShown();
+    }
     this._renderedItems = Array.from(itemsToRender);
+
+    if (hadFocus) {
+      this._contentElement.focus();
+    }
+    this._updateFocusedItem();
   }
 
   /**
@@ -406,11 +591,12 @@ Console.ConsoleViewport = class {
    */
   _selectedText() {
     this._updateSelectionModel(this.element.getComponentSelection());
-    if (!this._headSelection || !this._anchorSelection)
+    if (!this._headSelection || !this._anchorSelection) {
       return null;
+    }
 
-    var startSelection = null;
-    var endSelection = null;
+    let startSelection = null;
+    let endSelection = null;
     if (this._selectionIsBackward) {
       startSelection = this._headSelection;
       endSelection = this._anchorSelection;
@@ -419,22 +605,22 @@ Console.ConsoleViewport = class {
       endSelection = this._headSelection;
     }
 
-    var textLines = [];
-    for (var i = startSelection.item; i <= endSelection.item; ++i) {
-      var element = this._providerElement(i).element();
-      var lineContent = element.childTextNodes().map(Components.Linkifier.untruncatedNodeText).join('');
+    const textLines = [];
+    for (let i = startSelection.item; i <= endSelection.item; ++i) {
+      const element = this._providerElement(i).element();
+      const lineContent = element.childTextNodes().map(Components.Linkifier.Linkifier.untruncatedNodeText).join('');
       textLines.push(lineContent);
     }
 
-    var endSelectionElement = this._providerElement(endSelection.item).element();
+    const endSelectionElement = this._providerElement(endSelection.item).element();
     if (endSelection.node && endSelection.node.isSelfOrDescendant(endSelectionElement)) {
-      var itemTextOffset = this._textOffsetInNode(endSelectionElement, endSelection.node, endSelection.offset);
+      const itemTextOffset = this._textOffsetInNode(endSelectionElement, endSelection.node, endSelection.offset);
       textLines[textLines.length - 1] = textLines.peekLast().substring(0, itemTextOffset);
     }
 
-    var startSelectionElement = this._providerElement(startSelection.item).element();
+    const startSelectionElement = this._providerElement(startSelection.item).element();
     if (startSelection.node && startSelection.node.isSelfOrDescendant(startSelectionElement)) {
-      var itemTextOffset = this._textOffsetInNode(startSelectionElement, startSelection.node, startSelection.offset);
+      const itemTextOffset = this._textOffsetInNode(startSelectionElement, startSelection.node, startSelection.offset);
       textLines[0] = textLines[0].substring(itemTextOffset);
     }
 
@@ -458,18 +644,20 @@ Console.ConsoleViewport = class {
       }
     }
 
-    var chars = 0;
-    var node = itemElement;
+    let chars = 0;
+    let node = itemElement;
     while ((node = node.traverseNextNode(itemElement)) && node !== selectionNode) {
       if (node.nodeType !== Node.TEXT_NODE || node.parentElement.nodeName === 'STYLE' ||
-          node.parentElement.nodeName === 'SCRIPT')
+          node.parentElement.nodeName === 'SCRIPT') {
         continue;
-      chars += Components.Linkifier.untruncatedNodeText(node).length;
+      }
+      chars += Components.Linkifier.Linkifier.untruncatedNodeText(node).length;
     }
     // If the selected node text was truncated, treat any non-zero offset as the full length.
-    var untruncatedContainerLength = Components.Linkifier.untruncatedNodeText(selectionNode).length;
-    if (offset > 0 && untruncatedContainerLength !== selectionNode.textContent.length)
+    const untruncatedContainerLength = Components.Linkifier.Linkifier.untruncatedNodeText(selectionNode).length;
+    if (offset > 0 && untruncatedContainerLength !== selectionNode.textContent.length) {
       offset = untruncatedContainerLength;
+    }
     return chars + offset;
   }
 
@@ -484,33 +672,33 @@ Console.ConsoleViewport = class {
    * @return {number}
    */
   firstVisibleIndex() {
-    var firstVisibleIndex =
-        Math.max(Int32Array.prototype.lowerBound.call(this._cumulativeHeights, this.element.scrollTop + 1), 0);
-    return Math.max(firstVisibleIndex, this._firstActiveIndex);
+    if (!this._cumulativeHeights.length) {
+      return -1;
+    }
+    this._rebuildCumulativeHeightsIfNeeded();
+    return this._cumulativeHeights.lowerBound(this.element.scrollTop + 1);
   }
 
   /**
    * @return {number}
    */
   lastVisibleIndex() {
-    var lastVisibleIndex;
-    if (this._stickToBottom) {
-      lastVisibleIndex = this._itemCount - 1;
-    } else {
-      lastVisibleIndex =
-          this.firstVisibleIndex() + Math.ceil(this._visibleHeight() / this._provider.minimumRowHeight()) - 1;
+    if (!this._cumulativeHeights.length) {
+      return -1;
     }
-    return Math.min(lastVisibleIndex, this._lastActiveIndex);
+    this._rebuildCumulativeHeightsIfNeeded();
+    const scrollBottom = this.element.scrollTop + this.element.clientHeight;
+    const right = this._itemCount - 1;
+    return this._cumulativeHeights.lowerBound(scrollBottom, undefined, undefined, right);
   }
 
   /**
    * @return {?Element}
    */
   renderedElementAt(index) {
-    if (index < this._firstActiveIndex)
+    if (index === -1 || index < this._firstActiveIndex || index > this._lastActiveIndex) {
       return null;
-    if (index > this._lastActiveIndex)
-      return null;
+    }
     return this._renderedItems[index - this._firstActiveIndex].element();
   }
 
@@ -519,38 +707,55 @@ Console.ConsoleViewport = class {
    * @param {boolean=} makeLast
    */
   scrollItemIntoView(index, makeLast) {
-    var firstVisibleIndex = this.firstVisibleIndex();
-    var lastVisibleIndex = this.lastVisibleIndex();
-    if (index > firstVisibleIndex && index < lastVisibleIndex)
+    const firstVisibleIndex = this.firstVisibleIndex();
+    const lastVisibleIndex = this.lastVisibleIndex();
+    if (index > firstVisibleIndex && index < lastVisibleIndex) {
       return;
-    if (makeLast)
+    }
+    // If the prompt is visible, then the last item must be fully on screen.
+    if (index === lastVisibleIndex &&
+        this._cumulativeHeights[index] <= this.element.scrollTop + this._visibleHeight()) {
+      return;
+    }
+    if (makeLast) {
       this.forceScrollItemToBeLast(index);
-    else if (index <= firstVisibleIndex)
+    } else if (index <= firstVisibleIndex) {
       this.forceScrollItemToBeFirst(index);
-    else if (index >= lastVisibleIndex)
+    } else if (index >= lastVisibleIndex) {
       this.forceScrollItemToBeLast(index);
+    }
   }
 
   /**
    * @param {number} index
    */
   forceScrollItemToBeFirst(index) {
+    console.assert(index >= 0 && index < this._itemCount, 'Cannot scroll item at invalid index');
     this.setStickToBottom(false);
+    this._rebuildCumulativeHeightsIfNeeded();
     this.element.scrollTop = index > 0 ? this._cumulativeHeights[index - 1] : 0;
-    if (this.element.isScrolledToBottom())
+    if (this.element.isScrolledToBottom()) {
       this.setStickToBottom(true);
+    }
     this.refresh();
+    // After refresh, the item is in DOM, but may not be visible (items above were larger than expected).
+    this.renderedElementAt(index).scrollIntoView(true /* alignTop */);
   }
 
   /**
    * @param {number} index
    */
   forceScrollItemToBeLast(index) {
+    console.assert(index >= 0 && index < this._itemCount, 'Cannot scroll item at invalid index');
     this.setStickToBottom(false);
+    this._rebuildCumulativeHeightsIfNeeded();
     this.element.scrollTop = this._cumulativeHeights[index] - this._visibleHeight();
-    if (this.element.isScrolledToBottom())
+    if (this.element.isScrolledToBottom()) {
       this.setStickToBottom(true);
+    }
     this.refresh();
+    // After refresh, the item is in DOM, but may not be visible (items above were larger than expected).
+    this.renderedElementAt(index).scrollIntoView(false /* alignTop */);
   }
 
   /**
@@ -560,56 +765,56 @@ Console.ConsoleViewport = class {
     // Use offsetHeight instead of clientHeight to avoid being affected by horizontal scroll.
     return this.element.offsetHeight;
   }
-};
+}
 
 /**
  * @interface
  */
-Console.ConsoleViewportProvider = function() {};
-
-Console.ConsoleViewportProvider.prototype = {
+export class ConsoleViewportProvider {
   /**
    * @param {number} index
    * @return {number}
    */
   fastHeight(index) {
     return 0;
-  },
+  }
 
   /**
    * @return {number}
    */
   itemCount() {
     return 0;
-  },
+  }
 
   /**
    * @return {number}
    */
   minimumRowHeight() {
     return 0;
-  },
+  }
 
   /**
    * @param {number} index
-   * @return {?Console.ConsoleViewportElement}
+   * @return {?ConsoleViewportElement}
    */
   itemElement(index) {
     return null;
   }
-};
+}
 
 /**
  * @interface
  */
-Console.ConsoleViewportElement = function() {};
-Console.ConsoleViewportElement.prototype = {
-  willHide() {},
+export class ConsoleViewportElement {
+  willHide() {
+  }
 
-  wasShown() {},
+  wasShown() {
+  }
 
   /**
    * @return {!Element}
    */
-  element() {},
-};
+  element() {
+  }
+}

@@ -2,13 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as SDK from '../sdk/sdk.js';  // eslint-disable-line no-unused-vars
+
+import {StylesSidebarPane} from './StylesSidebarPane.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @unrestricted
  */
-Elements.StylePropertyHighlighter = class {
+export class StylePropertyHighlighter {
   /**
-   * @param {!Elements.StylesSidebarPane} ssp
-   * @param {!SDK.CSSProperty} cssProperty
+   * @param {!StylesSidebarPane} ssp
+   * @param {!SDK.CSSProperty.CSSProperty} cssProperty
    */
   constructor(ssp, cssProperty) {
     this._styleSidebarPane = ssp;
@@ -17,14 +21,15 @@ Elements.StylePropertyHighlighter = class {
 
   perform() {
     // Expand all shorthands.
-    for (var section of this._styleSidebarPane.allSections()) {
-      for (var treeElement = section.propertiesTreeOutline.firstChild(); treeElement;
-           treeElement = treeElement.nextSibling)
+    for (const section of this._styleSidebarPane.allSections()) {
+      for (let treeElement = section.propertiesTreeOutline.firstChild(); treeElement;
+           treeElement = treeElement.nextSibling) {
         treeElement.onpopulate();
+      }
     }
-    var highlightTreeElement = null;
-    for (var section of this._styleSidebarPane.allSections()) {
-      var treeElement = section.propertiesTreeOutline.firstChild();
+    let highlightTreeElement = null;
+    for (const section of this._styleSidebarPane.allSections()) {
+      let treeElement = section.propertiesTreeOutline.firstChild();
       while (treeElement && !highlightTreeElement) {
         if (treeElement.property === this._cssProperty) {
           highlightTreeElement = treeElement;
@@ -32,12 +37,14 @@ Elements.StylePropertyHighlighter = class {
         }
         treeElement = treeElement.traverseNextTreeElement(false, null, true);
       }
-      if (highlightTreeElement)
+      if (highlightTreeElement) {
         break;
+      }
     }
 
-    if (!highlightTreeElement)
+    if (!highlightTreeElement) {
       return;
+    }
 
     highlightTreeElement.parent.expand();
     highlightTreeElement.listItemElement.scrollIntoViewIfNeeded();
@@ -48,4 +55,4 @@ Elements.StylePropertyHighlighter = class {
         ],
         {duration: 2000, easing: 'cubic-bezier(0, 0, 0.2, 1)'});
   }
-};
+}

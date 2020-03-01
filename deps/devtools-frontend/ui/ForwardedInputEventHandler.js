@@ -1,33 +1,40 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+import * as Host from '../host/host.js';
+
+import {KeyboardShortcut} from './KeyboardShortcut.js';
+import {ForwardedShortcut} from './ShortcutRegistry.js';
+
 /**
  * @unrestricted
  */
-UI.ForwardedInputEventHandler = class {
+export class ForwardedInputEventHandler {
   constructor() {
-    InspectorFrontendHost.events.addEventListener(
-        InspectorFrontendHostAPI.Events.KeyEventUnhandled, this._onKeyEventUnhandled, this);
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.events.addEventListener(
+        Host.InspectorFrontendHostAPI.Events.KeyEventUnhandled, this._onKeyEventUnhandled, this);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _onKeyEventUnhandled(event) {
-    var data = event.data;
-    var type = /** @type {string} */ (data.type);
-    var key = /** @type {string} */ (data.key);
-    var keyCode = /** @type {number} */ (data.keyCode);
-    var modifiers = /** @type {number} */ (data.modifiers);
+    const data = event.data;
+    const type = /** @type {string} */ (data.type);
+    const key = /** @type {string} */ (data.key);
+    const keyCode = /** @type {number} */ (data.keyCode);
+    const modifiers = /** @type {number} */ (data.modifiers);
 
-    if (type !== 'keydown')
+    if (type !== 'keydown') {
       return;
+    }
 
-    UI.context.setFlavor(UI.ShortcutRegistry.ForwardedShortcut, UI.ShortcutRegistry.ForwardedShortcut.instance);
-    UI.shortcutRegistry.handleKey(UI.KeyboardShortcut.makeKey(keyCode, modifiers), key);
-    UI.context.setFlavor(UI.ShortcutRegistry.ForwardedShortcut, null);
+    self.UI.context.setFlavor(ForwardedShortcut, ForwardedShortcut.instance);
+    self.UI.shortcutRegistry.handleKey(KeyboardShortcut.makeKey(keyCode, modifiers), key);
+    self.UI.context.setFlavor(ForwardedShortcut, null);
   }
-};
+}
 
-/** @type {!UI.ForwardedInputEventHandler} */
-UI.forwardedEventHandler = new UI.ForwardedInputEventHandler();
+new ForwardedInputEventHandler();

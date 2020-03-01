@@ -28,12 +28,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as UI from '../ui/ui.js';
+
+import {ExtensionServer} from './ExtensionServer.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @unrestricted
- */
-Extensions.ExtensionView = class extends UI.Widget {
+*/
+export class ExtensionView extends UI.Widget.Widget {
   /**
-   * @param {!Extensions.ExtensionServer} server
+   * @param {!ExtensionServer} server
    * @param {string} id
    * @param {string} src
    * @param {string} className
@@ -43,13 +47,18 @@ Extensions.ExtensionView = class extends UI.Widget {
     this.setHideOnDetach();
     this.element.className = 'vbox flex-auto';  // Override
 
+    // TODO(crbug.com/872438): remove once we can use this._iframe instead
+    this.element.tabIndex = -1;
+
     this._server = server;
     this._id = id;
     this._iframe = createElement('iframe');
     this._iframe.addEventListener('load', this._onLoad.bind(this), false);
     this._iframe.src = src;
     this._iframe.className = className;
-    this.setDefaultFocusedElement(this._iframe);
+
+    // TODO(crbug.com/872438): make this._iframe the default focused element
+    this.setDefaultFocusedElement(this.element);
 
     this.element.appendChild(this._iframe);
   }
@@ -58,32 +67,35 @@ Extensions.ExtensionView = class extends UI.Widget {
    * @override
    */
   wasShown() {
-    if (typeof this._frameIndex === 'number')
+    if (typeof this._frameIndex === 'number') {
       this._server.notifyViewShown(this._id, this._frameIndex);
+    }
   }
 
   /**
    * @override
    */
   willHide() {
-    if (typeof this._frameIndex === 'number')
+    if (typeof this._frameIndex === 'number') {
       this._server.notifyViewHidden(this._id);
+    }
   }
 
   _onLoad() {
-    var frames = /** @type {!Array.<!Window>} */ (window.frames);
+    const frames = window.frames;
     this._frameIndex = Array.prototype.indexOf.call(frames, this._iframe.contentWindow);
-    if (this.isShowing())
+    if (this.isShowing()) {
       this._server.notifyViewShown(this._id, this._frameIndex);
+    }
   }
-};
+}
 
 /**
  * @unrestricted
  */
-Extensions.ExtensionNotifierView = class extends UI.VBox {
+export class ExtensionNotifierView extends UI.Widget.VBox {
   /**
-   * @param {!Extensions.ExtensionServer} server
+   * @param {!ExtensionServer} server
    * @param {string} id
    */
   constructor(server, id) {
@@ -106,4 +118,4 @@ Extensions.ExtensionNotifierView = class extends UI.VBox {
   willHide() {
     this._server.notifyViewHidden(this._id);
   }
-};
+}

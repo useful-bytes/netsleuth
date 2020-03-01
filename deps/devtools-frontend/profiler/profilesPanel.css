@@ -65,7 +65,7 @@
 }
 
 .profiles-toolbar {
-    background-color: #f3f3f3;
+    background-color: var(--toolbar-bg-color);
     border-bottom: 1px solid #ccc;
     flex-shrink: 0;
 }
@@ -112,66 +112,6 @@
     color: white;
 }
 
-.profile-launcher-view-content {
-    padding: 0 16px;
-    text-align: left;
-}
-
-.profile-launcher-control {
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.profile-launcher-control > * {
-    margin-top: 10px;
-    margin-right: 6px;
-}
-
-.profile-launcher-control button {
-    min-width: 110px;
-}
-
-.profile-launcher-target {
-    align-items: baseline;
-}
-
-.profile-launcher-target > * {
-    flex: 0 0 auto;
-    margin-right: 8px;
-}
-
-.profile-launcher-view-content h1 {
-    padding: 15px 0 10px;
-}
-
-.panel-enabler-view.profile-launcher-view form {
-    padding: 0;
-    font-size: 13px;
-    width: 100%;
-}
-
-.panel-enabler-view.profile-launcher-view label {
-    margin: 0;
-}
-
-.profile-launcher-view-content p {
-    color: grey;
-    margin-top: 1px;
-    margin-left: 22px;
-}
-
-.profile-launcher-view-content button.running {
-    color: hsl(0, 100%, 58%);
-}
-
-.profile-launcher-view-content button.running:hover {
-    color: hsl(0, 100%, 42%);
-}
-
-body.inactive .profile-launcher-view-content button.running:not(.toolbar-item) {
-    color: rgb(220, 130, 130);
-}
-
 .highlighted-row {
     -webkit-animation: row_highlight 2s 0s;
 }
@@ -179,31 +119,6 @@ body.inactive .profile-launcher-view-content button.running:not(.toolbar-item) {
 @-webkit-keyframes row_highlight {
     from {background-color: rgba(255, 255, 120, 1); }
     to { background-color: rgba(255, 255, 120, 0); }
-}
-
-.profile-canvas-decoration label[is=dt-icon-label] {
-    margin-right: 4px;
-}
-
-.profile-canvas-decoration {
-    color: red;
-    margin: -14px 0 13px 22px;
-    padding-left: 14px;
-}
-
-.profile-canvas-decoration button {
-    margin: 0 0 0 10px !important;
-}
-
-.js_profiler.panel select.chrome-select,
-.heap_profiler.panel select.chrome-select {
-    width: 150px;
-}
-
-.profile-launcher-button {
-    margin-top: 10px;
-    margin-right: 8px;
-    min-width: 110px;
 }
 
 .cpu-profile-flame-chart-overview-container {
@@ -216,6 +131,7 @@ body.inactive .profile-launcher-view-content button.running:not(.toolbar-item) {
 
 #cpu-profile-flame-chart-overview-container {
     border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+    overflow: hidden;
 }
 
 .cpu-profile-flame-chart-overview-canvas {
@@ -232,4 +148,21 @@ body.inactive .profile-launcher-view-content button.running:not(.toolbar-item) {
 
 .cpu-profile-flame-chart-overview-pane {
     flex: 0 0 80px !important;
+}
+
+.profile-text-view {
+    padding: 10px;
+    overflow: auto;
+    margin: 0;
+    user-select: text;
+    cursor: text;
+}
+
+@media (forced-colors: active) {
+    .profile-view .data-grid tr:hover td:not(.bottom-filler-td) {
+        background: Highlight;
+    }
+    .profile-view .data-grid table.data {
+        background: transparent;
+    }
 }

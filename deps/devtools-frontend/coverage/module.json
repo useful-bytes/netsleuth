@@ -10,14 +10,15 @@
             "order": 100
         },
         {
-            "type": "@SourceFrame.UISourceCodeFrame.LineDecorator",
+            "type": "@SourceFrame.LineDecorator",
             "className": "Coverage.CoverageView.LineDecorator",
             "decoratorType": "coverage"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "actionId": "coverage.toggle-recording",
             "iconClass": "largeicon-start-recording",
+            "toggleable": true,
             "toggledIconClass": "largeicon-stop-recording",
             "toggleWithRedColor": true,
             "className": "Coverage.CoverageView.ActionDelegate",
@@ -34,7 +35,7 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "actionId": "coverage.start-with-reload",
             "iconClass": "largeicon-refresh",
             "className": "Coverage.CoverageView.ActionDelegate",
@@ -46,10 +47,13 @@
         "sdk",
         "ui",
         "source_frame",
-        "sources",
-        "data_grid"
+        "data_grid",
+        "formatter"
     ],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "coverage.js",
+        "coverage-legacy.js",
         "CoverageModel.js",
         "CoverageListView.js",
         "CoverageView.js",

@@ -29,37 +29,61 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-self['Common'] = self['Common'] || {};
+import * as Platform from '../platform/platform.js';
 
 /**
  * @param {string} string
  * @param {...*} vararg
  * @return {string}
  */
-Common.UIString = function(string, vararg) {
-  return String.vsprintf(Common.localize(string), Array.prototype.slice.call(arguments, 1));
-};
+export function UIString(string, vararg) {
+  return Platform.StringUtilities.vsprintf(localize(string), Array.prototype.slice.call(arguments, 1));
+}
+
+/**
+ * @param {string} string
+ * @param {?ArrayLike<*>} values
+ * @return {string}
+ */
+export function serializeUIString(string, values = []) {
+  const messageParts = [string];
+  const serializedMessage = {messageParts, values};
+  return JSON.stringify(serializedMessage);
+}
+
+/**
+ * @param {string=} serializedMessage
+ * @return {*}
+ */
+export function deserializeUIString(serializedMessage) {
+  if (!serializedMessage) {
+    return {};
+  }
+
+  return JSON.parse(serializedMessage);
+}
 
 /**
  * @param {string} string
  * @return {string}
  */
-Common.localize = function(string) {
+export function localize(string) {
   return string;
-};
+}
 
 /**
  * @unrestricted
  */
-Common.UIStringFormat = class {
+export class UIStringFormat {
   /**
    * @param {string} format
    */
   constructor(format) {
     /** @type {string} */
-    this._localizedFormat = Common.localize(format);
+    this._localizedFormat = localize(format);
     /** @type {!Array.<!Object>} */
-    this._tokenizedFormat = String.tokenizeFormatString(this._localizedFormat, String.standardFormatters);
+    this._tokenizedFormat = Platform.StringUtilities.tokenizeFormatString(
+        this._localizedFormat, Platform.StringUtilities.standardFormatters);
   }
 
   /**
@@ -76,10 +100,33 @@ Common.UIStringFormat = class {
    * @return {string}
    */
   format(vararg) {
-    return String
+    return Platform.StringUtilities
         .format(
-            this._localizedFormat, arguments, String.standardFormatters, '', Common.UIStringFormat._append,
+          // the code here uses odd generics that Closure likes but TS doesn't
+          // so rather than fight to typecheck this in a dodgy way we just let TS ignore it
+          // @ts-ignore
+            this._localizedFormat, arguments, Platform.StringUtilities.standardFormatters, '', UIStringFormat._append,
             this._tokenizedFormat)
         .formattedResult;
   }
-};
+}
+
+const _substitutionStrings = new WeakMap();
+
+/**
+ * @param {!Array<string>|string} strings
+ * @param {...*} vararg
+ * @return {string}
+ */
+export function ls(strings, vararg) {
+  if (typeof strings === 'string') {
+    return strings;
+  }
+  let substitutionString = _substitutionStrings.get(strings);
+  if (!substitutionString) {
+    substitutionString = strings.join('%s');
+    _substitutionStrings.set(strings, substitutionString);
+  }
+  // @ts-ignore TS gets confused with the arguments slicing
+  return UIString(substitutionString, ...Array.prototype.slice.call(arguments, 1));
+}

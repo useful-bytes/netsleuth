@@ -28,42 +28,111 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as HostModule from '../host/host.js';
+import * as ProtocolModule from '../protocol/protocol.js';
+
+import {CSSMatchedStyles} from './CSSMatchedStyles.js';
+import {CSSMedia} from './CSSMedia.js';
+import {CSSStyleRule} from './CSSRule.js';
+import {CSSStyleDeclaration, Type} from './CSSStyleDeclaration.js';
+import {CSSStyleSheetHeader} from './CSSStyleSheetHeader.js';
+import {DOMModel, DOMNode} from './DOMModel.js';  // eslint-disable-line no-unused-vars
+import {Events as ResourceTreeModelEvents, ResourceTreeModel} from './ResourceTreeModel.js';
+import {Capability, SDKModel, Target} from './SDKModel.js';  // eslint-disable-line no-unused-vars
+import {SourceMapManager} from './SourceMapManager.js';
+
 /**
  * @unrestricted
  */
-SDK.CSSModel = class extends SDK.SDKModel {
+export class CSSModel extends SDKModel {
   /**
-   * @param {!SDK.Target} target
+   * @param {!Target} target
    */
   constructor(target) {
     super(target);
-    this._domModel = /** @type {!SDK.DOMModel} */ (target.model(SDK.DOMModel));
-    /** @type {!SDK.SourceMapManager<!SDK.CSSStyleSheetHeader>} */
-    this._sourceMapManager = new SDK.SourceMapManager(target);
+    this._domModel = /** @type {!DOMModel} */ (target.model(DOMModel));
+    /** @type {!SourceMapManager<!CSSStyleSheetHeader>} */
+    this._sourceMapManager = new SourceMapManager(target);
     this._agent = target.cssAgent();
-    this._styleLoader = new SDK.CSSModel.ComputedStyleLoader(this);
-    this._resourceTreeModel = target.model(SDK.ResourceTreeModel);
+    this._styleLoader = new ComputedStyleLoader(this);
+    this._resourceTreeModel = target.model(ResourceTreeModel);
     if (this._resourceTreeModel) {
       this._resourceTreeModel.addEventListener(
-          SDK.ResourceTreeModel.Events.MainFrameNavigated, this._resetStyleSheets, this);
+          ResourceTreeModelEvents.MainFrameNavigated, this._resetStyleSheets, this);
     }
-    target.registerCSSDispatcher(new SDK.CSSDispatcher(this));
-    this._enable();
-    /** @type {!Map.<string, !SDK.CSSStyleSheetHeader>} */
+    target.registerCSSDispatcher(new CSSDispatcher(this));
+    if (!target.suspended()) {
+      this._enable();
+    }
+    /** @type {!Map.<string, !CSSStyleSheetHeader>} */
     this._styleSheetIdToHeader = new Map();
     /** @type {!Map.<string, !Object.<!Protocol.Page.FrameId, !Array.<!Protocol.CSS.StyleSheetId>>>} */
     this._styleSheetIdsForURL = new Map();
 
-    /** @type {!Map.<!SDK.CSSStyleSheetHeader, !Promise<?string>>} */
+    /** @type {!Map.<!CSSStyleSheetHeader, !Promise<?string>>} */
     this._originalStyleSheetText = new Map();
 
-    this._sourceMapManager.setEnabled(Common.moduleSetting('cssSourceMapsEnabled').get());
-    Common.moduleSetting('cssSourceMapsEnabled')
+    /** @type {boolean} */
+    this._isRuleUsageTrackingEnabled = false;
+
+    this._sourceMapManager.setEnabled(self.Common.settings.moduleSetting('cssSourceMapsEnabled').get());
+    self.Common.settings.moduleSetting('cssSourceMapsEnabled')
         .addChangeListener(event => this._sourceMapManager.setEnabled(/** @type {boolean} */ (event.data)));
   }
 
   /**
-   * @return {!SDK.SourceMapManager<!SDK.CSSStyleSheetHeader>}
+   * @param {string} sourceURL
+   * @return {!Array<!CSSStyleSheetHeader>}
+   */
+  headersForSourceURL(sourceURL) {
+    const headers = [];
+    for (const headerId of this.styleSheetIdsForURL(sourceURL)) {
+      const header = this.styleSheetHeaderForId(headerId);
+      if (header) {
+        headers.push(header);
+      }
+    }
+    return headers;
+  }
+
+  /**
+   * @param {string} sourceURL
+   * @param {number} lineNumber
+   * @param {number} columnNumber
+   * @return {!Array<!CSSLocation>}
+   */
+  createRawLocationsByURL(sourceURL, lineNumber, columnNumber) {
+    const headers = this.headersForSourceURL(sourceURL);
+    headers.sort(stylesheetComparator);
+    const compareToArgLocation = (_, header) => lineNumber - header.startLine || columnNumber - header.startColumn;
+    const endIndex = headers.upperBound(undefined, compareToArgLocation);
+    if (!endIndex) {
+      return [];
+    }
+    const locations = [];
+    const last = headers[endIndex - 1];
+    for (let index = endIndex - 1;
+         index >= 0 && headers[index].startLine === last.startLine && headers[index].startColumn === last.startColumn;
+         --index) {
+      if (headers[index].containsLocation(lineNumber, columnNumber)) {
+        locations.push(new CSSLocation(headers[index], lineNumber, columnNumber));
+      }
+    }
+
+
+    return locations;
+    /**
+     * @param {!CSSStyleSheetHeader} a
+     * @param {!CSSStyleSheetHeader} b
+     * @return {number}
+     */
+    function stylesheetComparator(a, b) {
+      return a.startLine - b.startLine || a.startColumn - b.startColumn || a.id.localeCompare(b.id);
+    }
+  }
+
+  /**
+   * @return {!SourceMapManager<!CSSStyleSheetHeader>}
    */
   sourceMapManager() {
     return this._sourceMapManager;
@@ -74,24 +143,27 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @return {string}
    */
   static trimSourceURL(text) {
-    var sourceURLIndex = text.lastIndexOf('/*# sourceURL=');
+    let sourceURLIndex = text.lastIndexOf('/*# sourceURL=');
     if (sourceURLIndex === -1) {
       sourceURLIndex = text.lastIndexOf('/*@ sourceURL=');
-      if (sourceURLIndex === -1)
+      if (sourceURLIndex === -1) {
         return text;
+      }
     }
-    var sourceURLLineIndex = text.lastIndexOf('\n', sourceURLIndex);
-    if (sourceURLLineIndex === -1)
+    const sourceURLLineIndex = text.lastIndexOf('\n', sourceURLIndex);
+    if (sourceURLLineIndex === -1) {
       return text;
-    var sourceURLLine = text.substr(sourceURLLineIndex + 1).split('\n', 1)[0];
-    var sourceURLRegex = /[\040\t]*\/\*[#@] sourceURL=[\040\t]*([^\s]*)[\040\t]*\*\/[\040\t]*$/;
-    if (sourceURLLine.search(sourceURLRegex) === -1)
+    }
+    const sourceURLLine = text.substr(sourceURLLineIndex + 1).split('\n', 1)[0];
+    const sourceURLRegex = /[\040\t]*\/\*[#@] sourceURL=[\040\t]*([^\s]*)[\040\t]*\*\/[\040\t]*$/;
+    if (sourceURLLine.search(sourceURLRegex) === -1) {
       return text;
+    }
     return text.substr(0, sourceURLLineIndex) + text.substr(sourceURLLineIndex + sourceURLLine.length + 1);
   }
 
   /**
-   * @return {!SDK.DOMModel}
+   * @return {!DOMModel}
    */
   domModel() {
     return this._domModel;
@@ -104,130 +176,19 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @param {boolean} majorChange
    * @return {!Promise<boolean>}
    */
-  setStyleText(styleSheetId, range, text, majorChange) {
-    var original = this._innerSetStyleTexts.bind(this, [styleSheetId], [range], [text], majorChange);
-    var header = this.styleSheetHeaderForId(styleSheetId);
-    if (!header)
-      return original();
-
-    var sourceMap = this._sourceMapManager.sourceMapForClient(header);
-    if (!sourceMap)
-      return original();
-
-    var originalAndDetach = originalAndDetachIfSuccess.bind(this, header);
-
-    if (!sourceMap.editable())
-      return original();
-
-    return /** @type {!Promise<boolean>} */ (
-        sourceMap.editCompiled([range], [text]).then(onEditingDone.bind(this)).catch(onError.bind(this, header)));
-
-    /**
-     * @param {?SDK.SourceMap.EditResult} editResult
-     * @return {!Promise<boolean>}
-     * @this {SDK.CSSModel}
-     */
-    function onEditingDone(editResult) {
-      if (!editResult)
-        return Promise.resolve(false);
-
-      var edits = editResult.compiledEdits;
-      if (!edits.length)
-        return onCSSPatched.call(this, editResult, true);
-
-      edits.sort(TextUtils.SourceEdit.comparator);
-      edits = edits.reverse();
-
-      var styleSheetIds = [];
-      var ranges = [];
-      var texts = [];
-      for (var edit of edits) {
-        styleSheetIds.push(header.id);
-        ranges.push(edit.oldRange);
-        texts.push(edit.newText);
-      }
-      return this._innerSetStyleTexts(styleSheetIds, ranges, texts, majorChange)
-          .then(onCSSPatched.bind(this, editResult));
-    }
-
-    /**
-     * @param {!SDK.SourceMap.EditResult} editResult
-     * @param {boolean} success
-     * @return {!Promise<boolean>}
-     * @this {SDK.CSSModel}
-     */
-    function onCSSPatched(editResult, success) {
-      if (!success)
-        return originalAndDetach();
-
-      this._sourceMapManager.applySourceMapEdit(editResult);
-      return Promise.resolve(true);
-    }
-
-    /**
-     * @param {!SDK.CSSStyleSheetHeader} header
-     * @param {*} error
-     * @return {!Promise<boolean>}
-     * @this {SDK.CSSModel}
-     */
-    function onError(header, error) {
-      Common.console.error(Common.UIString('LiveSASS failed: %s', sourceMap.compiledURL()));
-      console.error(error);
-      this._sourceMapManager.detachSourceMap(header);
-      return original();
-    }
-
-    /**
-     * @param {!SDK.CSSStyleSheetHeader} header
-     * @return {!Promise<boolean>}
-     * @this {SDK.CSSModel}
-     */
-    function originalAndDetachIfSuccess(header) {
-      return this._innerSetStyleTexts([styleSheetId], [range], [text], majorChange).then(detachIfSuccess.bind(this));
-
-      /**
-       * @param {boolean} success
-       * @return {boolean}
-       * @this {SDK.CSSModel}
-       */
-      function detachIfSuccess(success) {
-        if (success)
-          this._sourceMapManager.detachSourceMap(header);
-        return success;
-      }
-    }
-  }
-
-  /**
-   * @param {!Array<!Protocol.CSS.StyleSheetId>} styleSheetIds
-   * @param {!Array<!TextUtils.TextRange>} ranges
-   * @param {!Array<string>} texts
-   * @param {boolean} majorChange
-   * @return {!Promise<boolean>}
-   */
-  async _innerSetStyleTexts(styleSheetIds, ranges, texts, majorChange) {
-    console.assert(
-        styleSheetIds.length === ranges.length && ranges.length === texts.length, 'Array lengths must be equal');
-    var edits = [];
-    var ensureContentPromises = [];
-    for (var i = 0; i < styleSheetIds.length; ++i) {
-      edits.push({styleSheetId: styleSheetIds[i], range: ranges[i].serializeToObject(), text: texts[i]});
-      ensureContentPromises.push(this._ensureOriginalStyleSheetText(styleSheetIds[i]));
-    }
-
+  async setStyleText(styleSheetId, range, text, majorChange) {
     try {
-      await Promise.all(ensureContentPromises);
-      var stylePayloads = await this._agent.setStyleTexts(edits);
+      await this._ensureOriginalStyleSheetText(styleSheetId);
 
-      if (!stylePayloads || stylePayloads.length !== ranges.length)
+      const stylePayloads =
+          await this._agent.setStyleTexts([{styleSheetId: styleSheetId, range: range.serializeToObject(), text: text}]);
+      if (!stylePayloads || stylePayloads.length !== 1) {
         return false;
-
-      if (majorChange)
-        this._domModel.markUndoableState();
-      for (var i = 0; i < ranges.length; ++i) {
-        var edit = new SDK.CSSModel.Edit(styleSheetIds[i], ranges[i], texts[i], stylePayloads[i]);
-        this._fireStyleSheetChanged(styleSheetIds[i], edit);
       }
+
+      this._domModel.markUndoableState(!majorChange);
+      const edit = new Edit(styleSheetId, range, text, stylePayloads[0]);
+      this._fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
       return false;
@@ -241,16 +202,17 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @return {!Promise<boolean>}
    */
   async setSelectorText(styleSheetId, range, text) {
-    Host.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
+    HostModule.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
 
     try {
       await this._ensureOriginalStyleSheetText(styleSheetId);
-      var selectorPayload = await this._agent.setRuleSelector(styleSheetId, range, text);
+      const selectorPayload = await this._agent.setRuleSelector(styleSheetId, range, text);
 
-      if (!selectorPayload)
+      if (!selectorPayload) {
         return false;
+      }
       this._domModel.markUndoableState();
-      var edit = new SDK.CSSModel.Edit(styleSheetId, range, text, selectorPayload);
+      const edit = new Edit(styleSheetId, range, text, selectorPayload);
       this._fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
@@ -265,16 +227,17 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @return {!Promise<boolean>}
    */
   async setKeyframeKey(styleSheetId, range, text) {
-    Host.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
+    HostModule.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
 
     try {
       await this._ensureOriginalStyleSheetText(styleSheetId);
-      var payload = await this._agent.setKeyframeKey(styleSheetId, range, text);
+      const payload = await this._agent.setKeyframeKey(styleSheetId, range, text);
 
-      if (!payload)
+      if (!payload) {
         return false;
+      }
       this._domModel.markUndoableState();
-      var edit = new SDK.CSSModel.Edit(styleSheetId, range, text, payload);
+      const edit = new Edit(styleSheetId, range, text, payload);
       this._fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
@@ -283,29 +246,34 @@ SDK.CSSModel = class extends SDK.SDKModel {
   }
 
   startCoverage() {
-    this._agent.startRuleUsageTracking();
+    this._isRuleUsageTrackingEnabled = true;
+    return this._agent.startRuleUsageTracking();
   }
 
   /**
-   * @return {!Promise<!Array<!Protocol.CSS.RuleUsage>>}
+   * @return {!Promise<{timestamp: number, coverage:!Array<!Protocol.CSS.RuleUsage>}>}
    */
-  takeCoverageDelta() {
-    return this._agent.takeCoverageDelta().then(ruleUsage => ruleUsage || []);
+  async takeCoverageDelta() {
+    const r = await this._agent.invoke_takeCoverageDelta({});
+    const timestamp = (r && r.timestamp) || 0;
+    const coverage = (r && r.coverage) || [];
+    return {timestamp, coverage};
   }
 
   /**
    * @return {!Promise}
    */
   stopCoverage() {
+    this._isRuleUsageTrackingEnabled = false;
     return this._agent.stopRuleUsageTracking();
   }
 
   /**
-   * @return {!Promise<!Array<!SDK.CSSMedia>>}
+   * @return {!Promise<!Array<!CSSMedia>>}
    */
   async mediaQueriesPromise() {
-    var payload = await this._agent.getMediaQueries();
-    return payload ? SDK.CSSMedia.parseMediaArrayPayload(this, payload) : [];
+    const payload = await this._agent.getMediaQueries();
+    return payload ? CSSMedia.parseMediaArrayPayload(this, payload) : [];
   }
 
   /**
@@ -321,25 +289,30 @@ SDK.CSSModel = class extends SDK.SDKModel {
   async _enable() {
     await this._agent.enable();
     this._isEnabled = true;
-    this.dispatchEventToListeners(SDK.CSSModel.Events.ModelWasEnabled);
+    if (this._isRuleUsageTrackingEnabled) {
+      await this.startCoverage();
+    }
+    this.dispatchEventToListeners(Events.ModelWasEnabled);
   }
 
   /**
    * @param {!Protocol.DOM.NodeId} nodeId
-   * @return {!Promise<?SDK.CSSMatchedStyles>}
+   * @return {!Promise<?CSSMatchedStyles>}
    */
   async matchedStylesPromise(nodeId) {
-    var response = await this._agent.invoke_getMatchedStylesForNode({nodeId});
+    const response = await this._agent.invoke_getMatchedStylesForNode({nodeId});
 
-    if (response[Protocol.Error])
+    if (response[ProtocolModule.InspectorBackend.ProtocolError]) {
       return null;
+    }
 
-    var node = this._domModel.nodeForId(nodeId);
-    if (!node)
+    const node = this._domModel.nodeForId(nodeId);
+    if (!node) {
       return null;
+    }
 
-    return new SDK.CSSMatchedStyles(
-        this, /** @type {!SDK.DOMNode} */ (node), response.inlineStyle || null, response.attributesStyle || null,
+    return new CSSMatchedStyles(
+        this, /** @type {!DOMNode} */ (node), response.inlineStyle || null, response.attributesStyle || null,
         response.matchedCSSRules || [], response.pseudoElements || [], response.inherited || [],
         response.cssKeyframesRules || []);
   }
@@ -362,10 +335,15 @@ SDK.CSSModel = class extends SDK.SDKModel {
 
   /**
    * @param {number} nodeId
-   * @return {!Promise<?Array<string>>}
+   * @return {!Promise<?ContrastInfo>}
    */
-  backgroundColorsPromise(nodeId) {
-    return this._agent.getBackgroundColors(nodeId);
+  async backgroundColorsPromise(nodeId) {
+    const response = this._agent.invoke_getBackgroundColors({nodeId});
+    if (response[ProtocolModule.InspectorBackend.ProtocolError]) {
+      return null;
+    }
+
+    return response;
   }
 
   /**
@@ -377,20 +355,22 @@ SDK.CSSModel = class extends SDK.SDKModel {
   }
 
   /**
-   * @return {!Array.<!SDK.CSSStyleSheetHeader>}
+   * @return {!Array.<!CSSStyleSheetHeader>}
    */
   allStyleSheets() {
-    var values = this._styleSheetIdToHeader.valuesArray();
+    const values = [...this._styleSheetIdToHeader.values()];
     /**
-     * @param {!SDK.CSSStyleSheetHeader} a
-     * @param {!SDK.CSSStyleSheetHeader} b
+     * @param {!CSSStyleSheetHeader} a
+     * @param {!CSSStyleSheetHeader} b
      * @return {number}
      */
     function styleSheetComparator(a, b) {
-      if (a.sourceURL < b.sourceURL)
+      if (a.sourceURL < b.sourceURL) {
         return -1;
-      else if (a.sourceURL > b.sourceURL)
+      }
+      if (a.sourceURL > b.sourceURL) {
         return 1;
+      }
       return a.startLine - b.startLine || a.startColumn - b.startColumn;
     }
     values.sort(styleSheetComparator);
@@ -400,56 +380,58 @@ SDK.CSSModel = class extends SDK.SDKModel {
 
   /**
    * @param {!Protocol.DOM.NodeId} nodeId
-   * @return {!Promise<?SDK.CSSModel.InlineStyleResult>}
+   * @return {!Promise<?InlineStyleResult>}
    */
   async inlineStylesPromise(nodeId) {
-    var response = await this._agent.invoke_getInlineStylesForNode({nodeId});
+    const response = await this._agent.invoke_getInlineStylesForNode({nodeId});
 
-    if (response[Protocol.Error] || !response.inlineStyle)
+    if (response[ProtocolModule.InspectorBackend.ProtocolError] || !response.inlineStyle) {
       return null;
-    var inlineStyle =
-        new SDK.CSSStyleDeclaration(this, null, response.inlineStyle, SDK.CSSStyleDeclaration.Type.Inline);
-    var attributesStyle = response.attributesStyle ?
-        new SDK.CSSStyleDeclaration(this, null, response.attributesStyle, SDK.CSSStyleDeclaration.Type.Attributes) :
+    }
+    const inlineStyle = new CSSStyleDeclaration(this, null, response.inlineStyle, Type.Inline);
+    const attributesStyle = response.attributesStyle ?
+        new CSSStyleDeclaration(this, null, response.attributesStyle, Type.Attributes) :
         null;
-    return new SDK.CSSModel.InlineStyleResult(inlineStyle, attributesStyle);
+    return new InlineStyleResult(inlineStyle, attributesStyle);
   }
 
   /**
-   * @param {!SDK.DOMNode} node
+   * @param {!DOMNode} node
    * @param {string} pseudoClass
    * @param {boolean} enable
    * @return {boolean}
    */
   forcePseudoState(node, pseudoClass, enable) {
-    var pseudoClasses = node.marker(SDK.CSSModel.PseudoStateMarker) || [];
+    const pseudoClasses = node.marker(PseudoStateMarker) || [];
     if (enable) {
-      if (pseudoClasses.indexOf(pseudoClass) >= 0)
+      if (pseudoClasses.indexOf(pseudoClass) >= 0) {
         return false;
+      }
       pseudoClasses.push(pseudoClass);
-      node.setMarker(SDK.CSSModel.PseudoStateMarker, pseudoClasses);
+      node.setMarker(PseudoStateMarker, pseudoClasses);
     } else {
-      if (pseudoClasses.indexOf(pseudoClass) < 0)
+      if (pseudoClasses.indexOf(pseudoClass) < 0) {
         return false;
+      }
       pseudoClasses.remove(pseudoClass);
-      if (pseudoClasses.length)
-        node.setMarker(SDK.CSSModel.PseudoStateMarker, pseudoClasses);
-      else
-        node.setMarker(SDK.CSSModel.PseudoStateMarker, null);
+      if (pseudoClasses.length) {
+        node.setMarker(PseudoStateMarker, pseudoClasses);
+      } else {
+        node.setMarker(PseudoStateMarker, null);
+      }
     }
 
     this._agent.forcePseudoState(node.id, pseudoClasses);
-    this.dispatchEventToListeners(
-        SDK.CSSModel.Events.PseudoStateForced, {node: node, pseudoClass: pseudoClass, enable: enable});
+    this.dispatchEventToListeners(Events.PseudoStateForced, {node: node, pseudoClass: pseudoClass, enable: enable});
     return true;
   }
 
   /**
-   * @param {!SDK.DOMNode} node
+   * @param {!DOMNode} node
    * @return {?Array<string>} state
    */
   pseudoState(node) {
-    return node.marker(SDK.CSSModel.PseudoStateMarker) || [];
+    return node.marker(PseudoStateMarker) || [];
   }
 
   /**
@@ -459,16 +441,17 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @return {!Promise<boolean>}
    */
   async setMediaText(styleSheetId, range, newMediaText) {
-    Host.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
+    HostModule.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
 
     try {
       await this._ensureOriginalStyleSheetText(styleSheetId);
-      var mediaPayload = await this._agent.setMediaText(styleSheetId, range, newMediaText);
+      const mediaPayload = await this._agent.setMediaText(styleSheetId, range, newMediaText);
 
-      if (!mediaPayload)
+      if (!mediaPayload) {
         return false;
+      }
       this._domModel.markUndoableState();
-      var edit = new SDK.CSSModel.Edit(styleSheetId, range, newMediaText, mediaPayload);
+      const edit = new Edit(styleSheetId, range, newMediaText, mediaPayload);
       this._fireStyleSheetChanged(styleSheetId, edit);
       return true;
     } catch (e) {
@@ -480,37 +463,39 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @param {!Protocol.CSS.StyleSheetId} styleSheetId
    * @param {string} ruleText
    * @param {!TextUtils.TextRange} ruleLocation
-   * @return {!Promise<?SDK.CSSStyleRule>}
+   * @return {!Promise<?CSSStyleRule>}
    */
   async addRule(styleSheetId, ruleText, ruleLocation) {
     try {
       await this._ensureOriginalStyleSheetText(styleSheetId);
-      var rulePayload = await this._agent.addRule(styleSheetId, ruleText, ruleLocation);
+      const rulePayload = await this._agent.addRule(styleSheetId, ruleText, ruleLocation);
 
-      if (!rulePayload)
+      if (!rulePayload) {
         return null;
+      }
       this._domModel.markUndoableState();
-      var edit = new SDK.CSSModel.Edit(styleSheetId, ruleLocation, ruleText, rulePayload);
+      const edit = new Edit(styleSheetId, ruleLocation, ruleText, rulePayload);
       this._fireStyleSheetChanged(styleSheetId, edit);
-      return new SDK.CSSStyleRule(this, rulePayload);
+      return new CSSStyleRule(this, rulePayload);
     } catch (e) {
       return null;
     }
   }
 
   /**
-   * @param {!SDK.DOMNode} node
-   * @return {!Promise<?SDK.CSSStyleSheetHeader>}
+   * @param {!DOMNode} node
+   * @return {!Promise<?CSSStyleSheetHeader>}
    */
   async requestViaInspectorStylesheet(node) {
-    var frameId = node.frameId() || (this._resourceTreeModel ? this._resourceTreeModel.mainFrame.id : '');
-    var headers = this._styleSheetIdToHeader.valuesArray();
-    var styleSheetHeader = headers.find(header => header.frameId === frameId && header.isViaInspector());
-    if (styleSheetHeader)
+    const frameId = node.frameId() || (this._resourceTreeModel ? this._resourceTreeModel.mainFrame.id : '');
+    const headers = [...this._styleSheetIdToHeader.values()];
+    const styleSheetHeader = headers.find(header => header.frameId === frameId && header.isViaInspector());
+    if (styleSheetHeader) {
       return styleSheetHeader;
+    }
 
     try {
-      var styleSheetId = await this._agent.createStyleSheet(frameId);
+      const styleSheetId = await this._agent.createStyleSheet(frameId);
       return styleSheetId && this._styleSheetIdToHeader.get(styleSheetId) || null;
     } catch (e) {
       return null;
@@ -518,34 +503,34 @@ SDK.CSSModel = class extends SDK.SDKModel {
   }
 
   mediaQueryResultChanged() {
-    this.dispatchEventToListeners(SDK.CSSModel.Events.MediaQueryResultChanged);
+    this.dispatchEventToListeners(Events.MediaQueryResultChanged);
   }
 
   fontsUpdated() {
-    this.dispatchEventToListeners(SDK.CSSModel.Events.FontsUpdated);
+    this.dispatchEventToListeners(Events.FontsUpdated);
   }
 
   /**
    * @param {!Protocol.CSS.StyleSheetId} id
-   * @return {?SDK.CSSStyleSheetHeader}
+   * @return {?CSSStyleSheetHeader}
    */
   styleSheetHeaderForId(id) {
     return this._styleSheetIdToHeader.get(id) || null;
   }
 
   /**
-   * @return {!Array.<!SDK.CSSStyleSheetHeader>}
+   * @return {!Array.<!CSSStyleSheetHeader>}
    */
   styleSheetHeaders() {
-    return this._styleSheetIdToHeader.valuesArray();
+    return [...this._styleSheetIdToHeader.values()];
   }
 
   /**
    * @param {!Protocol.CSS.StyleSheetId} styleSheetId
-   * @param {!SDK.CSSModel.Edit=} edit
+   * @param {!Edit=} edit
    */
   _fireStyleSheetChanged(styleSheetId, edit) {
-    this.dispatchEventToListeners(SDK.CSSModel.Events.StyleSheetChanged, {styleSheetId: styleSheetId, edit: edit});
+    this.dispatchEventToListeners(Events.StyleSheetChanged, {styleSheetId: styleSheetId, edit: edit});
   }
 
   /**
@@ -553,10 +538,11 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @return {!Promise<?string>}
    */
   _ensureOriginalStyleSheetText(styleSheetId) {
-    var header = this.styleSheetHeaderForId(styleSheetId);
-    if (!header)
+    const header = this.styleSheetHeaderForId(styleSheetId);
+    if (!header) {
       return Promise.resolve(/** @type {?string} */ (null));
-    var promise = this._originalStyleSheetText.get(header);
+    }
+    let promise = this._originalStyleSheetText.get(header);
     if (!promise) {
       promise = this.getStyleSheetText(header.id);
       this._originalStyleSheetText.set(header, promise);
@@ -566,13 +552,13 @@ SDK.CSSModel = class extends SDK.SDKModel {
   }
 
   /**
-   * @param {!SDK.CSSStyleSheetHeader} header
+   * @param {!CSSStyleSheetHeader} header
    */
   _originalContentRequestedForTest(header) {
   }
 
   /**
-   * @param {!SDK.CSSStyleSheetHeader} header
+   * @param {!CSSStyleSheetHeader} header
    * @return {!Promise<?string>}
    */
   originalStyleSheetText(header) {
@@ -580,48 +566,60 @@ SDK.CSSModel = class extends SDK.SDKModel {
   }
 
   /**
+   *
+   * @return {!Iterable<!CSSStyleSheetHeader>}
+   */
+  getAllStyleSheetHeaders() {
+    return this._styleSheetIdToHeader.values();
+  }
+
+  /**
    * @param {!Protocol.CSS.CSSStyleSheetHeader} header
    */
   _styleSheetAdded(header) {
     console.assert(!this._styleSheetIdToHeader.get(header.styleSheetId));
-    var styleSheetHeader = new SDK.CSSStyleSheetHeader(this, header);
+    const styleSheetHeader = new CSSStyleSheetHeader(this, header);
     this._styleSheetIdToHeader.set(header.styleSheetId, styleSheetHeader);
-    var url = styleSheetHeader.resourceURL();
-    if (!this._styleSheetIdsForURL.get(url))
+    const url = styleSheetHeader.resourceURL();
+    if (!this._styleSheetIdsForURL.get(url)) {
       this._styleSheetIdsForURL.set(url, {});
-    var frameIdToStyleSheetIds = this._styleSheetIdsForURL.get(url);
-    var styleSheetIds = frameIdToStyleSheetIds[styleSheetHeader.frameId];
+    }
+    const frameIdToStyleSheetIds = this._styleSheetIdsForURL.get(url);
+    let styleSheetIds = frameIdToStyleSheetIds[styleSheetHeader.frameId];
     if (!styleSheetIds) {
       styleSheetIds = [];
       frameIdToStyleSheetIds[styleSheetHeader.frameId] = styleSheetIds;
     }
     styleSheetIds.push(styleSheetHeader.id);
     this._sourceMapManager.attachSourceMap(styleSheetHeader, styleSheetHeader.sourceURL, styleSheetHeader.sourceMapURL);
-    this.dispatchEventToListeners(SDK.CSSModel.Events.StyleSheetAdded, styleSheetHeader);
+    this.dispatchEventToListeners(Events.StyleSheetAdded, styleSheetHeader);
   }
 
   /**
    * @param {!Protocol.CSS.StyleSheetId} id
    */
   _styleSheetRemoved(id) {
-    var header = this._styleSheetIdToHeader.get(id);
+    const header = this._styleSheetIdToHeader.get(id);
     console.assert(header);
-    if (!header)
+    if (!header) {
       return;
+    }
     this._styleSheetIdToHeader.remove(id);
-    var url = header.resourceURL();
-    var frameIdToStyleSheetIds = /** @type {!Object.<!Protocol.Page.FrameId, !Array.<!Protocol.CSS.StyleSheetId>>} */ (
-        this._styleSheetIdsForURL.get(url));
+    const url = header.resourceURL();
+    const frameIdToStyleSheetIds =
+        /** @type {!Object.<!Protocol.Page.FrameId, !Array.<!Protocol.CSS.StyleSheetId>>} */ (
+            this._styleSheetIdsForURL.get(url));
     console.assert(frameIdToStyleSheetIds, 'No frameId to styleSheetId map is available for given style sheet URL.');
     frameIdToStyleSheetIds[header.frameId].remove(id);
     if (!frameIdToStyleSheetIds[header.frameId].length) {
       delete frameIdToStyleSheetIds[header.frameId];
-      if (!Object.keys(frameIdToStyleSheetIds).length)
+      if (!Object.keys(frameIdToStyleSheetIds).length) {
         this._styleSheetIdsForURL.remove(url);
+      }
     }
     this._originalStyleSheetText.remove(header);
     this._sourceMapManager.detachSourceMap(header);
-    this.dispatchEventToListeners(SDK.CSSModel.Events.StyleSheetRemoved, header);
+    this.dispatchEventToListeners(Events.StyleSheetRemoved, header);
   }
 
   /**
@@ -629,13 +627,15 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @return {!Array.<!Protocol.CSS.StyleSheetId>}
    */
   styleSheetIdsForURL(url) {
-    var frameIdToStyleSheetIds = this._styleSheetIdsForURL.get(url);
-    if (!frameIdToStyleSheetIds)
+    const frameIdToStyleSheetIds = this._styleSheetIdsForURL.get(url);
+    if (!frameIdToStyleSheetIds) {
       return [];
+    }
 
-    var result = [];
-    for (var frameId in frameIdToStyleSheetIds)
+    let result = [];
+    for (const frameId in frameIdToStyleSheetIds) {
       result = result.concat(frameIdToStyleSheetIds[frameId]);
+    }
     return result;
   }
 
@@ -646,23 +646,24 @@ SDK.CSSModel = class extends SDK.SDKModel {
    * @return {!Promise<?string>}
    */
   async setStyleSheetText(styleSheetId, newText, majorChange) {
-    var header = /** @type {!SDK.CSSStyleSheetHeader} */ (this._styleSheetIdToHeader.get(styleSheetId));
+    const header = /** @type {!CSSStyleSheetHeader} */ (this._styleSheetIdToHeader.get(styleSheetId));
     console.assert(header);
-    newText = SDK.CSSModel.trimSourceURL(newText);
-    if (header.hasSourceURL)
+    newText = CSSModel.trimSourceURL(newText);
+    if (header.hasSourceURL) {
       newText += '\n/*# sourceURL=' + header.sourceURL + ' */';
+    }
 
     await this._ensureOriginalStyleSheetText(styleSheetId);
-    var response = await this._agent.invoke_setStyleSheetText({styleSheetId: header.id, text: newText});
-    var sourceMapURL = response.sourceMapURL;
+    const response = await this._agent.invoke_setStyleSheetText({styleSheetId: header.id, text: newText});
+    const sourceMapURL = response.sourceMapURL;
 
     this._sourceMapManager.detachSourceMap(header);
     header.setSourceMapURL(sourceMapURL);
     this._sourceMapManager.attachSourceMap(header, header.sourceURL, header.sourceMapURL);
-    if (sourceMapURL === null)
+    if (sourceMapURL === null) {
       return 'Error in CSS.setStyleSheetText';
-    if (majorChange)
-      this._domModel.markUndoableState();
+    }
+    this._domModel.markUndoableState(!majorChange);
     this._fireStyleSheetChanged(styleSheetId);
     return null;
   }
@@ -673,20 +674,20 @@ SDK.CSSModel = class extends SDK.SDKModel {
    */
   async getStyleSheetText(styleSheetId) {
     try {
-      var text = await this._agent.getStyleSheetText(styleSheetId);
-      return text && SDK.CSSModel.trimSourceURL(text);
+      const text = await this._agent.getStyleSheetText(styleSheetId);
+      return text && CSSModel.trimSourceURL(text);
     } catch (e) {
       return null;
     }
   }
 
   _resetStyleSheets() {
-    var headers = this._styleSheetIdToHeader.valuesArray();
+    const headers = [...this._styleSheetIdToHeader.values()];
     this._styleSheetIdsForURL.clear();
     this._styleSheetIdToHeader.clear();
-    for (var i = 0; i < headers.length; ++i) {
-      this._sourceMapManager.detachSourceMap(headers[i]);
-      this.dispatchEventToListeners(SDK.CSSModel.Events.StyleSheetRemoved, headers[i]);
+    for (const header of headers) {
+      this._sourceMapManager.detachSourceMap(header);
+      this.dispatchEventToListeners(Events.StyleSheetRemoved, header);
     }
   }
 
@@ -717,15 +718,17 @@ SDK.CSSModel = class extends SDK.SDKModel {
   }
 
   /**
-   * @param {!SDK.DOMNode} node
-   * @return {!Promise.<?SDK.CSSMatchedStyles>}
+   * @param {!DOMNode} node
+   * @return {!Promise.<?CSSMatchedStyles>}
    */
   cachedMatchedCascadeForNode(node) {
-    if (this._cachedMatchedCascadeNode !== node)
+    if (this._cachedMatchedCascadeNode !== node) {
       this.discardCachedMatchedCascade();
+    }
     this._cachedMatchedCascadeNode = node;
-    if (!this._cachedMatchedCascadePromise)
+    if (!this._cachedMatchedCascadePromise) {
       this._cachedMatchedCascadePromise = this.matchedStylesPromise(node.id);
+    }
     return this._cachedMatchedCascadePromise;
   }
 
@@ -741,15 +744,10 @@ SDK.CSSModel = class extends SDK.SDKModel {
     super.dispose();
     this._sourceMapManager.dispose();
   }
-};
-
-SDK.SDKModel.register(SDK.CSSModel, SDK.Target.Capability.DOM, true);
-
-/** @typedef {!{range: !Protocol.CSS.SourceRange, styleSheetId: !Protocol.CSS.StyleSheetId, wasUsed: boolean}} */
-SDK.CSSModel.RuleUsage;
+}
 
 /** @enum {symbol} */
-SDK.CSSModel.Events = {
+export const Events = {
   FontsUpdated: Symbol('FontsUpdated'),
   MediaQueryResultChanged: Symbol('MediaQueryResultChanged'),
   ModelWasEnabled: Symbol('ModelWasEnabled'),
@@ -759,15 +757,12 @@ SDK.CSSModel.Events = {
   StyleSheetRemoved: Symbol('StyleSheetRemoved')
 };
 
-SDK.CSSModel.MediaTypes =
-    ['all', 'braille', 'embossed', 'handheld', 'print', 'projection', 'screen', 'speech', 'tty', 'tv'];
-
-SDK.CSSModel.PseudoStateMarker = 'pseudo-state-marker';
+const PseudoStateMarker = 'pseudo-state-marker';
 
 /**
  * @unrestricted
  */
-SDK.CSSModel.Edit = class {
+export class Edit {
   /**
    * @param {!Protocol.CSS.StyleSheetId} styleSheetId
    * @param {!TextUtils.TextRange} oldRange
@@ -778,13 +773,14 @@ SDK.CSSModel.Edit = class {
     this.styleSheetId = styleSheetId;
     this.oldRange = oldRange;
     this.newRange = TextUtils.TextRange.fromEdit(oldRange, newText);
+    this.newText = newText;
     this.payload = payload;
   }
-};
+}
 
-SDK.CSSLocation = class {
+export class CSSLocation {
   /**
-   * @param {!SDK.CSSStyleSheetHeader} header
+   * @param {!CSSStyleSheetHeader} header
    * @param {number} lineNumber
    * @param {number=} columnNumber
    */
@@ -797,27 +793,27 @@ SDK.CSSLocation = class {
   }
 
   /**
-   * @return {!SDK.CSSModel}
+   * @return {!CSSModel}
    */
   cssModel() {
     return this._cssModel;
   }
 
   /**
-   * @return {?SDK.CSSStyleSheetHeader}
+   * @return {?CSSStyleSheetHeader}
    */
   header() {
     return this._cssModel.styleSheetHeaderForId(this.styleSheetId);
   }
-};
+}
 
 /**
  * @implements {Protocol.CSSDispatcher}
  * @unrestricted
  */
-SDK.CSSDispatcher = class {
+class CSSDispatcher {
   /**
-   * @param {!SDK.CSSModel} cssModel
+   * @param {!CSSModel} cssModel
    */
   constructor(cssModel) {
     this._cssModel = cssModel;
@@ -860,14 +856,14 @@ SDK.CSSDispatcher = class {
   styleSheetRemoved(id) {
     this._cssModel._styleSheetRemoved(id);
   }
-};
+}
 
 /**
  * @unrestricted
  */
-SDK.CSSModel.ComputedStyleLoader = class {
+class ComputedStyleLoader {
   /**
-   * @param {!SDK.CSSModel} cssModel
+   * @param {!CSSModel} cssModel
    */
   constructor(cssModel) {
     this._cssModel = cssModel;
@@ -880,9 +876,10 @@ SDK.CSSModel.ComputedStyleLoader = class {
    * @return {!Promise<?Map<string, string>>}
    */
   computedStylePromise(nodeId) {
-    var promise = this._nodeIdToPromise.get(nodeId);
-    if (promise)
+    let promise = this._nodeIdToPromise.get(nodeId);
+    if (promise) {
       return promise;
+    }
     promise = this._cssModel._agent.getComputedStyleForNode(nodeId).then(parsePayload.bind(this));
     this._nodeIdToPromise.set(nodeId, promise);
     return promise;
@@ -890,30 +887,37 @@ SDK.CSSModel.ComputedStyleLoader = class {
     /**
      * @param {?Array<!Protocol.CSS.CSSComputedStyleProperty>} computedPayload
      * @return {?Map<string, string>}
-     * @this {SDK.CSSModel.ComputedStyleLoader}
+     * @this {ComputedStyleLoader}
      */
     function parsePayload(computedPayload) {
       this._nodeIdToPromise.delete(nodeId);
-      if (!computedPayload || !computedPayload.length)
+      if (!computedPayload || !computedPayload.length) {
         return null;
-      var result = new Map();
-      for (var property of computedPayload)
+      }
+      const result = new Map();
+      for (const property of computedPayload) {
         result.set(property.name, property.value);
+      }
       return result;
     }
   }
-};
+}
 
 /**
  * @unrestricted
  */
-SDK.CSSModel.InlineStyleResult = class {
+export class InlineStyleResult {
   /**
-   * @param {?SDK.CSSStyleDeclaration} inlineStyle
-   * @param {?SDK.CSSStyleDeclaration} attributesStyle
+   * @param {?CSSStyleDeclaration} inlineStyle
+   * @param {?CSSStyleDeclaration} attributesStyle
    */
   constructor(inlineStyle, attributesStyle) {
     this.inlineStyle = inlineStyle;
     this.attributesStyle = attributesStyle;
   }
-};
+}
+
+SDKModel.register(CSSModel, Capability.DOM, true);
+
+/** @typedef {{backgroundColors: ?Array<string>, computedFontSize: string, computedFontWeight: string}} */
+export let ContrastInfo;

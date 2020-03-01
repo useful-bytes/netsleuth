@@ -2,349 +2,526 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-ObjectUI.JavaScriptAutocomplete = {};
+import * as Common from '../common/common.js';
+import * as Formatter from '../formatter/formatter.js';
+import * as Platform from '../platform/platform.js';
+import * as SDK from '../sdk/sdk.js';
+import * as TextUtils from '../text_utils/text_utils.js';
+import * as UI from '../ui/ui.js';
 
-/** @typedef {{title:(string|undefined), items:Array<string>}} */
-ObjectUI.JavaScriptAutocomplete.CompletionGroup;
-
-/**
- * @param {string} text
- * @param {string} query
- * @param {boolean=} force
- * @return {!Promise<!UI.SuggestBox.Suggestions>}
- */
-ObjectUI.JavaScriptAutocomplete.completionsForTextInCurrentContext = function(text, query, force) {
-  var clippedExpression = ObjectUI.JavaScriptAutocomplete._clipExpression(text, true);
-  var mapCompletionsPromise = ObjectUI.JavaScriptAutocomplete._mapCompletions(text, query);
-  return ObjectUI.JavaScriptAutocomplete.completionsForExpression(clippedExpression, query, force)
-      .then(completions => mapCompletionsPromise.then(mapCompletions => mapCompletions.concat(completions)));
-};
-
-/**
- * @param {string} text
- * @param {boolean=} allowEndingBracket
- * @return {string}
- */
-ObjectUI.JavaScriptAutocomplete._clipExpression = function(text, allowEndingBracket) {
-  var index;
-  var stopChars = new Set('=:({;,!+-*/&|^<>`'.split(''));
-  var whiteSpaceChars = new Set(' \r\n\t'.split(''));
-  var continueChars = new Set('[. \r\n\t'.split(''));
-
-  for (index = text.length - 1; index >= 0; index--) {
-    if (stopChars.has(text.charAt(index)))
-      break;
-    if (whiteSpaceChars.has(text.charAt(index)) && !continueChars.has(text.charAt(index - 1)))
-      break;
+export class JavaScriptAutocomplete {
+  constructor() {
+    /** @type {!Map<string, {date: number, value: !Promise<?Object>}>} */
+    this._expressionCache = new Map();
+    self.SDK.consoleModel.addEventListener(SDK.ConsoleModel.Events.CommandEvaluated, this._clearCache, this);
+    self.UI.context.addFlavorChangeListener(SDK.RuntimeModel.ExecutionContext, this._clearCache, this);
+    self.SDK.targetManager.addModelListener(
+        SDK.DebuggerModel.DebuggerModel, SDK.DebuggerModel.Events.DebuggerResumed, this._clearCache, this);
+    self.SDK.targetManager.addModelListener(
+        SDK.DebuggerModel.DebuggerModel, SDK.DebuggerModel.Events.DebuggerPaused, this._clearCache, this);
   }
-  var clippedExpression = text.substring(index + 1).trim();
-  var bracketCount = 0;
 
-  index = clippedExpression.length - 1;
-  while (index >= 0) {
-    var character = clippedExpression.charAt(index);
-    if (character === ']')
-      bracketCount++;
-    // Allow an open bracket at the end for property completion.
-    if (character === '[' && (index < clippedExpression.length - 1 || !allowEndingBracket)) {
-      bracketCount--;
-      if (bracketCount < 0)
-        break;
-    }
-    index--;
-  }
-  return clippedExpression.substring(index + 1).trim();
-};
-
-/**
- * @param {string} text
- * @param {string} query
- * @return {!Promise<!UI.SuggestBox.Suggestions>}
- */
-ObjectUI.JavaScriptAutocomplete._mapCompletions = function(text, query) {
-  var mapMatch = text.match(/\.\s*(get|set|delete)\s*\(\s*$/);
-  var executionContext = UI.context.flavor(SDK.ExecutionContext);
-  if (!executionContext || !mapMatch)
-    return Promise.resolve([]);
-
-  var clippedExpression = ObjectUI.JavaScriptAutocomplete._clipExpression(text.substring(0, mapMatch.index));
-  var fulfill;
-  var promise = new Promise(x => fulfill = x);
-  executionContext.evaluate(clippedExpression, 'completion', true, true, false, false, false, evaluated);
-  return promise;
-
-  /**
-   * @param {?SDK.RemoteObject} result
-   * @param {!Protocol.Runtime.ExceptionDetails=} exceptionDetails
-   */
-  function evaluated(result, exceptionDetails) {
-    if (!result || !!exceptionDetails || result.subtype !== 'map') {
-      fulfill([]);
-      return;
-    }
-    result.getOwnPropertiesPromise(false).then(extractEntriesProperty);
+  _clearCache() {
+    this._expressionCache.clear();
   }
 
   /**
-   * @param {!{properties: ?Array<!SDK.RemoteObjectProperty>, internalProperties: ?Array<!SDK.RemoteObjectProperty>}} properties
+   * @param {string} fullText
+   * @param {string} query
+   * @param {boolean=} force
+   * @return {!Promise<!UI.SuggestBox.Suggestions>}
    */
-  function extractEntriesProperty(properties) {
-    var internalProperties = properties.internalProperties || [];
-    var entriesProperty = internalProperties.find(property => property.name === '[[Entries]]');
-    if (!entriesProperty) {
-      fulfill([]);
-      return;
-    }
-    entriesProperty.value.callFunctionJSONPromise(getEntries).then(keysObj => gotKeys(Object.keys(keysObj)));
+  async completionsForTextInCurrentContext(fullText, query, force) {
+    const trimmedText = fullText.trim();
+
+    const [mapCompletions, expressionCompletions] = await Promise.all(
+        [this._mapCompletions(trimmedText, query), this._completionsForExpression(trimmedText, query, force)]);
+    return mapCompletions.concat(expressionCompletions);
   }
 
   /**
-   * @suppressReceiverCheck
-   * @this {!Array<{key:?, value:?}>}
-   * @return {!Object}
+   * @param {string} fullText
+   * @return {!Promise<?{args: !Array<!Array<string>>, argumentIndex: number}|undefined>}
    */
-  function getEntries() {
-    var result = {__proto__: null};
-    for (var i = 0; i < this.length; i++) {
-      if (typeof this[i].key === 'string')
-        result[this[i].key] = true;
+  async argumentsHint(fullText) {
+    const functionCall = await Formatter.FormatterWorkerPool.formatterWorkerPool().findLastFunctionCall(fullText);
+    if (!functionCall) {
+      return null;
     }
-    return result;
+    const executionContext = self.UI.context.flavor(SDK.RuntimeModel.ExecutionContext);
+    if (!executionContext) {
+      return null;
+    }
+    const result = await executionContext.evaluate(
+        {
+          expression: functionCall.baseExpression,
+          objectGroup: 'argumentsHint',
+          includeCommandLineAPI: true,
+          silent: true,
+          returnByValue: false,
+          generatePreview: false,
+          throwOnSideEffect: functionCall.possibleSideEffects,
+          timeout: functionCall.possibleSideEffects ? 500 : undefined
+        },
+        /* userGesture */ false, /* awaitPromise */ false);
+    if (!result || result.exceptionDetails || !result.object || result.object.type !== 'function') {
+      executionContext.runtimeModel.releaseObjectGroup('argumentsHint');
+      return null;
+    }
+
+    const args = await this._argumentsForFunction(result.object, async () => {
+      const result = await executionContext.evaluate(
+          {
+            expression: functionCall.receiver,
+            objectGroup: 'argumentsHint',
+            includeCommandLineAPI: true,
+            silent: true,
+            returnByValue: false,
+            generatePreview: false,
+            throwOnSideEffect: functionCall.possibleSideEffects,
+            timeout: functionCall.possibleSideEffects ? 500 : undefined
+          },
+          /* userGesture */ false, /* awaitPromise */ false);
+      return (result && !result.exceptionDetails && result.object) ? result.object : null;
+    }, functionCall.functionName);
+    executionContext.runtimeModel.releaseObjectGroup('argumentsHint');
+    if (!args.length || (args.length === 1 && !args[0].length)) {
+      return null;
+    }
+    return {args, argumentIndex: functionCall.argumentIndex};
   }
 
   /**
-   * @param {!Array<string>} rawKeys
+   * @param {!SDK.RemoteObject.RemoteObject} functionObject
+   * @param {function():!Promise<?SDK.RemoteObject.RemoteObject>} receiverObjGetter
+   * @param {string=} parsedFunctionName
+   * @return {!Promise<!Array<!Array<string>>>}
    */
-  function gotKeys(rawKeys) {
-    var caseSensitivePrefix = [];
-    var caseInsensitivePrefix = [];
-    var caseSensitiveAnywhere = [];
-    var caseInsensitiveAnywhere = [];
-    var quoteChar = '"';
-    if (query.startsWith('\''))
-      quoteChar = '\'';
-    var endChar = ')';
-    if (mapMatch[0].indexOf('set') !== -1)
-      endChar = ', ';
-
-    var sorter = rawKeys.length < 1000 ? String.naturalOrderComparator : undefined;
-    var keys = rawKeys.sort(sorter).map(key => quoteChar + key + quoteChar);
-
-    for (var key of keys) {
-      if (key.length < query.length)
-        continue;
-      if (query.length && key.toLowerCase().indexOf(query.toLowerCase()) === -1)
-        continue;
-      // Substitute actual newlines with newline characters. @see crbug.com/498421
-      var title = key.split('\n').join('\\n');
-      var text = title + endChar;
-
-      if (key.startsWith(query))
-        caseSensitivePrefix.push({text: text, title: title, priority: 4});
-      else if (key.toLowerCase().startsWith(query.toLowerCase()))
-        caseInsensitivePrefix.push({text: text, title: title, priority: 3});
-      else if (key.indexOf(query) !== -1)
-        caseSensitiveAnywhere.push({text: text, title: title, priority: 2});
-      else
-        caseInsensitiveAnywhere.push({text: text, title: title, priority: 1});
-    }
-    var suggestions = caseSensitivePrefix.concat(caseInsensitivePrefix, caseSensitiveAnywhere, caseInsensitiveAnywhere);
-    if (suggestions.length)
-      suggestions[0].subtitle = Common.UIString('Keys');
-    fulfill(suggestions);
-  }
-};
-
-/**
- * @param {string} expressionString
- * @param {string} query
- * @param {boolean=} force
- * @return {!Promise<!UI.SuggestBox.Suggestions>}
- */
-ObjectUI.JavaScriptAutocomplete.completionsForExpression = function(expressionString, query, force) {
-  var executionContext = UI.context.flavor(SDK.ExecutionContext);
-  if (!executionContext)
-    return Promise.resolve([]);
-
-  var lastIndex = expressionString.length - 1;
-
-  var dotNotation = (expressionString[lastIndex] === '.');
-  var bracketNotation = (expressionString.length > 1 && expressionString[lastIndex] === '[');
-
-  if (dotNotation || bracketNotation)
-    expressionString = expressionString.substr(0, lastIndex);
-  else
-    expressionString = '';
-
-  // User is entering float value, do not suggest anything.
-  if ((expressionString && !isNaN(expressionString)) || (!expressionString && query && !isNaN(query)))
-    return Promise.resolve([]);
-
-
-  if (!query && !expressionString && !force)
-    return Promise.resolve([]);
-
-  var fulfill;
-  var promise = new Promise(x => fulfill = x);
-  var selectedFrame = executionContext.debuggerModel.selectedCallFrame();
-  if (!expressionString && selectedFrame)
-    variableNamesInScopes(selectedFrame, receivedPropertyNames);
-  else
-    executionContext.evaluate(expressionString, 'completion', true, true, false, false, false, evaluated);
-
-  return promise;
-  /**
-   * @param {?SDK.RemoteObject} result
-   * @param {!Protocol.Runtime.ExceptionDetails=} exceptionDetails
-   */
-  function evaluated(result, exceptionDetails) {
-    if (!result || !!exceptionDetails) {
-      fulfill([]);
-      return;
+  async _argumentsForFunction(functionObject, receiverObjGetter, parsedFunctionName) {
+    const description = functionObject.description;
+    if (!description.endsWith('{ [native code] }')) {
+      return [await Formatter.FormatterWorkerPool.formatterWorkerPool().argumentsList(description)];
     }
 
-    /**
-     * @param {?SDK.RemoteObject} object
-     * @return {!Promise<?SDK.RemoteObject>}
-     */
-    function extractTarget(object) {
-      if (!object)
-        return Promise.resolve(/** @type {?SDK.RemoteObject} */ (null));
-      if (object.type !== 'object' || object.subtype !== 'proxy')
-        return Promise.resolve(/** @type {?SDK.RemoteObject} */ (object));
-      return object.getOwnPropertiesPromise(false /* generatePreview */)
-          .then(extractTargetFromProperties)
-          .then(extractTarget);
-    }
-
-    /**
-     * @param {!{properties: ?Array<!SDK.RemoteObjectProperty>, internalProperties: ?Array<!SDK.RemoteObjectProperty>}} properties
-     * @return {?SDK.RemoteObject}
-     */
-    function extractTargetFromProperties(properties) {
-      var internalProperties = properties.internalProperties || [];
-      var target = internalProperties.find(property => property.name === '[[Target]]');
-      return target ? target.value : null;
-    }
-
-    /**
-     * @param {string=} type
-     * @return {!Object}
-     * @suppressReceiverCheck
-     * @this {Object}
-     */
-    function getCompletions(type) {
-      var object;
-      if (type === 'string')
-        object = new String('');
-      else if (type === 'number')
-        object = new Number(0);
-      else if (type === 'boolean')
-        object = new Boolean(false);
-      else
-        object = this;
-
-      var result = [];
-      try {
-        for (var o = object; o; o = Object.getPrototypeOf(o)) {
-          if ((type === 'array' || type === 'typedarray') && o === object && ArrayBuffer.isView(o) && o.length > 9999)
-            continue;
-
-          var group = {items: [], __proto__: null};
-          try {
-            if (typeof o === 'object' && o.constructor && o.constructor.name)
-              group.title = o.constructor.name;
-          } catch (ee) {
-            // we could break upon cross origin check.
-          }
-          result[result.length] = group;
-          var names = Object.getOwnPropertyNames(o);
-          var isArray = Array.isArray(o);
-          for (var i = 0; i < names.length; ++i) {
-            // Skip array elements indexes.
-            if (isArray && /^[0-9]/.test(names[i]))
-              continue;
-            group.items[group.items.length] = names[i];
+    // Check if this is a bound function.
+    if (description === 'function () { [native code] }') {
+      const properties = await functionObject.getOwnProperties(false);
+      const internalProperties = properties.internalProperties || [];
+      const targetProperty = internalProperties.find(property => property.name === '[[TargetFunction]]');
+      const argsProperty = internalProperties.find(property => property.name === '[[BoundArgs]]');
+      const thisProperty = internalProperties.find(property => property.name === '[[BoundThis]]');
+      if (thisProperty && targetProperty && argsProperty) {
+        const originalSignatures =
+            await this._argumentsForFunction(targetProperty.value, () => Promise.resolve(thisProperty.value));
+        const boundArgsLength = SDK.RemoteObject.RemoteObject.arrayLength(argsProperty.value);
+        const clippedArgs = [];
+        for (const signature of originalSignatures) {
+          const restIndex = signature.slice(0, boundArgsLength).findIndex(arg => arg.startsWith('...'));
+          if (restIndex !== -1) {
+            clippedArgs.push(signature.slice(restIndex));
+          } else {
+            clippedArgs.push(signature.slice(boundArgsLength));
           }
         }
-      } catch (e) {
+        return clippedArgs;
+      }
+    }
+    const javaScriptMetadata = await self.runtime.extension(Common.JavaScriptMetaData.JavaScriptMetaData).instance();
+
+    const name = /^function ([^(]*)\(/.exec(description)[1] || parsedFunctionName;
+    if (!name) {
+      return [];
+    }
+    const uniqueSignatures = javaScriptMetadata.signaturesForNativeFunction(name);
+    if (uniqueSignatures) {
+      return uniqueSignatures;
+    }
+    const receiverObj = await receiverObjGetter();
+    const className = receiverObj.className;
+    if (javaScriptMetadata.signaturesForInstanceMethod(name, className)) {
+      return javaScriptMetadata.signaturesForInstanceMethod(name, className);
+    }
+
+    // Check for static methods on a constructor.
+    if (receiverObj.type === 'function' && receiverObj.description.endsWith('{ [native code] }')) {
+      const receiverName = /^function ([^(]*)\(/.exec(receiverObj.description)[1];
+      const staticSignatures = javaScriptMetadata.signaturesForStaticMethod(name, receiverName);
+      if (staticSignatures) {
+        return staticSignatures;
+      }
+    }
+
+
+    let protoNames;
+    if (receiverObj.type === 'number') {
+      protoNames = ['Number', 'Object'];
+    } else if (receiverObj.type === 'string') {
+      protoNames = ['String', 'Object'];
+    } else if (receiverObj.type === 'symbol') {
+      protoNames = ['Symbol', 'Object'];
+    } else if (receiverObj.type === 'bigint') {
+      protoNames = ['BigInt', 'Object'];
+    } else if (receiverObj.type === 'boolean') {
+      protoNames = ['Boolean', 'Object'];
+    } else if (receiverObj.type === 'undefined' || receiverObj.subtype === 'null') {
+      protoNames = [];
+    } else {
+      protoNames = await receiverObj.callFunctionJSON(function() {
+        const result = [];
+        for (let object = this; object; object = Object.getPrototypeOf(object)) {
+          if (typeof object === 'object' && object.constructor && object.constructor.name) {
+            result[result.length] = object.constructor.name;
+          }
+        }
+        return result;
+      }, []);
+    }
+
+    if (!protoNames) {
+      return [];
+    }
+
+    for (const proto of protoNames) {
+      const instanceSignatures = javaScriptMetadata.signaturesForInstanceMethod(name, proto);
+      if (instanceSignatures) {
+        return instanceSignatures;
+      }
+    }
+    return [];
+  }
+
+  /**
+   * @param {string} text
+   * @param {string} query
+   * @return {!Promise<!UI.SuggestBox.Suggestions>}
+   */
+  async _mapCompletions(text, query) {
+    const mapMatch = text.match(/\.\s*(get|set|delete)\s*\(\s*$/);
+    const executionContext = self.UI.context.flavor(SDK.RuntimeModel.ExecutionContext);
+    if (!executionContext || !mapMatch) {
+      return [];
+    }
+
+    const expression =
+        await Formatter.FormatterWorkerPool.formatterWorkerPool().findLastExpression(text.substring(0, mapMatch.index));
+    if (!expression) {
+      return [];
+    }
+
+    const result = await executionContext.evaluate(
+        {
+          expression: expression.baseExpression,
+          objectGroup: 'mapCompletion',
+          includeCommandLineAPI: true,
+          silent: true,
+          returnByValue: false,
+          generatePreview: false,
+          throwOnSideEffect: expression.possibleSideEffects,
+          timeout: expression.possibleSideEffects ? 500 : undefined
+        },
+        /* userGesture */ false, /* awaitPromise */ false);
+    if (result.error || !!result.exceptionDetails || result.object.subtype !== 'map') {
+      return [];
+    }
+    const properties = await result.object.getOwnProperties(false);
+    const internalProperties = properties.internalProperties || [];
+    const entriesProperty = internalProperties.find(property => property.name === '[[Entries]]');
+    if (!entriesProperty) {
+      return [];
+    }
+    const keysObj = await entriesProperty.value.callFunctionJSON(getEntries);
+    executionContext.runtimeModel.releaseObjectGroup('mapCompletion');
+    return gotKeys(Object.keys(keysObj));
+
+    /**
+     * @suppressReceiverCheck
+     * @this {!Array<{key:?, value:?}>}
+     * @return {!Object}
+     */
+    function getEntries() {
+      const result = {__proto__: null};
+      for (let i = 0; i < this.length; i++) {
+        if (typeof this[i].key === 'string') {
+          result[this[i].key] = true;
+        }
       }
       return result;
     }
 
     /**
-     * @param {?SDK.RemoteObject} object
+     * @param {!Array<string>} rawKeys
+     * @return {!UI.SuggestBox.Suggestions}
      */
-    function completionsForObject(object) {
+    function gotKeys(rawKeys) {
+      const caseSensitivePrefix = [];
+      const caseInsensitivePrefix = [];
+      const caseSensitiveAnywhere = [];
+      const caseInsensitiveAnywhere = [];
+      let quoteChar = '"';
+      if (query.startsWith('\'')) {
+        quoteChar = '\'';
+      }
+      let endChar = ')';
+      if (mapMatch[0].indexOf('set') !== -1) {
+        endChar = ', ';
+      }
+
+      const sorter = rawKeys.length < 1000 ? String.naturalOrderComparator : undefined;
+      const keys = rawKeys.sort(sorter).map(key => quoteChar + key + quoteChar);
+
+      for (const key of keys) {
+        if (key.length < query.length) {
+          continue;
+        }
+        if (query.length && key.toLowerCase().indexOf(query.toLowerCase()) === -1) {
+          continue;
+        }
+        // Substitute actual newlines with newline characters. @see crbug.com/498421
+        const title = key.split('\n').join('\\n');
+        const text = title + endChar;
+
+        if (key.startsWith(query)) {
+          caseSensitivePrefix.push({text: text, title: title, priority: 4});
+        } else if (key.toLowerCase().startsWith(query.toLowerCase())) {
+          caseInsensitivePrefix.push({text: text, title: title, priority: 3});
+        } else if (key.indexOf(query) !== -1) {
+          caseSensitiveAnywhere.push({text: text, title: title, priority: 2});
+        } else {
+          caseInsensitiveAnywhere.push({text: text, title: title, priority: 1});
+        }
+      }
+      const suggestions =
+          caseSensitivePrefix.concat(caseInsensitivePrefix, caseSensitiveAnywhere, caseInsensitiveAnywhere);
+      if (suggestions.length) {
+        suggestions[0].subtitle = Common.UIString.UIString('Keys');
+      }
+      return suggestions;
+    }
+  }
+
+  /**
+   * @param {string} fullText
+   * @param {string} query
+   * @param {boolean=} force
+   * @return {!Promise<!UI.SuggestBox.Suggestions>}
+   */
+  async _completionsForExpression(fullText, query, force) {
+    const executionContext = self.UI.context.flavor(SDK.RuntimeModel.ExecutionContext);
+    if (!executionContext) {
+      return [];
+    }
+    let expression;
+    if (fullText.endsWith('.') || fullText.endsWith('[')) {
+      expression = await Formatter.FormatterWorkerPool.formatterWorkerPool().findLastExpression(
+          fullText.substring(0, fullText.length - 1));
+    }
+    if (!expression) {
+      if (fullText.endsWith('.')) {
+        return [];
+      }
+      expression = {baseExpression: '', possibleSideEffects: false};
+    }
+    const needsNoSideEffects = expression.possibleSideEffects;
+    const expressionString = expression.baseExpression;
+
+
+    const dotNotation = fullText.endsWith('.');
+    const bracketNotation = !!expressionString && fullText.endsWith('[');
+
+    // User is entering float value, do not suggest anything.
+    if ((expressionString && !isNaN(expressionString)) || (!expressionString && query && !isNaN(query))) {
+      return [];
+    }
+
+
+    if (!query && !expressionString && !force) {
+      return [];
+    }
+    const selectedFrame = executionContext.debuggerModel.selectedCallFrame();
+    let completionGroups;
+    const TEN_SECONDS = 10000;
+    let cache = this._expressionCache.get(expressionString);
+    if (cache && cache.date + TEN_SECONDS > Date.now()) {
+      completionGroups = await cache.value;
+    } else if (!expressionString && selectedFrame) {
+      cache = {date: Date.now(), value: completionsOnPause(selectedFrame)};
+      this._expressionCache.set(expressionString, cache);
+      completionGroups = await cache.value;
+    } else {
+      const resultPromise = executionContext.evaluate(
+          {
+            expression: expressionString,
+            objectGroup: 'completion',
+            includeCommandLineAPI: true,
+            silent: true,
+            returnByValue: false,
+            generatePreview: false,
+            throwOnSideEffect: needsNoSideEffects,
+            timeout: needsNoSideEffects ? 500 : undefined
+          },
+          /* userGesture */ false, /* awaitPromise */ false);
+      cache = {date: Date.now(), value: resultPromise.then(result => completionsOnGlobal.call(this, result))};
+      this._expressionCache.set(expressionString, cache);
+      completionGroups = await cache.value;
+    }
+    return this._receivedPropertyNames(
+        completionGroups.slice(0), dotNotation, bracketNotation, expressionString, query);
+
+    /**
+     * @this {JavaScriptAutocomplete}
+     * @param {!SDK.RuntimeModel.EvaluationResult} result
+     * @return {!Promise<!Array<!CompletionGroup>>}
+     */
+    async function completionsOnGlobal(result) {
+      if (result.error || !!result.exceptionDetails || !result.object) {
+        return [];
+      }
+
+      let object = result.object;
+      while (object && object.type === 'object' && object.subtype === 'proxy') {
+        const properties = await object.getOwnProperties(false /* generatePreview */);
+        const internalProperties = properties.internalProperties || [];
+        const target = internalProperties.find(property => property.name === '[[Target]]');
+        object = target ? target.value : null;
+      }
       if (!object) {
-        receivedPropertyNames(null);
-      } else if (object.type === 'object' || object.type === 'function') {
-        object.callFunctionJSON(
-            getCompletions, [SDK.RemoteObject.toCallArgument(object.subtype)], receivedPropertyNames);
-      } else if (object.type === 'string' || object.type === 'number' || object.type === 'boolean') {
-        executionContext.evaluate(
-            '(' + getCompletions + ')("' + result.type + '")', 'completion', false, true, true, false, false,
-            receivedPropertyNamesFromEval);
+        return [];
+      }
+      let completions = [];
+      if (object.type === 'object' || object.type === 'function') {
+        completions = await object.callFunctionJSON(
+                          getCompletions, [SDK.RemoteObject.RemoteObject.toCallArgument(object.subtype)]) ||
+            [];
+      } else if (
+          object.type === 'string' || object.type === 'number' || object.type === 'boolean' ||
+          object.type === 'bigint') {
+        const evaluateResult = await executionContext.evaluate(
+            {
+              expression: '(' + getCompletions + ')("' + object.type + '")',
+              objectGroup: 'completion',
+              includeCommandLineAPI: false,
+              silent: true,
+              returnByValue: true,
+              generatePreview: false
+            },
+            /* userGesture */ false,
+            /* awaitPromise */ false);
+        if (evaluateResult.object && !evaluateResult.exceptionDetails) {
+          completions = /** @type {!Iterable} */ (evaluateResult.object.value) || [];
+        }
+      }
+      executionContext.runtimeModel.releaseObjectGroup('completion');
+
+      if (!expressionString) {
+        const globalNames = await executionContext.globalLexicalScopeNames();
+        // Merge lexical scope names with first completion group on global object: let a and let b should be in the same group.
+        if (completions.length) {
+          completions[0].items = completions[0].items.concat(globalNames);
+        } else {
+          completions.push({items: globalNames.sort(), title: Common.UIString.UIString('Lexical scope variables')});
+        }
+      }
+
+      for (const group of completions) {
+        for (let i = 0; i < group.items.length; i++) {
+          group.items[i] = group.items[i].replace(/\n/g, '\\n');
+        }
+
+        group.items.sort(group.items.length < 1000 ? this._itemComparator : undefined);
+      }
+
+      return completions;
+
+      /**
+       * @param {string=} type
+       * @return {!Object}
+       * @suppressReceiverCheck
+       * @this {Object}
+       */
+      function getCompletions(type) {
+        let object;
+        if (type === 'string') {
+          object = new String('');
+        } else if (type === 'number') {
+          object = new Number(0);
+        }
+        // Object-wrapped BigInts cannot be constructed via `new BigInt`.
+        else if (type === 'bigint') {
+          object = Object(BigInt(0));
+        } else if (type === 'boolean') {
+          object = new Boolean(false);
+        } else {
+          object = this;
+        }
+
+        const result = [];
+        try {
+          for (let o = object; o; o = Object.getPrototypeOf(o)) {
+            if ((type === 'array' || type === 'typedarray') && o === object && o.length > 9999) {
+              continue;
+            }
+
+            const group = {items: [], __proto__: null};
+            try {
+              if (typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, 'constructor') && o.constructor &&
+                  o.constructor.name) {
+                group.title = o.constructor.name;
+              }
+            } catch (ee) {
+              // we could break upon cross origin check.
+            }
+            result[result.length] = group;
+            const names = Object.getOwnPropertyNames(o);
+            const isArray = Array.isArray(o);
+            for (let i = 0; i < names.length && group.items.length < 10000; ++i) {
+              // Skip array elements indexes.
+              if (isArray && /^[0-9]/.test(names[i])) {
+                continue;
+              }
+              group.items[group.items.length] = names[i];
+            }
+          }
+        } catch (e) {
+        }
+        return result;
       }
     }
 
-    extractTarget(result).then(completionsForObject);
-  }
-
-  /**
-   * @param {!SDK.DebuggerModel.CallFrame} callFrame
-   * @param {function(!Array<!ObjectUI.JavaScriptAutocomplete.CompletionGroup>)} callback
-   */
-  function variableNamesInScopes(callFrame, callback) {
-    var result = [{items: ['this']}];
-
     /**
-     * @param {string} name
-     * @param {?Array<!SDK.RemoteObjectProperty>} properties
+     * @param {!SDK.DebuggerModel.CallFrame} callFrame
+     * @return {!Promise<?Object>}
      */
-    function propertiesCollected(name, properties) {
-      var group = {title: name, items: []};
-      result.push(group);
-      for (var i = 0; properties && i < properties.length; ++i)
-        group.items.push(properties[i].name);
-      if (--pendingRequests === 0)
-        callback(result);
-    }
-
-    var scopeChain = callFrame.scopeChain();
-    var pendingRequests = scopeChain.length;
-    for (var i = 0; i < scopeChain.length; ++i) {
-      var scope = scopeChain[i];
-      var object = scope.object();
-      object.getAllProperties(
-          false /* accessorPropertiesOnly */, false /* generatePreview */,
-          propertiesCollected.bind(null, scope.typeName()));
+    async function completionsOnPause(callFrame) {
+      const result = [{items: ['this']}];
+      const scopeChain = callFrame.scopeChain();
+      const groupPromises = [];
+      for (const scope of scopeChain) {
+        groupPromises.push(scope.object()
+                               .getAllProperties(false /* accessorPropertiesOnly */, false /* generatePreview */)
+                               .then(result => ({properties: result.properties, name: scope.name()})));
+      }
+      const fullScopes = await Promise.all(groupPromises);
+      executionContext.runtimeModel.releaseObjectGroup('completion');
+      for (const scope of fullScopes) {
+        result.push({title: scope.name, items: scope.properties.map(property => property.name).sort()});
+      }
+      return result;
     }
   }
 
   /**
-   * @param {?SDK.RemoteObject} result
-   * @param {!Protocol.Runtime.ExceptionDetails=} exceptionDetails
+   * @param {?Array<!CompletionGroup>} propertyGroups
+   * @param {boolean} dotNotation
+   * @param {boolean} bracketNotation
+   * @param {string} expressionString
+   * @param {string} query
+   * @return {!UI.SuggestBox.Suggestions}
    */
-  function receivedPropertyNamesFromEval(result, exceptionDetails) {
-    executionContext.runtimeModel.releaseObjectGroup('completion');
-    if (result && !exceptionDetails)
-      receivedPropertyNames(/** @type {!Object} */ (result.value));
-    else
-      fulfill([]);
-  }
-
-  /**
-   * @param {?Object} object
-   */
-  function receivedPropertyNames(object) {
-    executionContext.runtimeModel.releaseObjectGroup('completion');
-    if (!object) {
-      fulfill([]);
-      return;
+  _receivedPropertyNames(propertyGroups, dotNotation, bracketNotation, expressionString, query) {
+    if (!propertyGroups) {
+      return [];
     }
-    var propertyGroups = /** @type {!Array<!ObjectUI.JavaScriptAutocomplete.CompletionGroup>} */ (object);
-    var includeCommandLineAPI = (!dotNotation && !bracketNotation);
+    const includeCommandLineAPI = (!dotNotation && !bracketNotation);
     if (includeCommandLineAPI) {
       const commandLineAPI = [
         'dir',
@@ -364,106 +541,253 @@ ObjectUI.JavaScriptAutocomplete.completionsForExpression = function(expressionSt
         'monitor',
         'unmonitor',
         'table',
+        'queryObjects',
         '$',
         '$$',
-        '$x'
+        '$x',
+        '$0',
+        '$_'
       ];
       propertyGroups.push({items: commandLineAPI});
     }
-    fulfill(ObjectUI.JavaScriptAutocomplete._completionsForQuery(
-        dotNotation, bracketNotation, expressionString, query, propertyGroups));
+    return this._completionsForQuery(dotNotation, bracketNotation, expressionString, query, propertyGroups);
   }
-};
-
-/**
-   * @param {boolean} dotNotation
-   * @param {boolean} bracketNotation
-   * @param {string} expressionString
-   * @param {string} query
-   * @param {!Array<!ObjectUI.JavaScriptAutocomplete.CompletionGroup>} propertyGroups
-   * @return {!UI.SuggestBox.Suggestions}
-   */
-ObjectUI.JavaScriptAutocomplete._completionsForQuery = function(
-    dotNotation, bracketNotation, expressionString, query, propertyGroups) {
-  if (bracketNotation) {
-    if (query.length && query[0] === '\'')
-      var quoteUsed = '\'';
-    else
-      var quoteUsed = '"';
-  }
-
-  if (!expressionString) {
-    const keywords = [
-      'break', 'case',     'catch',  'continue', 'default',    'delete', 'do',     'else',   'finally',
-      'for',   'function', 'if',     'in',       'instanceof', 'new',    'return', 'switch', 'this',
-      'throw', 'try',      'typeof', 'var',      'void',       'while',  'with'
-    ];
-    propertyGroups.push({title: Common.UIString('keywords'), items: keywords});
-  }
-
-  var result = [];
-  var lastGroupTitle;
-  for (var group of propertyGroups) {
-    group.items.sort(itemComparator.bind(null, group.items.length > 1000));
-    var caseSensitivePrefix = [];
-    var caseInsensitivePrefix = [];
-    var caseSensitiveAnywhere = [];
-    var caseInsensitiveAnywhere = [];
-
-    for (var property of group.items) {
-      // Assume that all non-ASCII characters are letters and thus can be used as part of identifier.
-      if (!bracketNotation && !/^[a-zA-Z_$\u008F-\uFFFF][a-zA-Z0-9_$\u008F-\uFFFF]*$/.test(property))
-        continue;
-
-      if (bracketNotation) {
-        if (!/^[0-9]+$/.test(property))
-          property = quoteUsed + property.escapeCharacters(quoteUsed + '\\') + quoteUsed;
-        property += ']';
-      }
-
-      if (property.length < query.length)
-        continue;
-      if (query.length && property.toLowerCase().indexOf(query.toLowerCase()) === -1)
-        continue;
-      // Substitute actual newlines with newline characters. @see crbug.com/498421
-      var prop = property.split('\n').join('\\n');
-
-      if (property.startsWith(query))
-        caseSensitivePrefix.push({text: prop, priority: 4});
-      else if (property.toLowerCase().startsWith(query.toLowerCase()))
-        caseInsensitivePrefix.push({text: prop, priority: 3});
-      else if (property.indexOf(query) !== -1)
-        caseSensitiveAnywhere.push({text: prop, priority: 2});
-      else
-        caseInsensitiveAnywhere.push({text: prop, priority: 1});
-    }
-    var structuredGroup =
-        caseSensitivePrefix.concat(caseInsensitivePrefix, caseSensitiveAnywhere, caseInsensitiveAnywhere);
-    if (structuredGroup.length && group.title !== lastGroupTitle) {
-      structuredGroup[0].subtitle = group.title;
-      lastGroupTitle = group.title;
-    }
-    result = result.concat(structuredGroup);
-    result.forEach(item => {
-      if (item.text.endsWith(']'))
-        item.title = item.text.substring(0, item.text.length - 1);
-    });
-  }
-  return result;
 
   /**
-   * @param {boolean} naturalOrder
+     * @param {boolean} dotNotation
+     * @param {boolean} bracketNotation
+     * @param {string} expressionString
+     * @param {string} query
+     * @param {!Array<!CompletionGroup>} propertyGroups
+     * @return {!UI.SuggestBox.Suggestions}
+     */
+  _completionsForQuery(dotNotation, bracketNotation, expressionString, query, propertyGroups) {
+    const quoteUsed = (bracketNotation && query.startsWith('\'')) ? '\'' : '"';
+
+    if (!expressionString) {
+      // See ES2017 spec: https://www.ecma-international.org/ecma-262/8.0/index.html
+      const keywords = [
+        // Section 11.6.2.1 Reserved keywords.
+        'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else',
+        'exports', 'extends', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'new', 'return',
+        'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield',
+
+        // Section 11.6.2.1's note mentions words treated as reserved in certain cases.
+        'let', 'static',
+
+        // Other keywords not explicitly reserved by spec.
+        'async', 'of'
+      ];
+      propertyGroups.push({title: ls`keywords`, items: keywords.sort()});
+    }
+
+    /** @type {!Set<string>} */
+    const allProperties = new Set();
+    let result = [];
+    let lastGroupTitle;
+    const regex = /^[a-zA-Z_$\u008F-\uFFFF][a-zA-Z0-9_$\u008F-\uFFFF]*$/;
+    const lowerCaseQuery = query.toLowerCase();
+    for (const group of propertyGroups) {
+      const caseSensitivePrefix = [];
+      const caseInsensitivePrefix = [];
+      const caseSensitiveAnywhere = [];
+      const caseInsensitiveAnywhere = [];
+
+      for (let i = 0; i < group.items.length; i++) {
+        let property = group.items[i];
+        // Assume that all non-ASCII characters are letters and thus can be used as part of identifier.
+        if (!bracketNotation && !regex.test(property)) {
+          continue;
+        }
+
+        if (bracketNotation) {
+          if (!/^[0-9]+$/.test(property)) {
+            property = quoteUsed + Platform.StringUtilities.escapeCharacters(property, quoteUsed + '\\') + quoteUsed;
+          }
+          property += ']';
+        }
+        if (allProperties.has(property)) {
+          continue;
+        }
+
+        if (property.length < query.length) {
+          continue;
+        }
+        const lowerCaseProperty = property.toLowerCase();
+        if (query.length && lowerCaseProperty.indexOf(lowerCaseQuery) === -1) {
+          continue;
+        }
+
+        allProperties.add(property);
+        if (property.startsWith(query)) {
+          caseSensitivePrefix.push({text: property, priority: property === query ? 5 : 4});
+        } else if (lowerCaseProperty.startsWith(lowerCaseQuery)) {
+          caseInsensitivePrefix.push({text: property, priority: 3});
+        } else if (property.indexOf(query) !== -1) {
+          caseSensitiveAnywhere.push({text: property, priority: 2});
+        } else {
+          caseInsensitiveAnywhere.push({text: property, priority: 1});
+        }
+      }
+      const structuredGroup =
+          caseSensitivePrefix.concat(caseInsensitivePrefix, caseSensitiveAnywhere, caseInsensitiveAnywhere);
+      if (structuredGroup.length && group.title !== lastGroupTitle) {
+        structuredGroup[0].subtitle = group.title;
+        lastGroupTitle = group.title;
+      }
+      result = result.concat(structuredGroup);
+      result.forEach(item => {
+        if (item.text.endsWith(']')) {
+          item.title = item.text.substring(0, item.text.length - 1);
+        }
+      });
+    }
+    return result;
+  }
+
+  /**
    * @param {string} a
    * @param {string} b
    * @return {number}
    */
-  function itemComparator(naturalOrder, a, b) {
-    var aStartsWithUnderscore = a.startsWith('_');
-    var bStartsWithUnderscore = b.startsWith('_');
-    if (aStartsWithUnderscore && !bStartsWithUnderscore)
+  _itemComparator(a, b) {
+    const aStartsWithUnderscore = a.startsWith('_');
+    const bStartsWithUnderscore = b.startsWith('_');
+    if (aStartsWithUnderscore && !bStartsWithUnderscore) {
       return 1;
-    if (bStartsWithUnderscore && !aStartsWithUnderscore)
+    }
+    if (bStartsWithUnderscore && !aStartsWithUnderscore) {
       return -1;
-    return naturalOrder ? String.naturalOrderComparator(a, b) : a.localeCompare(b);
+    }
+    return String.naturalOrderComparator(a, b);
   }
-};
+
+  /**
+   * @param {string} expression
+   * @return {!Promise<boolean>}
+   */
+  static async isExpressionComplete(expression) {
+    const currentExecutionContext = self.UI.context.flavor(SDK.RuntimeModel.ExecutionContext);
+    if (!currentExecutionContext) {
+      return true;
+    }
+    const result =
+        await currentExecutionContext.runtimeModel.compileScript(expression, '', false, currentExecutionContext.id);
+    if (!result.exceptionDetails) {
+      return true;
+    }
+    const description = result.exceptionDetails.exception.description;
+    return !description.startsWith('SyntaxError: Unexpected end of input') &&
+        !description.startsWith('SyntaxError: Unterminated template literal');
+  }
+}
+
+export class JavaScriptAutocompleteConfig {
+  /**
+   * @param {!UI.TextEditor.TextEditor} editor
+   */
+  constructor(editor) {
+    this._editor = editor;
+  }
+
+  /**
+   * @param {!UI.TextEditor.TextEditor} editor
+   * @return {!UI.SuggestBox.AutocompleteConfig}
+   */
+  static createConfigForEditor(editor) {
+    const autocomplete = new JavaScriptAutocompleteConfig(editor);
+    return {
+      substituteRangeCallback: autocomplete._substituteRange.bind(autocomplete),
+      suggestionsCallback: autocomplete._suggestionsCallback.bind(autocomplete),
+      tooltipCallback: autocomplete._tooltipCallback.bind(autocomplete),
+    };
+  }
+
+  /**
+   * @param {number} lineNumber
+   * @param {number} columnNumber
+   * @return {?TextUtils.TextRange.TextRange}
+   */
+  _substituteRange(lineNumber, columnNumber) {
+    const token = this._editor.tokenAtTextPosition(lineNumber, columnNumber);
+    if (token && token.type === 'js-string') {
+      return new TextUtils.TextRange.TextRange(lineNumber, token.startColumn, lineNumber, columnNumber);
+    }
+
+    const lineText = this._editor.line(lineNumber);
+    let index;
+    for (index = columnNumber - 1; index >= 0; index--) {
+      if (' =:[({;,!+-*/&|^<>.\t\r\n'.indexOf(lineText.charAt(index)) !== -1) {
+        break;
+      }
+    }
+    return new TextUtils.TextRange.TextRange(lineNumber, index + 1, lineNumber, columnNumber);
+  }
+
+  /**
+   * @param {!TextUtils.TextRange.TextRange} queryRange
+   * @param {!TextUtils.TextRange.TextRange} substituteRange
+   * @param {boolean=} force
+   * @return {!Promise<!UI.SuggestBox.Suggestions>}
+   */
+  async _suggestionsCallback(queryRange, substituteRange, force) {
+    const query = this._editor.text(queryRange);
+    const before =
+        this._editor.text(new TextUtils.TextRange.TextRange(0, 0, queryRange.startLine, queryRange.startColumn));
+    const token = this._editor.tokenAtTextPosition(substituteRange.startLine, substituteRange.startColumn);
+    if (token) {
+      const excludedTokens = new Set(['js-comment', 'js-string-2', 'js-def']);
+      const trimmedBefore = before.trim();
+      if (!trimmedBefore.endsWith('[') && !trimmedBefore.match(/\.\s*(get|set|delete)\s*\(\s*$/)) {
+        excludedTokens.add('js-string');
+      }
+      if (!trimmedBefore.endsWith('.')) {
+        excludedTokens.add('js-property');
+      }
+      if (excludedTokens.has(token.type)) {
+        return [];
+      }
+    }
+    const queryAndAfter = this._editor.line(queryRange.startLine).substring(queryRange.startColumn);
+
+    const words = await ObjectUI.javaScriptAutocomplete.completionsForTextInCurrentContext(before, query, force);
+    if (!force && queryAndAfter && queryAndAfter !== query &&
+        words.some(word => queryAndAfter.startsWith(word.text) && query.length !== word.text.length)) {
+      return [];
+    }
+    return words;
+  }
+
+  /**
+   * @param {number} lineNumber
+   * @param {number} columnNumber
+   * @return {!Promise<?Element>}
+   */
+  async _tooltipCallback(lineNumber, columnNumber) {
+    const before = this._editor.text(new TextUtils.TextRange.TextRange(0, 0, lineNumber, columnNumber));
+    const result = await ObjectUI.javaScriptAutocomplete.argumentsHint(before);
+    if (!result) {
+      return null;
+    }
+    const argumentIndex = result.argumentIndex;
+    const tooltip = createElement('div');
+    for (const args of result.args) {
+      const argumentsElement = createElement('span');
+      for (let i = 0; i < args.length; i++) {
+        if (i === argumentIndex || (i < argumentIndex && args[i].startsWith('...'))) {
+          argumentsElement.appendChild(UI.Fragment.html`<b>${args[i]}</b>`);
+        } else {
+          argumentsElement.createTextChild(args[i]);
+        }
+        if (i < args.length - 1) {
+          argumentsElement.createTextChild(', ');
+        }
+      }
+      tooltip.appendChild(UI.Fragment.html`<div class='source-code'>\u0192(${argumentsElement})</div>`);
+    }
+    return tooltip;
+  }
+}
+
+/** @typedef {{title:(string|undefined), items:Array<string>}} */
+export let CompletionGroup;

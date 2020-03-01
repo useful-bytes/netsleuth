@@ -4,53 +4,54 @@
 /**
  * @unrestricted
  */
-Common.Segment = class {
+export class Segment {
   /**
    * @param {number} begin
    * @param {number} end
    * @param {*} data
    */
   constructor(begin, end, data) {
-    if (begin > end)
-      console.assert(false, 'Invalid segment');
+    if (begin > end) {
+      throw new Error('Invalid segment');
+    }
     this.begin = begin;
     this.end = end;
     this.data = data;
   }
 
   /**
-   * @param {!Common.Segment} that
+   * @param {!Segment} that
    * @return {boolean}
    */
   intersects(that) {
     return this.begin < that.end && that.begin < this.end;
   }
-};
+}
 
 /**
  * @unrestricted
  */
-Common.SegmentedRange = class {
+export class SegmentedRange {
   /**
-   * @param {(function(!Common.Segment, !Common.Segment): ?Common.Segment)=} mergeCallback
+   * @param {(function(!Segment, !Segment): ?Segment)=} mergeCallback
    */
   constructor(mergeCallback) {
-    /** @type {!Array<!Common.Segment>} */
+    /** @type {!Array<!Segment>} */
     this._segments = [];
     this._mergeCallback = mergeCallback;
   }
 
   /**
-   * @param {!Common.Segment} newSegment
+   * @param {!Segment} newSegment
    */
   append(newSegment) {
     // 1. Find the proper insertion point for new segment
-    var startIndex = this._segments.lowerBound(newSegment, (a, b) => a.begin - b.begin);
-    var endIndex = startIndex;
-    var merged = null;
+    let startIndex = this._segments.lowerBound(newSegment, (a, b) => a.begin - b.begin);
+    let endIndex = startIndex;
+    let merged = null;
     if (startIndex > 0) {
       // 2. Try mering the preceding segment
-      var precedingSegment = this._segments[startIndex - 1];
+      const precedingSegment = this._segments[startIndex - 1];
       merged = this._tryMerge(precedingSegment, newSegment);
       if (merged) {
         --startIndex;
@@ -60,14 +61,15 @@ Common.SegmentedRange = class {
         // If an old segment entirely contains new one, split it in two.
         if (newSegment.end < precedingSegment.end) {
           this._segments.splice(
-              startIndex, 0, new Common.Segment(newSegment.end, precedingSegment.end, precedingSegment.data));
+              startIndex, 0, new Segment(newSegment.end, precedingSegment.end, precedingSegment.data));
         }
         precedingSegment.end = newSegment.begin;
       }
     }
     // 3. Consume all segments that are entirely covered by the new one.
-    while (endIndex < this._segments.length && this._segments[endIndex].end <= newSegment.end)
+    while (endIndex < this._segments.length && this._segments[endIndex].end <= newSegment.end) {
       ++endIndex;
+    }
     // 4. Merge or adjust the succeeding segment if it overlaps.
     if (endIndex < this._segments.length) {
       merged = this._tryMerge(newSegment, this._segments[endIndex]);
@@ -82,30 +84,31 @@ Common.SegmentedRange = class {
   }
 
   /**
-   * @param {!Common.SegmentedRange} that
+   * @param {!SegmentedRange} that
    */
   appendRange(that) {
     that.segments().forEach(segment => this.append(segment));
   }
 
   /**
-   * @return {!Array<!Common.Segment>}
+   * @return {!Array<!Segment>}
    */
   segments() {
     return this._segments;
   }
 
   /**
-   * @param {!Common.Segment} first
-   * @param {!Common.Segment} second
-   * @return {?Common.Segment}
+   * @param {!Segment} first
+   * @param {!Segment} second
+   * @return {?Segment}
    */
   _tryMerge(first, second) {
-    var merged = this._mergeCallback && this._mergeCallback(first, second);
-    if (!merged)
+    const merged = this._mergeCallback && this._mergeCallback(first, second);
+    if (!merged) {
       return null;
+    }
     merged.begin = first.begin;
     merged.end = Math.max(first.end, second.end);
     return merged;
   }
-};
+}

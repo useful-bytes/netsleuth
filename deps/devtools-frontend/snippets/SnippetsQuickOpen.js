@@ -2,10 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-Snippets.SnippetsQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
+import * as Common from '../common/common.js';
+import * as QuickOpen from '../quick_open/quick_open.js';
+import * as Workspace from '../workspace/workspace.js';  // eslint-disable-line no-unused-vars
+
+import {evaluateScriptSnippet} from './ScriptSnippetFileSystem.js';
+
+export default class SnippetsQuickOpen extends QuickOpen.FilteredListWidget.Provider {
   constructor() {
     super();
-    /** @type {!Array<!Workspace.UISourceCode>} */
+    /** @type {!Array<!Workspace.UISourceCode.UISourceCode>} */
     this._snippets = [];
   }
   /**
@@ -14,11 +20,10 @@ Snippets.SnippetsQuickOpen = class extends QuickOpen.FilteredListWidget.Provider
    * @param {string} promptValue
    */
   selectItem(itemIndex, promptValue) {
-    if (itemIndex === null)
+    if (itemIndex === null) {
       return;
-    var currentExecutionContext = UI.context.flavor(SDK.ExecutionContext);
-    if (currentExecutionContext)
-      Snippets.scriptSnippetModel.evaluateScriptSnippet(currentExecutionContext, this._snippets[itemIndex]);
+    }
+    evaluateScriptSnippet(this._snippets[itemIndex]);
   }
 
   /**
@@ -27,14 +32,14 @@ Snippets.SnippetsQuickOpen = class extends QuickOpen.FilteredListWidget.Provider
    * @return {string}
    */
   notFoundText(query) {
-    return Common.UIString('No snippets found.');
+    return Common.UIString.UIString('No snippets found.');
   }
 
   /**
    * @override
    */
   attach() {
-    this._snippets = Snippets.scriptSnippetModel.project().uiSourceCodes();
+    this._snippets = Snippets.project.uiSourceCodes();
   }
 
   /**
@@ -70,8 +75,8 @@ Snippets.SnippetsQuickOpen = class extends QuickOpen.FilteredListWidget.Provider
    * @param {!Element} subtitleElement
    */
   renderItem(itemIndex, query, titleElement, subtitleElement) {
-    titleElement.textContent = this._snippets[itemIndex].name();
+    titleElement.textContent = unescape(this._snippets[itemIndex].name());
     titleElement.classList.add('monospace');
-    QuickOpen.FilteredListWidget.highlightRanges(titleElement, query, true);
+    QuickOpen.FilteredListWidget.FilteredListWidget.highlightRanges(titleElement, query, true);
   }
-};
+}

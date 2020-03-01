@@ -2,16 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-QuickOpen.QuickOpen = class {
+import * as UI from '../ui/ui.js';  // eslint-disable-line no-unused-vars
+
+import {FilteredListWidget, Provider} from './FilteredListWidget.js';
+
+export const history = [];
+
+/**
+ * @unrestricted
+ */
+export class QuickOpenImpl {
   constructor() {
     this._prefix = null;
     this._query = '';
-    /** @type {!Map<string, function():!Promise<!QuickOpen.FilteredListWidget.Provider>>} */
+    /** @type {!Map<string, function():!Promise<!Provider>>} */
     this._providers = new Map();
     /** @type {!Array<string>} */
     this._prefixes = [];
     this._filteredListWidget = null;
-    self.runtime.extensions(QuickOpen.FilteredListWidget.Provider).forEach(this._addProvider.bind(this));
+    self.runtime.extensions(Provider).forEach(this._addProvider.bind(this));
     this._prefixes.sort((a, b) => b.length - a.length);
   }
 
@@ -19,23 +28,23 @@ QuickOpen.QuickOpen = class {
    * @param {string} query
    */
   static show(query) {
-    var quickOpen = new this();
-    var filteredListWidget =
-        new QuickOpen.FilteredListWidget(null, this._history, quickOpen._queryChanged.bind(quickOpen));
+    const quickOpen = new this();
+    const filteredListWidget = new FilteredListWidget(null, history, quickOpen._queryChanged.bind(quickOpen));
     quickOpen._filteredListWidget = filteredListWidget;
-    filteredListWidget.setPlaceholder(Common.UIString('Type \'?\' to see available commands'));
+    filteredListWidget.setPlaceholder(
+        ls`Type '?' to see available commands`, ls`Type question mark to see available commands`);
     filteredListWidget.showAsDialog();
     filteredListWidget.setQuery(query);
   }
 
   /**
-   * @param {!Runtime.Extension} extension
+   * @param {!Root.Runtime.Extension} extension
    */
   _addProvider(extension) {
-    var prefix = extension.descriptor()['prefix'];
+    const prefix = extension.descriptor()['prefix'];
     this._prefixes.push(prefix);
     this._providers.set(
-        prefix, /** @type {function():!Promise<!QuickOpen.FilteredListWidget.Provider>} */
+        prefix, /** @type {function():!Promise<!Provider>} */
         (extension.instance.bind(extension)));
   }
 
@@ -43,46 +52,46 @@ QuickOpen.QuickOpen = class {
    * @param {string} query
    */
   _queryChanged(query) {
-    var prefix = this._prefixes.find(prefix => query.startsWith(prefix));
-    if (typeof prefix !== 'string' || this._prefix === prefix)
+    const prefix = this._prefixes.find(prefix => query.startsWith(prefix));
+    if (typeof prefix !== 'string' || this._prefix === prefix) {
       return;
+    }
 
     this._prefix = prefix;
     this._filteredListWidget.setPrefix(prefix);
     this._filteredListWidget.setProvider(null);
     this._providers.get(prefix)().then(provider => {
-      if (this._prefix !== prefix)
+      if (this._prefix !== prefix) {
         return;
+      }
       this._filteredListWidget.setProvider(provider);
       this._providerLoadedForTest(provider);
     });
   }
 
   /**
-   * @param {!QuickOpen.FilteredListWidget.Provider} provider
+   * @param {!Provider} provider
    */
   _providerLoadedForTest(provider) {
   }
-};
-
-QuickOpen.QuickOpen._history = [];
+}
 
 /**
- * @implements {UI.ActionDelegate}
+ * @implements {UI.ActionDelegate.ActionDelegate}
  */
-QuickOpen.QuickOpen.ShowActionDelegate = class {
+export class ShowActionDelegate {
   /**
    * @override
-   * @param {!UI.Context} context
+   * @param {!UI.Context.Context} context
    * @param {string} actionId
    * @return {boolean}
    */
   handleAction(context, actionId) {
     switch (actionId) {
       case 'quickOpen.show':
-        QuickOpen.QuickOpen.show('');
+        QuickOpenImpl.show('');
         return true;
     }
     return false;
   }
-};
+}

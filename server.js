@@ -528,8 +528,10 @@ function Inspector(server, opts) {
 					info.ws = null;
 					self.broadcast({
 						method: 'Network.webSocketClosed',
-						requestId: msg.id,
-						timestamp: Date.now() / 1000
+						params: {
+							requestId: msg.id,
+							timestamp: Date.now() / 1000
+						}
 					});
 				});
 

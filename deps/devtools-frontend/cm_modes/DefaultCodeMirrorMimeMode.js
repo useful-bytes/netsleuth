@@ -2,23 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as TextEditor from '../text_editor/text_editor.js';  // eslint-disable-line no-unused-vars
+
 /**
- * @constructor
- * @implements {TextEditor.CodeMirrorMimeMode}
+ * @implements {TextEditor.CodeMirrorTextEditor.CodeMirrorMimeMode}
  */
-CmModes.DefaultCodeMirrorMimeMode = function()
-{
+export class DefaultCodeMirrorMimeMode {
+  /**
+   * @param {!Root.Runtime.Extension} extension
+   * @return {!Promise}
+   * @override
+   */
+  async install(extension) {
+    const modeFileName = extension.descriptor()['fileName'];
+
+    return /** @type {!Promise} */ (eval(`import('./${modeFileName}')`));
+  }
 }
 
-CmModes.DefaultCodeMirrorMimeMode.prototype = {
-    /**
-     * @param {!Runtime.Extension} extension
-     * @override
-     */
-    install: function(extension)
-    {
-        var modeFileName = extension.descriptor()["fileName"];
-        var modeContent = extension.module().resource(modeFileName);
-        self.eval(modeContent + "\n//# sourceURL=" + modeFileName);
-    }
-}
+CmModes.DefaultCodeMirrorMimeMode = DefaultCodeMirrorMimeMode;

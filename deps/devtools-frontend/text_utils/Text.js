@@ -2,10 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Platform from '../platform/platform.js';
+
+import {TextCursor} from './TextCursor.js';
+import {SourceRange, TextRange} from './TextRange.js';
+
 /**
  * @unrestricted
  */
-TextUtils.Text = class {
+export class Text {
   /**
    * @param {string} value
    */
@@ -17,8 +22,9 @@ TextUtils.Text = class {
    * @return {!Array<number>}
    */
   lineEndings() {
-    if (!this._lineEndings)
-      this._lineEndings = this._value.computeLineEndings();
+    if (!this._lineEndings) {
+      this._lineEndings = Platform.StringUtilities.findLineEndingIndexes(this._value);
+    }
     return this._lineEndings;
   }
 
@@ -33,7 +39,7 @@ TextUtils.Text = class {
    * @return {number}
    */
   lineCount() {
-    var lineEndings = this.lineEndings();
+    const lineEndings = this.lineEndings();
     return lineEndings.length;
   }
 
@@ -48,11 +54,11 @@ TextUtils.Text = class {
 
   /**
    * @param {number} offset
-   * @return {!TextUtils.Text.Position}
+   * @return {!Position}
    */
   positionFromOffset(offset) {
-    var lineEndings = this.lineEndings();
-    var lineNumber = lineEndings.lowerBound(offset);
+    const lineEndings = this.lineEndings();
+    const lineNumber = lineEndings.lowerBound(offset);
     return {lineNumber: lineNumber, columnNumber: offset - (lineNumber && (lineEndings[lineNumber - 1] + 1))};
   }
 
@@ -60,32 +66,33 @@ TextUtils.Text = class {
    * @return {string}
    */
   lineAt(lineNumber) {
-    var lineEndings = this.lineEndings();
-    var lineStart = lineNumber > 0 ? lineEndings[lineNumber - 1] + 1 : 0;
-    var lineEnd = lineEndings[lineNumber];
-    var lineContent = this._value.substring(lineStart, lineEnd);
-    if (lineContent.length > 0 && lineContent.charAt(lineContent.length - 1) === '\r')
+    const lineEndings = this.lineEndings();
+    const lineStart = lineNumber > 0 ? lineEndings[lineNumber - 1] + 1 : 0;
+    const lineEnd = lineEndings[lineNumber];
+    let lineContent = this._value.substring(lineStart, lineEnd);
+    if (lineContent.length > 0 && lineContent.charAt(lineContent.length - 1) === '\r') {
       lineContent = lineContent.substring(0, lineContent.length - 1);
+    }
     return lineContent;
   }
 
   /**
-   * @param {!TextUtils.TextRange} range
-   * @return {!TextUtils.SourceRange}
+   * @param {!TextRange} range
+   * @return {!SourceRange}
    */
   toSourceRange(range) {
-    var start = this.offsetFromPosition(range.startLine, range.startColumn);
-    var end = this.offsetFromPosition(range.endLine, range.endColumn);
-    return new TextUtils.SourceRange(start, end - start);
+    const start = this.offsetFromPosition(range.startLine, range.startColumn);
+    const end = this.offsetFromPosition(range.endLine, range.endColumn);
+    return new SourceRange(start, end - start);
   }
 
   /**
-   * @param {!TextUtils.SourceRange} sourceRange
-   * @return {!TextUtils.TextRange}
+   * @param {!SourceRange} sourceRange
+   * @return {!TextRange}
    */
   toTextRange(sourceRange) {
-    var cursor = new TextUtils.TextCursor(this.lineEndings());
-    var result = TextUtils.TextRange.createFromLocation(0, 0);
+    const cursor = new TextCursor(this.lineEndings());
+    const result = TextRange.createFromLocation(0, 0);
 
     cursor.resetTo(sourceRange.offset);
     result.startLine = cursor.lineNumber();
@@ -98,80 +105,25 @@ TextUtils.Text = class {
   }
 
   /**
-   * @param {!TextUtils.TextRange} range
+   * @param {!TextRange} range
    * @param {string} replacement
    * @return {string}
    */
   replaceRange(range, replacement) {
-    var sourceRange = this.toSourceRange(range);
+    const sourceRange = this.toSourceRange(range);
     return this._value.substring(0, sourceRange.offset) + replacement +
         this._value.substring(sourceRange.offset + sourceRange.length);
   }
 
   /**
-   * @param {!TextUtils.TextRange} range
+   * @param {!TextRange} range
    * @return {string}
    */
   extract(range) {
-    var sourceRange = this.toSourceRange(range);
+    const sourceRange = this.toSourceRange(range);
     return this._value.substr(sourceRange.offset, sourceRange.length);
   }
-};
+}
 
 /** @typedef {{lineNumber: number, columnNumber: number}} */
-TextUtils.Text.Position;
-
-/**
- * @unrestricted
- */
-TextUtils.TextCursor = class {
-  /**
-   * @param {!Array<number>} lineEndings
-   */
-  constructor(lineEndings) {
-    this._lineEndings = lineEndings;
-    this._offset = 0;
-    this._lineNumber = 0;
-    this._columnNumber = 0;
-  }
-
-  /**
-   * @param {number} offset
-   */
-  advance(offset) {
-    this._offset = offset;
-    while (this._lineNumber < this._lineEndings.length && this._lineEndings[this._lineNumber] < this._offset)
-      ++this._lineNumber;
-    this._columnNumber = this._lineNumber ? this._offset - this._lineEndings[this._lineNumber - 1] - 1 : this._offset;
-  }
-
-  /**
-   * @return {number}
-   */
-  offset() {
-    return this._offset;
-  }
-
-  /**
-   * @param {number} offset
-   */
-  resetTo(offset) {
-    this._offset = offset;
-    this._lineNumber = this._lineEndings.lowerBound(offset);
-    this._columnNumber = this._lineNumber ? this._offset - this._lineEndings[this._lineNumber - 1] - 1 : this._offset;
-  }
-
-  /**
-   * @return {number}
-   */
-  lineNumber() {
-    return this._lineNumber;
-  }
-
-  /**
-   * @return {number}
-   */
-  columnNumber() {
-    return this._columnNumber;
-  }
-};
+export let Position;

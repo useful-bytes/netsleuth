@@ -2,20 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Common from '../common/common.js';
+import * as Diff from '../diff/diff.js';
+import * as Host from '../host/host.js';
+import * as Workspace from '../workspace/workspace.js';
 
-WorkspaceDiff.WorkspaceDiff = class extends Common.Object {
+export class WorkspaceDiffImpl extends Common.ObjectWrapper.ObjectWrapper {
   /**
-   * @param {!Workspace.Workspace} workspace
+   * @param {!Workspace.Workspace.WorkspaceImpl} workspace
    */
   constructor(workspace) {
     super();
-    /** @type {!WeakMap<!Workspace.UISourceCode, !WorkspaceDiff.WorkspaceDiff.UISourceCodeDiff>} */
+    /** @type {!WeakMap<!Workspace.UISourceCode.UISourceCode, !UISourceCodeDiff>} */
     this._uiSourceCodeDiffs = new WeakMap();
 
-    /** @type {!Map<!Workspace.UISourceCode, !Promise>} */
+    /** @type {!Map<!Workspace.UISourceCode.UISourceCode, !Promise>} */
     this._loadingUISourceCodes = new Map();
 
-    /** @type {!Set<!Workspace.UISourceCode>} */
+    /** @type {!Set<!Workspace.UISourceCode.UISourceCode>} */
     this._modifiedUISourceCodes = new Set();
     workspace.addEventListener(Workspace.Workspace.Events.WorkingCopyChanged, this._uiSourceCodeChanged, this);
     workspace.addEventListener(Workspace.Workspace.Events.WorkingCopyCommitted, this._uiSourceCodeChanged, this);
@@ -26,7 +30,7 @@ WorkspaceDiff.WorkspaceDiff = class extends Common.Object {
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @return {!Promise<?Diff.Diff.DiffArray>}
    */
   requestDiff(uiSourceCode) {
@@ -34,114 +38,127 @@ WorkspaceDiff.WorkspaceDiff = class extends Common.Object {
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @param {function(!Common.Event)} callback
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @param {function(!Common.EventTarget.EventTargetEvent)} callback
    * @param {!Object=} thisObj
    */
   subscribeToDiffChange(uiSourceCode, callback, thisObj) {
-    this._uiSourceCodeDiff(uiSourceCode).addEventListener(WorkspaceDiff.Events.DiffChanged, callback, thisObj);
+    this._uiSourceCodeDiff(uiSourceCode).addEventListener(Events.DiffChanged, callback, thisObj);
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @param {function(!Common.Event)} callback
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @param {function(!Common.EventTarget.EventTargetEvent)} callback
    * @param {!Object=} thisObj
    */
   unsubscribeFromDiffChange(uiSourceCode, callback, thisObj) {
-    this._uiSourceCodeDiff(uiSourceCode).removeEventListener(WorkspaceDiff.Events.DiffChanged, callback, thisObj);
+    this._uiSourceCodeDiff(uiSourceCode).removeEventListener(Events.DiffChanged, callback, thisObj);
   }
 
   /**
-   * @return {!Array<!Workspace.UISourceCode>}
+   * @return {!Array<!Workspace.UISourceCode.UISourceCode>}
    */
   modifiedUISourceCodes() {
     return Array.from(this._modifiedUISourceCodes);
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @return {!WorkspaceDiff.WorkspaceDiff.UISourceCodeDiff}
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {boolean}
+   */
+  isUISourceCodeModified(uiSourceCode) {
+    return this._modifiedUISourceCodes.has(uiSourceCode) || this._loadingUISourceCodes.has(uiSourceCode);
+  }
+
+  /**
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {!UISourceCodeDiff}
    */
   _uiSourceCodeDiff(uiSourceCode) {
-    if (!this._uiSourceCodeDiffs.has(uiSourceCode))
-      this._uiSourceCodeDiffs.set(uiSourceCode, new WorkspaceDiff.WorkspaceDiff.UISourceCodeDiff(uiSourceCode));
+    if (!this._uiSourceCodeDiffs.has(uiSourceCode)) {
+      this._uiSourceCodeDiffs.set(uiSourceCode, new UISourceCodeDiff(uiSourceCode));
+    }
     return this._uiSourceCodeDiffs.get(uiSourceCode);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _uiSourceCodeChanged(event) {
-    var uiSourceCode = /** @type {!Workspace.UISourceCode} */ (event.data.uiSourceCode);
+    const uiSourceCode = /** @type {!Workspace.UISourceCode.UISourceCode} */ (event.data.uiSourceCode);
     this._updateModifiedState(uiSourceCode);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _uiSourceCodeAdded(event) {
-    var uiSourceCode = /** @type {!Workspace.UISourceCode} */ (event.data);
+    const uiSourceCode = /** @type {!Workspace.UISourceCode.UISourceCode} */ (event.data);
     this._updateModifiedState(uiSourceCode);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _uiSourceCodeRemoved(event) {
-    var uiSourceCode = /** @type {!Workspace.UISourceCode} */ (event.data);
+    const uiSourceCode = /** @type {!Workspace.UISourceCode.UISourceCode} */ (event.data);
     this._removeUISourceCode(uiSourceCode);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _projectRemoved(event) {
-    var project = /** @type {!Workspace.Project} */ (event.data);
-    for (var uiSourceCode of project.uiSourceCodes())
+    const project = /** @type {!Workspace.Workspace.Project} */ (event.data);
+    for (const uiSourceCode of project.uiSourceCodes()) {
       this._removeUISourceCode(uiSourceCode);
+    }
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   _removeUISourceCode(uiSourceCode) {
     this._loadingUISourceCodes.delete(uiSourceCode);
-    var uiSourceCodeDiff = this._uiSourceCodeDiffs.get(uiSourceCode);
-    if (uiSourceCodeDiff)
+    const uiSourceCodeDiff = this._uiSourceCodeDiffs.get(uiSourceCode);
+    if (uiSourceCodeDiff) {
       uiSourceCodeDiff._dispose = true;
+    }
     this._markAsUnmodified(uiSourceCode);
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   _markAsUnmodified(uiSourceCode) {
     this._uiSourceCodeProcessedForTest();
-    if (this._modifiedUISourceCodes.delete(uiSourceCode))
-      this.dispatchEventToListeners(WorkspaceDiff.Events.ModifiedStatusChanged, {uiSourceCode, isModified: false});
+    if (this._modifiedUISourceCodes.delete(uiSourceCode)) {
+      this.dispatchEventToListeners(Events.ModifiedStatusChanged, {uiSourceCode, isModified: false});
+    }
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   _markAsModified(uiSourceCode) {
     this._uiSourceCodeProcessedForTest();
-    if (this._modifiedUISourceCodes.has(uiSourceCode))
+    if (this._modifiedUISourceCodes.has(uiSourceCode)) {
       return;
+    }
     this._modifiedUISourceCodes.add(uiSourceCode);
-    this.dispatchEventToListeners(WorkspaceDiff.Events.ModifiedStatusChanged, {uiSourceCode, isModified: true});
+    this.dispatchEventToListeners(Events.ModifiedStatusChanged, {uiSourceCode, isModified: true});
   }
 
   _uiSourceCodeProcessedForTest() {
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   async _updateModifiedState(uiSourceCode) {
     this._loadingUISourceCodes.delete(uiSourceCode);
 
-    if (uiSourceCode.project().type() !== Workspace.projectTypes.Network) {
+    if (uiSourceCode.project().type() !== Workspace.Workspace.projectTypes.Network) {
       this._markAsUnmodified(uiSourceCode);
       return;
     }
@@ -149,28 +166,62 @@ WorkspaceDiff.WorkspaceDiff = class extends Common.Object {
       this._markAsModified(uiSourceCode);
       return;
     }
-    if (!uiSourceCode.history().length) {
+    if (!uiSourceCode.hasCommits()) {
       this._markAsUnmodified(uiSourceCode);
       return;
     }
 
-    var contentsPromise = Promise.all([uiSourceCode.requestOriginalContent(), uiSourceCode.requestContent()]);
+    const contentsPromise = Promise.all([
+      this.requestOriginalContentForUISourceCode(uiSourceCode),
+      uiSourceCode.requestContent().then(deferredContent => deferredContent.content)
+    ]);
+
     this._loadingUISourceCodes.set(uiSourceCode, contentsPromise);
-    var contents = await contentsPromise;
-    if (this._loadingUISourceCodes.get(uiSourceCode) !== contentsPromise)
+    const contents = await contentsPromise;
+    if (this._loadingUISourceCodes.get(uiSourceCode) !== contentsPromise) {
       return;
+    }
     this._loadingUISourceCodes.delete(uiSourceCode);
 
-    if (contents[0] !== null && contents[1] !== null && contents[0] !== contents[1])
+    if (contents[0] !== null && contents[1] !== null && contents[0] !== contents[1]) {
       this._markAsModified(uiSourceCode);
-    else
+    } else {
       this._markAsUnmodified(uiSourceCode);
+    }
   }
-};
 
-WorkspaceDiff.WorkspaceDiff.UISourceCodeDiff = class extends Common.Object {
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {!Promise<?string>}
+   */
+  requestOriginalContentForUISourceCode(uiSourceCode) {
+    return this._uiSourceCodeDiff(uiSourceCode)._originalContent();
+  }
+
+  /**
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {!Promise}
+   */
+  revertToOriginal(uiSourceCode) {
+    /**
+     * @param {?string} content
+     */
+    function callback(content) {
+      if (typeof content !== 'string') {
+        return;
+      }
+
+      uiSourceCode.addRevision(content);
+    }
+
+    Host.userMetrics.actionTaken(Host.UserMetrics.Action.RevisionApplied);
+    return this.requestOriginalContentForUISourceCode(uiSourceCode).then(callback);
+  }
+}
+
+export class UISourceCodeDiff extends Common.ObjectWrapper.ObjectWrapper {
+  /**
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   constructor(uiSourceCode) {
     super();
@@ -189,17 +240,18 @@ WorkspaceDiff.WorkspaceDiff.UISourceCodeDiff = class extends Common.Object {
     }
     this._requestDiffPromise = null;
 
-    var content = this._uiSourceCode.content();
-    var delay = (!content || content.length < 65536) ? 0 : WorkspaceDiff.WorkspaceDiff.UpdateTimeout;
+    const content = this._uiSourceCode.content();
+    const delay = (!content || content.length < 65536) ? 0 : UpdateTimeout;
     this._pendingChanges = setTimeout(emitDiffChanged.bind(this), delay);
 
     /**
-     * @this {WorkspaceDiff.WorkspaceDiff.UISourceCodeDiff}
+     * @this {UISourceCodeDiff}
      */
     function emitDiffChanged() {
-      if (this._dispose)
+      if (this._dispose) {
         return;
-      this.dispatchEventToListeners(WorkspaceDiff.Events.DiffChanged);
+      }
+      this.dispatchEventToListeners(Events.DiffChanged);
       this._pendingChanges = null;
     }
   }
@@ -208,51 +260,91 @@ WorkspaceDiff.WorkspaceDiff.UISourceCodeDiff = class extends Common.Object {
    * @return {!Promise<?Diff.Diff.DiffArray>}
    */
   requestDiff() {
-    if (!this._requestDiffPromise)
+    if (!this._requestDiffPromise) {
       this._requestDiffPromise = this._innerRequestDiff();
+    }
     return this._requestDiffPromise;
+  }
+
+  /**
+   * @return {!Promise<?string>}
+   */
+  async _originalContent() {
+    const originalNetworkContent =
+        self.Persistence.networkPersistenceManager.originalContentForUISourceCode(this._uiSourceCode);
+    if (originalNetworkContent) {
+      return originalNetworkContent;
+    }
+
+    const content = await this._uiSourceCode.project().requestFileContent(this._uiSourceCode);
+    return content.content || content.error || '';
   }
 
   /**
    * @return {!Promise<?Diff.Diff.DiffArray>}
    */
   async _innerRequestDiff() {
-    if (this._dispose)
+    if (this._dispose) {
       return null;
+    }
 
-    var current = this._uiSourceCode.workingCopy();
-    if (!current && !this._uiSourceCode.contentLoaded())
-      current = await this._uiSourceCode.requestContent();
+    const baseline = await this._originalContent();
+    if (baseline.length > 1024 * 1024) {
+      return null;
+    }
     // ------------ ASYNC ------------
-    if (this._dispose)
+    if (this._dispose) {
       return null;
+    }
 
-    var baseline = await this._uiSourceCode.requestOriginalContent();
-    // ------------ ASYNC ------------
-    if (this._dispose)
-      return null;
+    let current = this._uiSourceCode.workingCopy();
+    if (!current && !this._uiSourceCode.contentLoaded()) {
+      current = (await this._uiSourceCode.requestContent()).content;
+    }
 
-    if (current === null || baseline === null)
+    if (current.length > 1024 * 1024) {
       return null;
-    return Diff.Diff.lineDiff(baseline.split('\n'), current.split('\n'));
+    }
+
+    if (this._dispose) {
+      return null;
+    }
+
+    if (current === null || baseline === null) {
+      return null;
+    }
+    return Diff.Diff.DiffWrapper.lineDiff(baseline.split(/\r\n|\n|\r/), current.split(/\r\n|\n|\r/));
   }
-};
+}
 
 /**
  * @enum {symbol}
  */
-WorkspaceDiff.Events = {
+export const Events = {
   DiffChanged: Symbol('DiffChanged'),
   ModifiedStatusChanged: Symbol('ModifiedStatusChanged')
 };
 
-/**
- * @return {!WorkspaceDiff.WorkspaceDiff}
- */
-WorkspaceDiff.workspaceDiff = function() {
-  if (!WorkspaceDiff.WorkspaceDiff._instance)
-    WorkspaceDiff.WorkspaceDiff._instance = new WorkspaceDiff.WorkspaceDiff(Workspace.workspace);
-  return WorkspaceDiff.WorkspaceDiff._instance;
-};
+/** @type {?WorkspaceDiffImpl} */
+let _instance = null;
 
-WorkspaceDiff.WorkspaceDiff.UpdateTimeout = 200;
+/**
+ * @return {!WorkspaceDiffImpl}
+ */
+export function workspaceDiff() {
+  if (!_instance) {
+    _instance = new WorkspaceDiffImpl(self.Workspace.workspace);
+  }
+  return _instance;
+}
+
+export class DiffUILocation {
+  /**
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   */
+  constructor(uiSourceCode) {
+    this.uiSourceCode = uiSourceCode;
+  }
+}
+
+export const UpdateTimeout = 200;

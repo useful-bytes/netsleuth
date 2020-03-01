@@ -28,9 +28,18 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-Network.RequestPreviewView = class extends Network.RequestResponseView {
+import * as Common from '../common/common.js';
+import * as SDK from '../sdk/sdk.js';  // eslint-disable-line no-unused-vars
+import * as SourceFrame from '../source_frame/source_frame.js';
+import * as UI from '../ui/ui.js';
+
+import {RequestHTMLView} from './RequestHTMLView.js';
+import {RequestResponseView} from './RequestResponseView.js';
+import {SignedExchangeInfoView} from './SignedExchangeInfoView.js';
+
+export class RequestPreviewView extends RequestResponseView {
   /**
-   * @param {!SDK.NetworkRequest} request
+   * @param {!SDK.NetworkRequest.NetworkRequest} request
    */
   constructor(request) {
     super(request);
@@ -39,57 +48,68 @@ Network.RequestPreviewView = class extends Network.RequestResponseView {
   /**
    * @override
    * @protected
-   * @return {!Promise<?UI.Widget>}
+   * @return {!Promise<!UI.Widget.Widget>}
    */
   async showPreview() {
-    var view = await super.showPreview();
-    if (!(view instanceof UI.SimpleView))
+    const view = await super.showPreview();
+    if (!(view instanceof UI.View.SimpleView)) {
       return view;
-    var toolbar = new UI.Toolbar('network-item-preview-toolbar', this.element);
-    for (var item of view.syncToolbarItems())
-      toolbar.appendToolbarItem(item);
+    }
+    const toolbar = new UI.Toolbar.Toolbar('network-item-preview-toolbar', this.element);
+    view.toolbarItems().then(items => {
+      items.map(item => toolbar.appendToolbarItem(item));
+    });
     return view;
   }
 
   /**
-   * @return {!Promise<?UI.Widget>}
+   * @return {!Promise<?UI.Widget.Widget>}
    */
-  async _htmlErrorPreview() {
-    var contentData = await this.request.contentData();
-    if (contentData.error)
-      return new UI.EmptyWidget(Common.UIString('Failed to load response data'));
+  async _htmlPreview() {
+    const contentData = await this.request.contentData();
+    if (contentData.error) {
+      return new UI.EmptyWidget.EmptyWidget(Common.UIString.UIString('Failed to load response data'));
+    }
 
-    // We can assume the status code has been set already because fetching contentData should wait for request to be
-    // finished.
-    if (!this.request.hasErrorStatusCode() && this.request.resourceType() !== Common.resourceTypes.XHR)
+    const whitelist = new Set(['text/html', 'text/plain', 'application/xhtml+xml']);
+    if (!whitelist.has(this.request.mimeType)) {
       return null;
+    }
 
-    var whitelist = new Set(['text/html', 'text/plain', 'application/xhtml+xml']);
-    if (!whitelist.has(this.request.mimeType))
-      return null;
+    const content = contentData.encoded ? window.atob(/** @type {string} */ (contentData.content)) :
+                                          /** @type {string} */ (contentData.content);
 
-    var dataURL = Common.ContentProvider.contentAsDataURL(
-        contentData.content, this.request.mimeType, contentData.encoded, contentData.encoded ? 'utf-8' : null);
-    return dataURL ? new Network.RequestHTMLView(dataURL) : null;
+    // http://crbug.com/767393 - DevTools should recognize JSON regardless of the content type
+    const jsonView = await SourceFrame.JSONView.JSONView.createView(content);
+    if (jsonView) {
+      return jsonView;
+    }
+
+    const dataURL = Common.ContentProvider.contentAsDataURL(
+        contentData.content, this.request.mimeType, contentData.encoded, this.request.charset());
+    return dataURL ? new RequestHTMLView(dataURL) : null;
   }
 
   /**
    * @override
-   * @return {!Promise<!UI.Widget>}
+   * @protected
+   * @return {!Promise<!UI.Widget.Widget>}
    */
   async createPreview() {
-    var htmlErrorPreview = await this._htmlErrorPreview();
-    if (htmlErrorPreview)
+    if (this.request.signedExchangeInfo()) {
+      return new SignedExchangeInfoView(this.request);
+    }
+
+    const htmlErrorPreview = await this._htmlPreview();
+    if (htmlErrorPreview) {
       return htmlErrorPreview;
+    }
 
-    // Try provider before the source view - so JSON and XML are not shown in generic editor
-    var provided = await SourceFrame.PreviewFactory.createPreview(this.request, this.request.mimeType);
-    if (provided)
+    const provided = await SourceFrame.PreviewFactory.PreviewFactory.createPreview(this.request, this.request.mimeType);
+    if (provided) {
       return provided;
+    }
 
-    var sourceView = await Network.RequestResponseView.sourceViewForRequest(this.request);
-    if (sourceView)
-      return sourceView;
-    return new UI.EmptyWidget(Common.UIString('Preview not available'));
+    return new UI.EmptyWidget.EmptyWidget(Common.UIString.UIString('Preview not available'));
   }
-};
+}

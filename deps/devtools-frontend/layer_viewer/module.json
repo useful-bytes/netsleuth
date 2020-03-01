@@ -6,7 +6,10 @@
         "ui",
         "perf_ui"
     ],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "layer_viewer.js",
+        "layer_viewer-legacy.js",
         "LayerDetailsView.js",
         "LayerTreeOutline.js",
         "LayerViewHost.js",

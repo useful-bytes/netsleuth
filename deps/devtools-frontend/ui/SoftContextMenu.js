@@ -1,41 +1,55 @@
 /*
- * Copyright (C) 2011 Google Inc. All Rights Reserved.
+ * Copyright (C) 2011 Google Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
+ * modification, are permitted provided that the following conditions are
+ * met:
  *
- * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Host from '../host/host.js';
+
+import * as ARIAUtils from './ARIAUtils.js';
+import {AnchorBehavior, GlassPane, MarginBehavior, PointerEventsBehavior, SizeBehavior,} from './GlassPane.js';  // eslint-disable-line no-unused-vars
+import {Icon} from './Icon.js';
+import {ElementFocusRestorer} from './UIUtils.js';
+
 /**
  * @unrestricted
  */
-UI.SoftContextMenu = class {
+export class SoftContextMenu {
   /**
    * @param {!Array.<!InspectorFrontendHostAPI.ContextMenuDescriptor>} items
    * @param {function(string)} itemSelectedCallback
-   * @param {!UI.SoftContextMenu=} parentMenu
+   * @param {!SoftContextMenu=} parentMenu
    */
   constructor(items, itemSelectedCallback, parentMenu) {
     this._items = items;
     this._itemSelectedCallback = itemSelectedCallback;
     this._parentMenu = parentMenu;
+    /** @type {?Element} */
+    this._highlightedMenuItemElement = null;
   }
 
   /**
@@ -43,81 +57,102 @@ UI.SoftContextMenu = class {
    * @param {!AnchorBox} anchorBox
    */
   show(document, anchorBox) {
-    if (!this._items.length)
+    if (!this._items.length) {
       return;
+    }
 
     this._document = document;
 
-    this._glassPane = new UI.GlassPane();
+    this._glassPane = new GlassPane();
     this._glassPane.setPointerEventsBehavior(
-        this._parentMenu ? UI.GlassPane.PointerEventsBehavior.PierceGlassPane :
-                           UI.GlassPane.PointerEventsBehavior.BlockedByGlassPane);
+        this._parentMenu ? PointerEventsBehavior.PierceGlassPane : PointerEventsBehavior.BlockedByGlassPane);
     this._glassPane.registerRequiredCSS('ui/softContextMenu.css');
     this._glassPane.setContentAnchorBox(anchorBox);
-    this._glassPane.setSizeBehavior(UI.GlassPane.SizeBehavior.MeasureContent);
-    this._glassPane.setMarginBehavior(UI.GlassPane.MarginBehavior.NoMargin);
-    this._glassPane.setAnchorBehavior(
-        this._parentMenu ? UI.GlassPane.AnchorBehavior.PreferRight : UI.GlassPane.AnchorBehavior.PreferBottom);
+    this._glassPane.setSizeBehavior(SizeBehavior.MeasureContent);
+    this._glassPane.setMarginBehavior(MarginBehavior.NoMargin);
+    this._glassPane.setAnchorBehavior(this._parentMenu ? AnchorBehavior.PreferRight : AnchorBehavior.PreferBottom);
 
     this._contextMenuElement = this._glassPane.contentElement.createChild('div', 'soft-context-menu');
-    this._contextMenuElement.tabIndex = 0;
+    this._contextMenuElement.tabIndex = -1;
+    ARIAUtils.markAsMenu(this._contextMenuElement);
     this._contextMenuElement.addEventListener('mouseup', e => e.consume(), false);
     this._contextMenuElement.addEventListener('keydown', this._menuKeyDown.bind(this), false);
 
-    for (var i = 0; i < this._items.length; ++i)
+    for (let i = 0; i < this._items.length; ++i) {
       this._contextMenuElement.appendChild(this._createMenuItem(this._items[i]));
+    }
 
     this._glassPane.show(document);
-    this._focusRestorer = new UI.ElementFocusRestorer(this._contextMenuElement);
+    this._focusRestorer = new ElementFocusRestorer(this._contextMenuElement);
 
     if (!this._parentMenu) {
-      this._onBodyMouseDown = event => {
+      this._hideOnUserGesture = event => {
+        // If a user clicks on any submenu, prevent the menu system from closing.
+        let subMenu = this._subMenu;
+        while (subMenu) {
+          if (subMenu._contextMenuElement === event.path[0]) {
+            return;
+          }
+          subMenu = subMenu._subMenu;
+        }
+
         this.discard();
         event.consume(true);
       };
-      this._document.body.addEventListener('mousedown', this._onBodyMouseDown, false);
+      this._document.body.addEventListener('mousedown', this._hideOnUserGesture, false);
+      this._document.defaultView.addEventListener('resize', this._hideOnUserGesture, false);
     }
   }
 
   discard() {
-    if (this._subMenu)
+    if (this._subMenu) {
       this._subMenu.discard();
-    if (this._focusRestorer)
+    }
+    if (this._focusRestorer) {
       this._focusRestorer.restore();
+    }
     if (this._glassPane) {
       this._glassPane.hide();
       delete this._glassPane;
-      if (this._onBodyMouseDown) {
-        this._document.body.removeEventListener('mousedown', this._onBodyMouseDown, false);
-        delete this._onBodyMouseDown;
+      if (this._hideOnUserGesture) {
+        this._document.body.removeEventListener('mousedown', this._hideOnUserGesture, false);
+        this._document.defaultView.removeEventListener('resize', this._hideOnUserGesture, false);
+        delete this._hideOnUserGesture;
       }
     }
-    if (this._parentMenu)
+    if (this._parentMenu) {
       delete this._parentMenu._subMenu;
+    }
   }
 
   _createMenuItem(item) {
-    if (item.type === 'separator')
+    if (item.type === 'separator') {
       return this._createSeparator();
+    }
 
-    if (item.type === 'subMenu')
+    if (item.type === 'subMenu') {
       return this._createSubMenu(item);
+    }
 
-    var menuItemElement = createElementWithClass('div', 'soft-context-menu-item');
-    var checkMarkElement = UI.Icon.create('smallicon-checkmark', 'checkmark');
+    const menuItemElement = createElementWithClass('div', 'soft-context-menu-item');
+    menuItemElement.tabIndex = -1;
+    ARIAUtils.markAsMenuItem(menuItemElement);
+    const checkMarkElement = Icon.create('smallicon-checkmark', 'checkmark');
     menuItemElement.appendChild(checkMarkElement);
-    if (!item.checked)
+    if (!item.checked) {
       checkMarkElement.style.opacity = '0';
+    }
 
     if (item.element) {
-      var wrapper = menuItemElement.createChild('div', 'soft-context-menu-custom-item');
+      const wrapper = menuItemElement.createChild('div', 'soft-context-menu-custom-item');
       wrapper.appendChild(item.element);
-      menuItemElement._isCustom = true;
+      menuItemElement._customElement = item.element;
       return menuItemElement;
     }
 
-    if (!item.enabled)
+    if (!item.enabled) {
       menuItemElement.classList.add('soft-context-menu-disabled');
+    }
     menuItemElement.createTextChild(item.label);
     menuItemElement.createChild('span', 'soft-context-menu-shortcut').textContent = item.shortcut;
 
@@ -129,23 +164,47 @@ UI.SoftContextMenu = class {
     menuItemElement.addEventListener('mouseleave', this._menuItemMouseLeave.bind(this), false);
 
     menuItemElement._actionId = item.id;
+
+    let accessibleName = item.label;
+
+    if (item.type === 'checkbox') {
+      const checkedState = item.checked ? ls`checked` : ls`unchecked`;
+      if (item.shortcut) {
+        accessibleName = ls`${item.label}, ${item.shortcut}, ${checkedState}`;
+      } else {
+        accessibleName = ls`${item.label}, ${checkedState}`;
+      }
+    } else if (item.shortcut) {
+      accessibleName = ls`${item.label}, ${item.shortcut}`;
+    }
+    ARIAUtils.setAccessibleName(menuItemElement, accessibleName);
+
     return menuItemElement;
   }
 
   _createSubMenu(item) {
-    var menuItemElement = createElementWithClass('div', 'soft-context-menu-item');
+    const menuItemElement = createElementWithClass('div', 'soft-context-menu-item');
     menuItemElement._subItems = item.subItems;
+    menuItemElement.tabIndex = -1;
+    ARIAUtils.markAsMenuItemSubMenu(menuItemElement);
+    // TODO: Once we have AOM, remove the explicit aria-label and use document.queryByAccessibleName
+    ARIAUtils.setAccessibleName(menuItemElement, item.label);
 
     // Occupy the same space on the left in all items.
-    var checkMarkElement = UI.Icon.create('smallicon-checkmark', 'soft-context-menu-item-checkmark');
+    const checkMarkElement = Icon.create('smallicon-checkmark', 'soft-context-menu-item-checkmark');
     checkMarkElement.classList.add('checkmark');
     menuItemElement.appendChild(checkMarkElement);
     checkMarkElement.style.opacity = '0';
 
     menuItemElement.createTextChild(item.label);
 
-    var subMenuArrowElement = menuItemElement.createChild('span', 'soft-context-menu-item-submenu-arrow');
-    subMenuArrowElement.textContent = '\u25B6';  // BLACK RIGHT-POINTING TRIANGLE
+    if (Host.Platform.isMac() && !self.UI.themeSupport.hasTheme()) {
+      const subMenuArrowElement = menuItemElement.createChild('span', 'soft-context-menu-item-submenu-arrow');
+      subMenuArrowElement.textContent = '\u25B6';  // BLACK RIGHT-POINTING TRIANGLE
+    } else {
+      const subMenuArrowElement = Icon.create('smallicon-triangle-right', 'soft-context-menu-item-submenu-arrow');
+      menuItemElement.appendChild(subMenuArrowElement);
+    }
 
     menuItemElement.addEventListener('mousedown', this._menuItemMouseDown.bind(this), false);
     menuItemElement.addEventListener('mouseup', this._menuItemMouseUp.bind(this), false);
@@ -158,7 +217,7 @@ UI.SoftContextMenu = class {
   }
 
   _createSeparator() {
-    var separatorElement = createElementWithClass('div', 'soft-context-menu-separator');
+    const separatorElement = createElementWithClass('div', 'soft-context-menu-separator');
     separatorElement._isSeparator = true;
     separatorElement.createChild('div', 'separator-line');
     return separatorElement;
@@ -175,12 +234,13 @@ UI.SoftContextMenu = class {
   }
 
   /**
-   * @return {!UI.SoftContextMenu}
+   * @return {!SoftContextMenu}
    */
   _root() {
-    var root = this;
-    while (root._parentMenu)
+    let root = this;
+    while (root._parentMenu) {
       root = root._parentMenu;
+    }
     return root;
   }
 
@@ -204,11 +264,12 @@ UI.SoftContextMenu = class {
       clearTimeout(menuItemElement._subMenuTimer);
       delete menuItemElement._subMenuTimer;
     }
-    if (this._subMenu)
+    if (this._subMenu) {
       return;
+    }
 
-    this._subMenu = new UI.SoftContextMenu(menuItemElement._subItems, this._itemSelectedCallback, this);
-    var anchorBox = menuItemElement.boxInWindow();
+    this._subMenu = new SoftContextMenu(menuItemElement._subItems, this._itemSelectedCallback, this);
+    const anchorBox = menuItemElement.boxInWindow();
     // Adjust for padding.
     anchorBox.y -= 5;
     anchorBox.x += 3;
@@ -227,9 +288,10 @@ UI.SoftContextMenu = class {
       return;
     }
 
-    var relatedTarget = event.relatedTarget;
-    if (relatedTarget === this._contextMenuElement)
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget === this._contextMenuElement) {
       this._highlightMenuItem(null, true);
+    }
   }
 
   /**
@@ -237,11 +299,13 @@ UI.SoftContextMenu = class {
    * @param {boolean} scheduleSubMenu
    */
   _highlightMenuItem(menuItemElement, scheduleSubMenu) {
-    if (this._highlightedMenuItemElement === menuItemElement)
+    if (this._highlightedMenuItemElement === menuItemElement) {
       return;
+    }
 
-    if (this._subMenu)
+    if (this._subMenu) {
       this._subMenu.discard();
+    }
     if (this._highlightedMenuItemElement) {
       this._highlightedMenuItemElement.classList.remove('force-white-icons');
       this._highlightedMenuItemElement.classList.remove('soft-context-menu-item-mouse-over');
@@ -252,9 +316,15 @@ UI.SoftContextMenu = class {
     }
     this._highlightedMenuItemElement = menuItemElement;
     if (this._highlightedMenuItemElement) {
-      this._highlightedMenuItemElement.classList.add('force-white-icons');
+      if (self.UI.themeSupport.hasTheme() || Host.Platform.isMac()) {
+        this._highlightedMenuItemElement.classList.add('force-white-icons');
+      }
       this._highlightedMenuItemElement.classList.add('soft-context-menu-item-mouse-over');
-      this._contextMenuElement.focus();
+      if (this._highlightedMenuItemElement._customElement) {
+        this._highlightedMenuItemElement._customElement.focus();
+      } else {
+        this._highlightedMenuItemElement.focus();
+      }
       if (scheduleSubMenu && this._highlightedMenuItemElement._subItems &&
           !this._highlightedMenuItemElement._subMenuTimer) {
         this._highlightedMenuItemElement._subMenuTimer =
@@ -264,21 +334,27 @@ UI.SoftContextMenu = class {
   }
 
   _highlightPrevious() {
-    var menuItemElement = this._highlightedMenuItemElement ? this._highlightedMenuItemElement.previousSibling :
+    let menuItemElement = this._highlightedMenuItemElement ? this._highlightedMenuItemElement.previousSibling :
                                                              this._contextMenuElement.lastChild;
-    while (menuItemElement && (menuItemElement._isSeparator || menuItemElement._isCustom))
+    while (menuItemElement &&
+           (menuItemElement._isSeparator || menuItemElement.classList.contains('soft-context-menu-disabled'))) {
       menuItemElement = menuItemElement.previousSibling;
-    if (menuItemElement)
+    }
+    if (menuItemElement) {
       this._highlightMenuItem(menuItemElement, false);
+    }
   }
 
   _highlightNext() {
-    var menuItemElement = this._highlightedMenuItemElement ? this._highlightedMenuItemElement.nextSibling :
+    let menuItemElement = this._highlightedMenuItemElement ? this._highlightedMenuItemElement.nextSibling :
                                                              this._contextMenuElement.firstChild;
-    while (menuItemElement && (menuItemElement._isSeparator || menuItemElement._isCustom))
+    while (menuItemElement &&
+           (menuItemElement._isSeparator || menuItemElement.classList.contains('soft-context-menu-disabled'))) {
       menuItemElement = menuItemElement.nextSibling;
-    if (menuItemElement)
+    }
+    if (menuItemElement) {
       this._highlightMenuItem(menuItemElement, false);
+    }
   }
 
   _menuKeyDown(event) {
@@ -296,8 +372,9 @@ UI.SoftContextMenu = class {
         }
         break;
       case 'ArrowRight':
-        if (!this._highlightedMenuItemElement)
+        if (!this._highlightedMenuItemElement) {
           break;
+        }
         if (this._highlightedMenuItemElement._subItems) {
           this._showSubMenu(this._highlightedMenuItemElement);
           this._subMenu._highlightNext();
@@ -307,16 +384,20 @@ UI.SoftContextMenu = class {
         this.discard();
         break;
       case 'Enter':
-        if (!isEnterKey(event))
-          break;
+        if (!isEnterKey(event)) {
+          return;
+        }
       // Fall through
       case ' ':  // Space
-        if (this._highlightedMenuItemElement)
-          this._triggerAction(this._highlightedMenuItemElement, event);
-        if (this._highlightedMenuItemElement._subItems)
+        if (!this._highlightedMenuItemElement || this._highlightedMenuItemElement._customElement) {
+          return;
+        }
+        this._triggerAction(this._highlightedMenuItemElement, event);
+        if (this._highlightedMenuItemElement._subItems) {
           this._subMenu._highlightNext();
+        }
         break;
     }
     event.consume(true);
   }
-};
+}

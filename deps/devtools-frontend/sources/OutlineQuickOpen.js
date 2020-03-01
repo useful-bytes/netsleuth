@@ -2,10 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as Common from '../common/common.js';
+import * as Formatter from '../formatter/formatter.js';
+import * as QuickOpen from '../quick_open/quick_open.js';
+import * as Workspace from '../workspace/workspace.js';  // eslint-disable-line no-unused-vars
+
+import {SourcesView} from './SourcesView.js';
+
 /**
  * @unrestricted
  */
-Sources.OutlineQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
+export class OutlineQuickOpen extends QuickOpen.FilteredListWidget.Provider {
   constructor() {
     super();
     this._items = [];
@@ -19,9 +26,9 @@ Sources.OutlineQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
     this._items = [];
     this._active = false;
 
-    var uiSourceCode = this._currentUISourceCode();
+    const uiSourceCode = this._currentUISourceCode();
     if (uiSourceCode) {
-      this._active = Formatter.formatterWorkerPool().outlineForMimetype(
+      this._active = Formatter.FormatterWorkerPool.formatterWorkerPool().outlineForMimetype(
           uiSourceCode.workingCopy(), uiSourceCode.contentType().canonicalMimeType(),
           this._didBuildOutlineChunk.bind(this));
     }
@@ -50,7 +57,7 @@ Sources.OutlineQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
    * @return {string}
    */
   itemKeyAt(itemIndex) {
-    var item = this._items[itemIndex];
+    const item = this._items[itemIndex];
     return item.title + (item.subtitle ? item.subtitle : '');
   }
 
@@ -61,10 +68,11 @@ Sources.OutlineQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
    * @return {number}
    */
   itemScoreAt(itemIndex, query) {
-    var item = this._items[itemIndex];
-    var methodName = query.split('(')[0];
-    if (methodName.toLowerCase() === item.title.toLowerCase())
+    const item = this._items[itemIndex];
+    const methodName = query.split('(')[0];
+    if (methodName.toLowerCase() === item.title.toLowerCase()) {
       return 1 / (1 + item.line);
+    }
     return -item.line - 1;
   }
 
@@ -76,9 +84,9 @@ Sources.OutlineQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
    * @param {!Element} subtitleElement
    */
   renderItem(itemIndex, query, titleElement, subtitleElement) {
-    var item = this._items[itemIndex];
+    const item = this._items[itemIndex];
     titleElement.textContent = item.title + (item.subtitle ? item.subtitle : '');
-    QuickOpen.FilteredListWidget.highlightRanges(titleElement, query);
+    QuickOpen.FilteredListWidget.FilteredListWidget.highlightRanges(titleElement, query);
     subtitleElement.textContent = ':' + (item.line + 1);
   }
 
@@ -88,24 +96,28 @@ Sources.OutlineQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
    * @param {string} promptValue
    */
   selectItem(itemIndex, promptValue) {
-    if (itemIndex === null)
+    if (itemIndex === null) {
       return;
-    var uiSourceCode = this._currentUISourceCode();
-    if (!uiSourceCode)
+    }
+    const uiSourceCode = this._currentUISourceCode();
+    if (!uiSourceCode) {
       return;
-    var lineNumber = this._items[itemIndex].line;
-    if (!isNaN(lineNumber) && lineNumber >= 0)
+    }
+    const lineNumber = this._items[itemIndex].line;
+    if (!isNaN(lineNumber) && lineNumber >= 0) {
       Common.Revealer.reveal(uiSourceCode.uiLocation(lineNumber, this._items[itemIndex].column));
+    }
   }
 
 
   /**
-   * @return {?Workspace.UISourceCode}
+   * @return {?Workspace.UISourceCode.UISourceCode}
    */
   _currentUISourceCode() {
-    var sourcesView = UI.context.flavor(Sources.SourcesView);
-    if (!sourcesView)
+    const sourcesView = self.UI.context.flavor(SourcesView);
+    if (!sourcesView) {
       return null;
+    }
     return sourcesView.currentUISourceCode();
   }
 
@@ -114,10 +126,12 @@ Sources.OutlineQuickOpen = class extends QuickOpen.FilteredListWidget.Provider {
    * @return {string}
    */
   notFoundText() {
-    if (!this._currentUISourceCode())
-      return Common.UIString('No file selected.');
-    if (!this._active)
-      return Common.UIString('Open a JavaScript or CSS file to see symbols');
-    return Common.UIString('No results found');
+    if (!this._currentUISourceCode()) {
+      return Common.UIString.UIString('No file selected.');
+    }
+    if (!this._active) {
+      return Common.UIString.UIString('Open a JavaScript or CSS file to see symbols');
+    }
+    return Common.UIString.UIString('No results found');
   }
-};
+}

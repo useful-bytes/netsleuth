@@ -27,17 +27,13 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-.sidebar-hidden-override {
-    display: none !important;
-}
-
 .expandable-view-title {
     display: flex;
     align-items: center;
-    background-color: #f3f3f3;
+    background-color: var(--toolbar-bg-color);
     height: 22px;
     padding: 0 5px;
-    border-top: 1px solid #dadada;
+    border-top: var(--divider-border);
     white-space: nowrap;
     overflow: hidden;
     position: relative;
@@ -62,16 +58,20 @@
     margin-bottom: -2px;
 }
 
+.expandable-view-title[data-keyboard-focus="true"]:focus {
+    background-color: #e0e0e0;
+}
+
 .expandable-view-title > .toolbar {
     position: absolute;
     right: 0;
     top: 0;
 }
 
-.sidebar-pane-container .toolbar {
-    border-bottom: 1px solid #eee;
-}
-
-.sidebar-pane-container .toolbar > * {
-    pointer-events: auto;
+@media (forced-colors: active) {
+    .expandable-view-title[data-keyboard-focus="true"]:focus {
+        forced-color-adjust: none;
+        background: Canvas !important;
+        box-shadow: 0 0 0 2px Highlight inset;
+    }
 }

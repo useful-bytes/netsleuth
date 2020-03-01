@@ -2,55 +2,68 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-Resources.ResourcesPanel = class extends UI.PanelWithSidebar {
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+import * as SDK from '../sdk/sdk.js';
+import * as SourceFrame from '../source_frame/source_frame.js';
+import * as UI from '../ui/ui.js';
+
+import {ApplicationPanelSidebar, StorageCategoryView} from './ApplicationPanelSidebar.js';
+import {CookieItemsView} from './CookieItemsView.js';
+import {DatabaseQueryView} from './DatabaseQueryView.js';
+import {DatabaseTableView} from './DatabaseTableView.js';
+import {DOMStorageItemsView} from './DOMStorageItemsView.js';
+import {DOMStorage} from './DOMStorageModel.js';  // eslint-disable-line no-unused-vars
+import {StorageItemsView} from './StorageItemsView.js';
+
+export class ResourcesPanel extends UI.Panel.PanelWithSidebar {
   constructor() {
     super('resources');
     this.registerRequiredCSS('resources/resourcesPanel.css');
 
-    this._resourcesLastSelectedItemSetting = Common.settings.createSetting('resourcesLastSelectedElementPath', []);
+    this._resourcesLastSelectedItemSetting = self.Common.settings.createSetting('resourcesLastSelectedElementPath', []);
 
-    /** @type {?UI.Widget} */
+    /** @type {?UI.Widget.Widget} */
     this.visibleView = null;
 
-    /** @type {?Promise<!UI.Widget>} */
+    /** @type {?Promise<!UI.Widget.Widget>} */
     this._pendingViewPromise = null;
 
-    /** @type {?Resources.StorageCategoryView} */
+    /** @type {?StorageCategoryView} */
     this._categoryView = null;
 
-    var mainContainer = new UI.VBox();
+    const mainContainer = new UI.Widget.VBox();
     this.storageViews = mainContainer.element.createChild('div', 'vbox flex-auto');
-    this._storageViewToolbar = new UI.Toolbar('resources-toolbar', mainContainer.element);
+    this._storageViewToolbar = new UI.Toolbar.Toolbar('resources-toolbar', mainContainer.element);
     this.splitWidget().setMainWidget(mainContainer);
 
-    /** @type {?Resources.DOMStorageItemsView} */
+    /** @type {?DOMStorageItemsView} */
     this._domStorageView = null;
 
-    /** @type {?Resources.CookieItemsView} */
+    /** @type {?CookieItemsView} */
     this._cookieView = null;
 
-    /** @type {?UI.EmptyWidget} */
+    /** @type {?UI.EmptyWidget.EmptyWidget} */
     this._emptyWidget = null;
 
-    this._sidebar = new Resources.ApplicationPanelSidebar(this);
+    this._sidebar = new ApplicationPanelSidebar(this);
     this._sidebar.show(this.panelSidebarElement());
   }
 
   /**
-   * @return {!Resources.ResourcesPanel}
+   * @return {!ResourcesPanel}
    */
   static _instance() {
-    return /** @type {!Resources.ResourcesPanel} */ (self.runtime.sharedInstance(Resources.ResourcesPanel));
+    return /** @type {!ResourcesPanel} */ (self.runtime.sharedInstance(ResourcesPanel));
   }
 
   /**
-   * @param {!UI.Widget} view
+   * @param {!UI.Widget.Widget} view
    * @return {boolean}
    */
   static _shouldCloseOnReset(view) {
-    var viewClassesToClose = [
-      SourceFrame.ResourceSourceFrame, SourceFrame.ImageView, SourceFrame.FontView, Resources.StorageItemsView,
-      Resources.DatabaseQueryView, Resources.DatabaseTableView
+    const viewClassesToClose = [
+      SourceFrame.ResourceSourceFrame.ResourceSourceFrame, SourceFrame.ImageView.ImageView,
+      SourceFrame.FontView.FontView, StorageItemsView, DatabaseQueryView, DatabaseTableView
     ];
     return viewClassesToClose.some(type => view instanceof type);
   }
@@ -77,124 +90,130 @@ Resources.ResourcesPanel = class extends UI.PanelWithSidebar {
   }
 
   resetView() {
-    if (this.visibleView && Resources.ResourcesPanel._shouldCloseOnReset(this.visibleView))
+    if (this.visibleView && ResourcesPanel._shouldCloseOnReset(this.visibleView)) {
       this.showView(null);
+    }
   }
 
   /**
-   * @param {?UI.Widget} view
+   * @param {?UI.Widget.Widget} view
    */
   showView(view) {
     this._pendingViewPromise = null;
-    if (this.visibleView === view)
+    if (this.visibleView === view) {
       return;
+    }
 
-    if (this.visibleView)
+    if (this.visibleView) {
       this.visibleView.detach();
+    }
 
-    if (view)
+    if (view) {
       view.show(this.storageViews);
+    }
     this.visibleView = view;
 
     this._storageViewToolbar.removeToolbarItems();
-    var toolbarItems = (view instanceof UI.SimpleView && view.syncToolbarItems()) || [];
-    for (var i = 0; i < toolbarItems.length; ++i)
-      this._storageViewToolbar.appendToolbarItem(toolbarItems[i]);
-    this._storageViewToolbar.element.classList.toggle('hidden', !toolbarItems.length);
+    if (view instanceof UI.View.SimpleView) {
+      view.toolbarItems().then(items => {
+        items.map(item => this._storageViewToolbar.appendToolbarItem(item));
+        this._storageViewToolbar.element.classList.toggle('hidden', !items.length);
+      });
+    }
   }
 
   /**
-   * @param {!Promise<!UI.Widget>} viewPromise
-   * @return {!Promise<?UI.Widget>}
+   * @param {!Promise<!UI.Widget.Widget>} viewPromise
+   * @return {!Promise<?UI.Widget.Widget>}
    */
   async scheduleShowView(viewPromise) {
     this._pendingViewPromise = viewPromise;
-    var view = await viewPromise;
-    if (this._pendingViewPromise !== viewPromise)
+    const view = await viewPromise;
+    if (this._pendingViewPromise !== viewPromise) {
       return null;
+    }
     this.showView(view);
     return view;
   }
 
   /**
    * @param {string} categoryName
+   * @param {string|null} categoryLink
    */
-  showCategoryView(categoryName) {
-    if (!this._categoryView)
-      this._categoryView = new Resources.StorageCategoryView();
+  showCategoryView(categoryName, categoryLink) {
+    if (!this._categoryView) {
+      this._categoryView = new StorageCategoryView();
+    }
     this._categoryView.setText(categoryName);
+    this._categoryView.setLink(categoryLink);
     this.showView(this._categoryView);
   }
 
   /**
-   * @param {!Resources.DOMStorage} domStorage
+   * @param {!DOMStorage} domStorage
    */
   showDOMStorage(domStorage) {
-    if (!domStorage)
+    if (!domStorage) {
       return;
+    }
 
-    if (!this._domStorageView)
-      this._domStorageView = new Resources.DOMStorageItemsView(domStorage);
-    else
+    if (!this._domStorageView) {
+      this._domStorageView = new DOMStorageItemsView(domStorage);
+    } else {
       this._domStorageView.setStorage(domStorage);
+    }
     this.showView(this._domStorageView);
   }
 
   /**
-   * @param {!SDK.Target} cookieFrameTarget
+   * @param {!SDK.SDKModel.Target} cookieFrameTarget
    * @param {string} cookieDomain
    */
   showCookies(cookieFrameTarget, cookieDomain) {
-    var model = cookieFrameTarget.model(SDK.CookieModel);
-    if (!model)
+    const model = cookieFrameTarget.model(SDK.CookieModel.CookieModel);
+    if (!model) {
       return;
-    if (!this._cookieView)
-      this._cookieView = new Resources.CookieItemsView(model, cookieDomain);
-    else
+    }
+    if (!this._cookieView) {
+      this._cookieView = new CookieItemsView(model, cookieDomain);
+    } else {
       this._cookieView.setCookiesDomain(model, cookieDomain);
+    }
     this.showView(this._cookieView);
   }
 
   /**
-   * @param {string} text
-   */
-  showEmptyWidget(text) {
-    if (!this._emptyWidget)
-      this._emptyWidget = new UI.EmptyWidget(text);
-    else
-      this._emptyWidget.text = text;
-    this.showView(this._emptyWidget);
-  }
-
-  /**
-   * @param {!SDK.Target} target
+   * @param {!SDK.SDKModel.Target} target
    * @param {string} cookieDomain
    */
   clearCookies(target, cookieDomain) {
-    var model = target.model(SDK.CookieModel);
-    if (!model)
+    const model = target.model(SDK.CookieModel.CookieModel);
+    if (!model) {
       return;
+    }
     model.clear(cookieDomain, () => {
-      if (this._cookieView)
+      if (this._cookieView) {
         this._cookieView.refreshItems();
+      }
     });
   }
-};
+}
 
 /**
- * @implements {Common.Revealer}
+ * @implements {Common.Revealer.Revealer}
  */
-Resources.ResourcesPanel.ResourceRevealer = class {
+export class ResourceRevealer {
   /**
    * @override
    * @param {!Object} resource
    * @return {!Promise}
    */
   async reveal(resource) {
-    if (!(resource instanceof SDK.Resource))
+    if (!(resource instanceof SDK.Resource.Resource)) {
       return Promise.reject(new Error('Internal error: not a resource'));
-    var sidebar = Resources.ResourcesPanel._instance()._sidebar;
-    await UI.viewManager.showView('resources');
+    }
+    const sidebar = ResourcesPanel._instance()._sidebar;
+    await self.UI.viewManager.showView('resources');
     await sidebar.showResource(resource);
   }
-};
+}

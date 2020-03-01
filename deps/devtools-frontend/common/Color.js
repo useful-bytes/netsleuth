@@ -27,24 +27,31 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Platform from '../platform/platform.js';
+
+/** @type {?Map<string, string>} */
+let _rgbaToNickname;
+
 /**
  * @unrestricted
  */
-Common.Color = class {
+export class Color {
   /**
    * @param {!Array.<number>} rgba
-   * @param {!Common.Color.Format} format
+   * @param {!Format} format
    * @param {string=} originalText
    */
   constructor(rgba, format, originalText) {
+    this._hsla = undefined;
     this._rgba = rgba;
     this._originalText = originalText || null;
     this._originalTextIsValid = !!this._originalText;
     this._format = format;
-    if (typeof this._rgba[3] === 'undefined')
+    if (typeof this._rgba[3] === 'undefined') {
       this._rgba[3] = 1;
+    }
 
-    for (var i = 0; i < 4; ++i) {
+    for (let i = 0; i < 4; ++i) {
       if (this._rgba[i] < 0) {
         this._rgba[i] = 0;
         this._originalTextIsValid = false;
@@ -58,97 +65,102 @@ Common.Color = class {
 
   /**
    * @param {string} text
-   * @return {?Common.Color}
+   * @return {?Color}
    */
   static parse(text) {
-    // Simple - #hex, rgb(), nickname, hsl()
-    var value = text.toLowerCase().replace(/\s+/g, '');
-    var simple =
-        /^(?:#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|rgb\(((?:-?\d+%?,){2}-?\d+%?)\)|(\w+)|hsl\((-?\d+\.?\d*(?:,-?\d+\.?\d*%){2})\))$/i;
-    var match = value.match(simple);
+    // Simple - #hex, nickname
+    const value = text.toLowerCase().replace(/\s+/g, '');
+    const simple = /^(?:#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|(\w+))$/i;
+    let match = value.match(simple);
     if (match) {
       if (match[1]) {  // hex
-        var hex = match[1].toLowerCase();
-        var format;
+        let hex = match[1].toLowerCase();
+        let format;
         if (hex.length === 3) {
-          format = Common.Color.Format.ShortHEX;
+          format = Format.ShortHEX;
           hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
         } else if (hex.length === 4) {
-          format = Common.Color.Format.ShortHEXA;
+          format = Format.ShortHEXA;
           hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2) +
               hex.charAt(3) + hex.charAt(3);
         } else if (hex.length === 6) {
-          format = Common.Color.Format.HEX;
+          format = Format.HEX;
         } else {
-          format = Common.Color.Format.HEXA;
+          format = Format.HEXA;
         }
-        var r = parseInt(hex.substring(0, 2), 16);
-        var g = parseInt(hex.substring(2, 4), 16);
-        var b = parseInt(hex.substring(4, 6), 16);
-        var a = 1;
-        if (hex.length === 8)
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        let a = 1;
+        if (hex.length === 8) {
           a = parseInt(hex.substring(6, 8), 16) / 255;
-        return new Common.Color([r / 255, g / 255, b / 255, a], format, text);
+        }
+        return new Color([r / 255, g / 255, b / 255, a], format, text);
       }
 
-      if (match[2]) {  // rgb
-        var rgbString = match[2].split(/\s*,\s*/);
-        var rgba = [
-          Common.Color._parseRgbNumeric(rgbString[0]), Common.Color._parseRgbNumeric(rgbString[1]),
-          Common.Color._parseRgbNumeric(rgbString[2]), 1
-        ];
-        return new Common.Color(rgba, Common.Color.Format.RGB, text);
-      }
-
-      if (match[3]) {  // nickname
-        var nickname = match[3].toLowerCase();
-        if (nickname in Common.Color.Nicknames) {
-          var rgba = Common.Color.Nicknames[nickname];
-          var color = Common.Color.fromRGBA(rgba);
-          color._format = Common.Color.Format.Nickname;
+      if (match[2]) {  // nickname
+        const nickname = match[2].toLowerCase();
+        if (nickname in Nicknames) {
+          const rgba = Nicknames[nickname];
+          const color = Color.fromRGBA(rgba);
+          color._format = Format.Nickname;
           color._originalText = text;
           return color;
         }
         return null;
       }
 
-      if (match[4]) {  // hsl
-        var hslString = match[4].replace(/%/g, '').split(/\s*,\s*/);
-        var hsla = [
-          Common.Color._parseHueNumeric(hslString[0]), Common.Color._parseSatLightNumeric(hslString[1]),
-          Common.Color._parseSatLightNumeric(hslString[2]), 1
-        ];
-        var rgba = [];
-        Common.Color.hsl2rgb(hsla, rgba);
-        return new Common.Color(rgba, Common.Color.Format.HSL, text);
-      }
-
       return null;
     }
 
-    // Advanced - rgba(), hsla()
-    var advanced =
-        /^(?:rgba\(((?:-?\d+%?,){3}-?(?:\d+|\d*\.\d+))\)|hsla\((-?(?:\d+|\d*\.\d+)(?:,-?(?:\d+|\d*\.\d+)*%){2},-?(?:\d+|\d*\.\d+))\))$/;
-    match = value.match(advanced);
+    // rgb/rgba(), hsl/hsla()
+    match = text.toLowerCase().match(/^\s*(?:(rgba?)|(hsla?))\((.*)\)\s*$/);
+
     if (match) {
-      if (match[1]) {  // rgba
-        var rgbaString = match[1].split(/\s*,\s*/);
-        var rgba = [
-          Common.Color._parseRgbNumeric(rgbaString[0]), Common.Color._parseRgbNumeric(rgbaString[1]),
-          Common.Color._parseRgbNumeric(rgbaString[2]), Common.Color._parseAlphaNumeric(rgbaString[3])
+      const components = match[3].trim();
+      let values = components.split(/\s*,\s*/);
+      if (values.length === 1) {
+        values = components.split(/\s+/);
+        if (values[3] === '/') {
+          values.splice(3, 1);
+          if (values.length !== 4) {
+            return null;
+          }
+        } else if ((values.length > 2 && values[2].indexOf('/') !== -1) || (values.length > 3 && values[3].indexOf('/') !== -1)) {
+          const alpha = values.slice(2, 4).join('');
+          values = values.slice(0, 2).concat(alpha.split(/\//)).concat(values.slice(4));
+        } else if (values.length >= 4) {
+          return null;
+        }
+      }
+      if (values.length !== 3 && values.length !== 4 || values.indexOf('') > -1) {
+        return null;
+      }
+      const hasAlpha = (values[3] !== undefined);
+
+      if (match[1]) {  // rgb/rgba
+        const rgba = [
+          Color._parseRgbNumeric(values[0]), Color._parseRgbNumeric(values[1]), Color._parseRgbNumeric(values[2]),
+          hasAlpha ? Color._parseAlphaNumeric(values[3]) : 1
         ];
-        return new Common.Color(rgba, Common.Color.Format.RGBA, text);
+        if (rgba.indexOf(null) > -1) {
+          return null;
+        }
+        return new Color(/** @type {!Array.<number>} */ (rgba), hasAlpha ? Format.RGBA : Format.RGB, text);
       }
 
-      if (match[2]) {  // hsla
-        var hslaString = match[2].replace(/%/g, '').split(/\s*,\s*/);
-        var hsla = [
-          Common.Color._parseHueNumeric(hslaString[0]), Common.Color._parseSatLightNumeric(hslaString[1]),
-          Common.Color._parseSatLightNumeric(hslaString[2]), Common.Color._parseAlphaNumeric(hslaString[3])
+      if (match[2]) {  // hsl/hsla
+        const hsla = [
+          Color._parseHueNumeric(values[0]), Color._parseSatLightNumeric(values[1]),
+          Color._parseSatLightNumeric(values[2]), hasAlpha ? Color._parseAlphaNumeric(values[3]) : 1
         ];
-        var rgba = [];
-        Common.Color.hsl2rgb(hsla, rgba);
-        return new Common.Color(rgba, Common.Color.Format.HSLA, text);
+        if (hsla.indexOf(null) > -1) {
+          return null;
+        }
+        /** @type {!Array.<number>} */
+        const rgba = [];
+        Color.hsl2rgb(/** @type {!Array.<number>} */ (hsla), rgba);
+        return new Color(rgba, hasAlpha ? Format.HSLA : Format.HSL, text);
       }
     }
 
@@ -157,57 +169,102 @@ Common.Color = class {
 
   /**
    * @param {!Array.<number>} rgba
-   * @return {!Common.Color}
+   * @return {!Color}
    */
   static fromRGBA(rgba) {
-    return new Common.Color([rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3]], Common.Color.Format.RGBA);
+    return new Color([rgba[0] / 255, rgba[1] / 255, rgba[2] / 255, rgba[3]], Format.RGBA);
   }
 
   /**
    * @param {!Array.<number>} hsva
-   * @return {!Common.Color}
+   * @return {!Color}
    */
   static fromHSVA(hsva) {
-    var rgba = [];
-    Common.Color.hsva2rgba(hsva, rgba);
-    return new Common.Color(rgba, Common.Color.Format.HSLA);
+    /** @type {!Array.<number>} */
+    const rgba = [];
+    Color.hsva2rgba(hsva, rgba);
+    return new Color(rgba, Format.HSLA);
   }
 
   /**
    * @param {string} value
-   * return {number}
+   * @return {number|null}
    */
-  static _parseRgbNumeric(value) {
-    var parsed = parseInt(value, 10);
-    if (value.indexOf('%') !== -1)
-      parsed /= 100;
-    else
-      parsed /= 255;
+  static _parsePercentOrNumber(value) {
+    // @ts-ignore: isNaN can accept strings
+    if (isNaN(value.replace('%', ''))) {
+      return null;
+    }
+    const parsed = parseFloat(value);
+
+    if (value.indexOf('%') !== -1) {
+      if (value.indexOf('%') !== value.length - 1) {
+        return null;
+      }
+      return parsed / 100;
+    }
     return parsed;
   }
 
   /**
    * @param {string} value
-   * return {number}
+   * @return {number|null}
+   */
+  static _parseRgbNumeric(value) {
+    const parsed = Color._parsePercentOrNumber(value);
+    if (parsed === null) {
+      return null;
+    }
+
+    if (value.indexOf('%') !== -1) {
+      return parsed;
+    }
+    return parsed / 255;
+  }
+
+  /**
+   * @param {string} value
+   * @return {number|null}
    */
   static _parseHueNumeric(value) {
-    return isNaN(value) ? 0 : (parseFloat(value) / 360) % 1;
+    const angle = value.replace(/(deg|g?rad|turn)$/, '');
+    // @ts-ignore: isNaN can accept strings
+    if (isNaN(angle) || value.match(/\s+(deg|g?rad|turn)/)) {
+      return null;
+    }
+    const number = parseFloat(angle);
+
+    if (value.indexOf('turn') !== -1) {
+      return number % 1;
+    }
+    if (value.indexOf('grad') !== -1) {
+      return (number / 400) % 1;
+    }
+    if (value.indexOf('rad') !== -1) {
+      return (number / (2 * Math.PI)) % 1;
+    }
+    return (number / 360) % 1;
   }
 
   /**
    * @param {string} value
-   * return {number}
+   * @return {number|null}
    */
   static _parseSatLightNumeric(value) {
-    return Math.min(1, parseFloat(value) / 100);
+    // @ts-ignore: isNaN can accept strings
+    if (value.indexOf('%') !== value.length - 1 || isNaN(value.replace('%', ''))) {
+      return null;
+    }
+    const parsed = parseFloat(value);
+    return Math.min(1, parsed / 100);
   }
 
   /**
    * @param {string} value
-   * return {number}
+   * @return {number|null}
    */
   static _parseAlphaNumeric(value) {
-    return isNaN(value) ? 0 : parseFloat(value);
+    return Color._parsePercentOrNumber(value);
   }
 
   /**
@@ -215,15 +272,16 @@ Common.Color = class {
    * @param {!Array.<number>} out_hsla
    */
   static _hsva2hsla(hsva, out_hsla) {
-    var h = hsva[0];
-    var s = hsva[1];
-    var v = hsva[2];
+    const h = hsva[0];
+    let s = hsva[1];
+    const v = hsva[2];
 
-    var t = (2 - s) * v;
-    if (v === 0 || s === 0)
+    const t = (2 - s) * v;
+    if (v === 0 || s === 0) {
       s = 0;
-    else
+    } else {
       s *= v / (t < 1 ? t : 2 - t);
+    }
 
     out_hsla[0] = h;
     out_hsla[1] = s;
@@ -236,39 +294,50 @@ Common.Color = class {
    * @param {!Array.<number>} out_rgb
    */
   static hsl2rgb(hsl, out_rgb) {
-    var h = hsl[0];
-    var s = hsl[1];
-    var l = hsl[2];
+    const h = hsl[0];
+    let s = hsl[1];
+    const l = hsl[2];
 
+    /**
+     * @param {number} p
+     * @param {number} q
+     * @param {number} h
+     */
     function hue2rgb(p, q, h) {
-      if (h < 0)
+      if (h < 0) {
         h += 1;
-      else if (h > 1)
+      } else if (h > 1) {
         h -= 1;
+      }
 
-      if ((h * 6) < 1)
+      if ((h * 6) < 1) {
         return p + (q - p) * h * 6;
-      else if ((h * 2) < 1)
+      }
+      if ((h * 2) < 1) {
         return q;
-      else if ((h * 3) < 2)
+      }
+      if ((h * 3) < 2) {
         return p + (q - p) * ((2 / 3) - h) * 6;
-      else
-        return p;
+      }
+      return p;
     }
 
-    if (s < 0)
+    if (s < 0) {
       s = 0;
+    }
 
-    if (l <= 0.5)
-      var q = l * (1 + s);
-    else
-      var q = l + s - (l * s);
+    let q;
+    if (l <= 0.5) {
+      q = l * (1 + s);
+    } else {
+      q = l + s - (l * s);
+    }
 
-    var p = 2 * l - q;
+    const p = 2 * l - q;
 
-    var tr = h + (1 / 3);
-    var tg = h;
-    var tb = h - (1 / 3);
+    const tr = h + (1 / 3);
+    const tg = h;
+    const tb = h - (1 / 3);
 
     out_rgb[0] = hue2rgb(p, q, tr);
     out_rgb[1] = hue2rgb(p, q, tg);
@@ -281,11 +350,12 @@ Common.Color = class {
    * @param {!Array<number>} out_rgba
    */
   static hsva2rgba(hsva, out_rgba) {
-    Common.Color._hsva2hsla(hsva, Common.Color.hsva2rgba._tmpHSLA);
-    Common.Color.hsl2rgb(Common.Color.hsva2rgba._tmpHSLA, out_rgba);
+    Color._hsva2hsla(hsva, Color.hsva2rgba._tmpHSLA);
+    Color.hsl2rgb(Color.hsva2rgba._tmpHSLA, out_rgba);
 
-    for (var i = 0; i < Common.Color.hsva2rgba._tmpHSLA.length; i++)
-      Common.Color.hsva2rgba._tmpHSLA[i] = 0;
+    for (let i = 0; i < Color.hsva2rgba._tmpHSLA.length; i++) {
+      Color.hsva2rgba._tmpHSLA[i] = 0;
+    }
   }
 
   /**
@@ -295,13 +365,13 @@ Common.Color = class {
    * @return {number}
    */
   static luminance(rgba) {
-    var rSRGB = rgba[0];
-    var gSRGB = rgba[1];
-    var bSRGB = rgba[2];
+    const rSRGB = rgba[0];
+    const gSRGB = rgba[1];
+    const bSRGB = rgba[2];
 
-    var r = rSRGB <= 0.03928 ? rSRGB / 12.92 : Math.pow(((rSRGB + 0.055) / 1.055), 2.4);
-    var g = gSRGB <= 0.03928 ? gSRGB / 12.92 : Math.pow(((gSRGB + 0.055) / 1.055), 2.4);
-    var b = bSRGB <= 0.03928 ? bSRGB / 12.92 : Math.pow(((bSRGB + 0.055) / 1.055), 2.4);
+    const r = rSRGB <= 0.03928 ? rSRGB / 12.92 : Math.pow(((rSRGB + 0.055) / 1.055), 2.4);
+    const g = gSRGB <= 0.03928 ? gSRGB / 12.92 : Math.pow(((gSRGB + 0.055) / 1.055), 2.4);
+    const b = bSRGB <= 0.03928 ? bSRGB / 12.92 : Math.pow(((bSRGB + 0.055) / 1.055), 2.4);
 
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
   }
@@ -313,7 +383,7 @@ Common.Color = class {
    * @param {!Array<number>} out_blended
    */
   static blendColors(fgRGBA, bgRGBA, out_blended) {
-    var alpha = fgRGBA[3];
+    const alpha = fgRGBA[3];
 
     out_blended[0] = ((1 - alpha) * bgRGBA[0]) + (alpha * fgRGBA[0]);
     out_blended[1] = ((1 - alpha) * bgRGBA[1]) + (alpha * fgRGBA[1]);
@@ -330,14 +400,15 @@ Common.Color = class {
    * @return {number}
    */
   static calculateContrastRatio(fgRGBA, bgRGBA) {
-    Common.Color.blendColors(fgRGBA, bgRGBA, Common.Color.calculateContrastRatio._blendedFg);
+    Color.blendColors(fgRGBA, bgRGBA, Color.calculateContrastRatio._blendedFg);
 
-    var fgLuminance = Common.Color.luminance(Common.Color.calculateContrastRatio._blendedFg);
-    var bgLuminance = Common.Color.luminance(bgRGBA);
-    var contrastRatio = (Math.max(fgLuminance, bgLuminance) + 0.05) / (Math.min(fgLuminance, bgLuminance) + 0.05);
+    const fgLuminance = Color.luminance(Color.calculateContrastRatio._blendedFg);
+    const bgLuminance = Color.luminance(bgRGBA);
+    const contrastRatio = (Math.max(fgLuminance, bgLuminance) + 0.05) / (Math.min(fgLuminance, bgLuminance) + 0.05);
 
-    for (var i = 0; i < Common.Color.calculateContrastRatio._blendedFg.length; i++)
-      Common.Color.calculateContrastRatio._blendedFg[i] = 0;
+    for (let i = 0; i < Color.calculateContrastRatio._blendedFg.length; i++) {
+      Color.calculateContrastRatio._blendedFg[i] = 0;
+    }
 
     return contrastRatio;
   }
@@ -355,12 +426,12 @@ Common.Color = class {
    */
   static desiredLuminance(luminance, contrast, lighter) {
     function computeLuminance() {
-      if (lighter)
+      if (lighter) {
         return (luminance + 0.05) * contrast - 0.05;
-      else
-        return (luminance + 0.05) / contrast - 0.05;
+      }
+      return (luminance + 0.05) / contrast - 0.05;
     }
-    var desiredLuminance = computeLuminance();
+    let desiredLuminance = computeLuminance();
     if (desiredLuminance < 0 || desiredLuminance > 1) {
       lighter = !lighter;
       desiredLuminance = computeLuminance();
@@ -369,29 +440,7 @@ Common.Color = class {
   }
 
   /**
-   * @param {!Common.Color} color
-   * @return {!Common.Color.Format}
-   */
-  static detectColorFormat(color) {
-    const cf = Common.Color.Format;
-    var format;
-    var formatSetting = Common.moduleSetting('colorFormat').get();
-    if (formatSetting === cf.Original)
-      format = cf.Original;
-    else if (formatSetting === cf.RGB)
-      format = (color.hasAlpha() ? cf.RGBA : cf.RGB);
-    else if (formatSetting === cf.HSL)
-      format = (color.hasAlpha() ? cf.HSLA : cf.HSL);
-    else if (formatSetting === cf.HEX)
-      format = color.detectHEXFormat();
-    else
-      format = cf.RGBA;
-
-    return format;
-  }
-
-  /**
-   * @return {!Common.Color.Format}
+   * @return {!Format}
    */
   format() {
     return this._format;
@@ -401,37 +450,42 @@ Common.Color = class {
    * @return {!Array.<number>} HSLA with components within [0..1]
    */
   hsla() {
-    if (this._hsla)
+    if (this._hsla) {
       return this._hsla;
-    var r = this._rgba[0];
-    var g = this._rgba[1];
-    var b = this._rgba[2];
-    var max = Math.max(r, g, b);
-    var min = Math.min(r, g, b);
-    var diff = max - min;
-    var add = max + min;
+    }
+    const r = this._rgba[0];
+    const g = this._rgba[1];
+    const b = this._rgba[2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const diff = max - min;
+    const add = max + min;
 
-    if (min === max)
-      var h = 0;
-    else if (r === max)
-      var h = ((1 / 6 * (g - b) / diff) + 1) % 1;
-    else if (g === max)
-      var h = (1 / 6 * (b - r) / diff) + 1 / 3;
-    else
-      var h = (1 / 6 * (r - g) / diff) + 2 / 3;
+    let h;
+    if (min === max) {
+      h = 0;
+    } else if (r === max) {
+      h = ((1 / 6 * (g - b) / diff) + 1) % 1;
+    } else if (g === max) {
+      h = (1 / 6 * (b - r) / diff) + 1 / 3;
+    } else {
+      h = (1 / 6 * (r - g) / diff) + 2 / 3;
+    }
 
-    var l = 0.5 * add;
+    const l = 0.5 * add;
 
-    if (l === 0)
-      var s = 0;
-    else if (l === 1)
-      var s = 0;
-    else if (l <= 0.5)
-      var s = diff / add;
-    else
-      var s = diff / (2 - add);
+    let s;
+    if (l === 0) {
+      s = 0;
+    } else if (l === 1) {
+      s = 0;
+    } else if (l <= 0.5) {
+      s = diff / add;
+    } else {
+      s = diff / (2 - add);
+    }
 
-    this._hsla = [h, s, l, this._rgba[3]];
+    this._hsla = /** @type {!Array.<number>} */ ([h, s, l, this._rgba[3]]);
     return this._hsla;
   }
 
@@ -439,7 +493,7 @@ Common.Color = class {
    * @return {!Array.<number>}
    */
   canonicalHSLA() {
-    var hsla = this.hsla();
+    const hsla = this.hsla();
     return [Math.round(hsla[0] * 360), Math.round(hsla[1] * 100), Math.round(hsla[2] * 100), hsla[3]];
   }
 
@@ -447,10 +501,10 @@ Common.Color = class {
    * @return {!Array.<number>} HSVA with components within [0..1]
    */
   hsva() {
-    var hsla = this.hsla();
-    var h = hsla[0];
-    var s = hsla[1];
-    var l = hsla[2];
+    const hsla = this.hsla();
+    const h = hsla[0];
+    let s = hsla[1];
+    const l = hsla[2];
 
     s *= l < 0.5 ? l : 1 - l;
     return [h, s !== 0 ? 2 * s / (l + s) : 0, (l + s), hsla[3]];
@@ -464,34 +518,38 @@ Common.Color = class {
   }
 
   /**
-   * @return {!Common.Color.Format}
+   * @return {!Format}
    */
   detectHEXFormat() {
-    var canBeShort = true;
-    for (var i = 0; i < 4; ++i) {
-      var c = Math.round(this._rgba[i] * 255);
+    let canBeShort = true;
+    for (let i = 0; i < 4; ++i) {
+      const c = Math.round(this._rgba[i] * 255);
       if (c % 17) {
         canBeShort = false;
         break;
       }
     }
 
-    var hasAlpha = this.hasAlpha();
-    var cf = Common.Color.Format;
-    if (canBeShort)
+    const hasAlpha = this.hasAlpha();
+    const cf = Format;
+    if (canBeShort) {
       return hasAlpha ? cf.ShortHEXA : cf.ShortHEX;
+    }
     return hasAlpha ? cf.HEXA : cf.HEX;
   }
 
   /**
+   * @param {?string=} format
    * @return {?string}
    */
   asString(format) {
-    if (format === this._format && this._originalTextIsValid)
+    if (format === this._format && this._originalTextIsValid) {
       return this._originalText;
+    }
 
-    if (!format)
+    if (!format) {
       format = this._format;
+    }
 
     /**
      * @param {number} value
@@ -506,7 +564,7 @@ Common.Color = class {
      * @return {string}
      */
     function toHexValue(value) {
-      var hex = Math.round(value * 255).toString(16);
+      const hex = Math.round(value * 255).toString(16);
       return hex.length === 1 ? '0' + hex : hex;
     }
 
@@ -519,60 +577,66 @@ Common.Color = class {
     }
 
     switch (format) {
-      case Common.Color.Format.Original:
+      case Format.Original:
         return this._originalText;
-      case Common.Color.Format.RGB:
-        if (this.hasAlpha())
+      case Format.RGB:
+        if (this.hasAlpha()) {
           return null;
-        return String.sprintf(
+        }
+        return Platform.StringUtilities.sprintf(
             'rgb(%d, %d, %d)', toRgbValue(this._rgba[0]), toRgbValue(this._rgba[1]), toRgbValue(this._rgba[2]));
-      case Common.Color.Format.RGBA:
-        return String.sprintf(
+      case Format.RGBA:
+        return Platform.StringUtilities.sprintf(
             'rgba(%d, %d, %d, %f)', toRgbValue(this._rgba[0]), toRgbValue(this._rgba[1]), toRgbValue(this._rgba[2]),
             this._rgba[3]);
-      case Common.Color.Format.HSL:
-        if (this.hasAlpha())
+      case Format.HSL:
+        if (this.hasAlpha()) {
           return null;
-        var hsl = this.hsla();
-        return String.sprintf(
+        }
+        const hsl = this.hsla();
+        return Platform.StringUtilities.sprintf(
             'hsl(%d, %d%, %d%)', Math.round(hsl[0] * 360), Math.round(hsl[1] * 100), Math.round(hsl[2] * 100));
-      case Common.Color.Format.HSLA:
-        var hsla = this.hsla();
-        return String.sprintf(
+      case Format.HSLA:
+        const hsla = this.hsla();
+        return Platform.StringUtilities.sprintf(
             'hsla(%d, %d%, %d%, %f)', Math.round(hsla[0] * 360), Math.round(hsla[1] * 100), Math.round(hsla[2] * 100),
             hsla[3]);
-      case Common.Color.Format.HEXA:
-        return String
+      case Format.HEXA:
+        return Platform.StringUtilities
             .sprintf(
                 '#%s%s%s%s', toHexValue(this._rgba[0]), toHexValue(this._rgba[1]), toHexValue(this._rgba[2]),
                 toHexValue(this._rgba[3]))
             .toLowerCase();
-      case Common.Color.Format.HEX:
-        if (this.hasAlpha())
+      case Format.HEX:
+        if (this.hasAlpha()) {
           return null;
-        return String
+        }
+        return Platform.StringUtilities
             .sprintf('#%s%s%s', toHexValue(this._rgba[0]), toHexValue(this._rgba[1]), toHexValue(this._rgba[2]))
             .toLowerCase();
-      case Common.Color.Format.ShortHEXA:
-        var hexFormat = this.detectHEXFormat();
-        if (hexFormat !== Common.Color.Format.ShortHEXA && hexFormat !== Common.Color.Format.ShortHEX)
+      case Format.ShortHEXA:
+        const hexFormat = this.detectHEXFormat();
+        if (hexFormat !== Format.ShortHEXA && hexFormat !== Format.ShortHEX) {
           return null;
-        return String
+        }
+        return Platform.StringUtilities
             .sprintf(
                 '#%s%s%s%s', toShortHexValue(this._rgba[0]), toShortHexValue(this._rgba[1]),
                 toShortHexValue(this._rgba[2]), toShortHexValue(this._rgba[3]))
             .toLowerCase();
-      case Common.Color.Format.ShortHEX:
-        if (this.hasAlpha())
+      case Format.ShortHEX:
+        if (this.hasAlpha()) {
           return null;
-        if (this.detectHEXFormat() !== Common.Color.Format.ShortHEX)
+        }
+        if (this.detectHEXFormat() !== Format.ShortHEX) {
           return null;
-        return String
+        }
+        return Platform.StringUtilities
             .sprintf(
                 '#%s%s%s', toShortHexValue(this._rgba[0]), toShortHexValue(this._rgba[1]),
                 toShortHexValue(this._rgba[2]))
             .toLowerCase();
-      case Common.Color.Format.Nickname:
+      case Format.Nickname:
         return this.nickname();
     }
 
@@ -590,9 +654,10 @@ Common.Color = class {
    * @return {!Array.<number>}
    */
   canonicalRGBA() {
-    var rgba = new Array(4);
-    for (var i = 0; i < 3; ++i)
+    const rgba = new Array(4);
+    for (let i = 0; i < 3; ++i) {
       rgba[i] = Math.round(this._rgba[i] * 255);
+    }
     rgba[3] = this._rgba[3];
     return rgba;
   }
@@ -601,70 +666,74 @@ Common.Color = class {
    * @return {?string} nickname
    */
   nickname() {
-    if (!Common.Color._rgbaToNickname) {
-      Common.Color._rgbaToNickname = {};
-      for (var nickname in Common.Color.Nicknames) {
-        var rgba = Common.Color.Nicknames[nickname];
-        if (rgba.length !== 4)
+    if (!_rgbaToNickname) {
+      _rgbaToNickname = new Map();
+      for (const nickname in Nicknames) {
+        let rgba = Nicknames[nickname];
+        if (rgba.length !== 4) {
           rgba = rgba.concat(1);
-        Common.Color._rgbaToNickname[rgba] = nickname;
+        }
+        _rgbaToNickname.set(String(rgba), nickname);
       }
     }
 
-    return Common.Color._rgbaToNickname[this.canonicalRGBA()] || null;
+    return _rgbaToNickname.get(String(this.canonicalRGBA())) || null;
   }
 
   /**
    * @return {!{r: number, g: number, b: number, a: (number|undefined)}}
    */
   toProtocolRGBA() {
-    var rgba = this.canonicalRGBA();
-    var result = {r: rgba[0], g: rgba[1], b: rgba[2]};
-    if (rgba[3] !== 1)
+    const rgba = this.canonicalRGBA();
+    /** @type {!{r: number, g: number, b: number, a: (number|undefined)}} */
+    const result = {r: rgba[0], g: rgba[1], b: rgba[2], a: undefined};
+    if (rgba[3] !== 1) {
       result.a = rgba[3];
+    }
     return result;
   }
 
   /**
-   * @return {!Common.Color}
+   * @return {!Color}
    */
   invert() {
-    var rgba = [];
+    const rgba = [];
     rgba[0] = 1 - this._rgba[0];
     rgba[1] = 1 - this._rgba[1];
     rgba[2] = 1 - this._rgba[2];
     rgba[3] = this._rgba[3];
-    return new Common.Color(rgba, Common.Color.Format.RGBA);
+    return new Color(rgba, Format.RGBA);
   }
 
   /**
    * @param {number} alpha
-   * @return {!Common.Color}
+   * @return {!Color}
    */
   setAlpha(alpha) {
-    var rgba = this._rgba.slice();
+    const rgba = this._rgba.slice();
     rgba[3] = alpha;
-    return new Common.Color(rgba, Common.Color.Format.RGBA);
+    return new Color(rgba, Format.RGBA);
   }
 
   /**
-   * @param {!Common.Color} fgColor
-   * @return {!Common.Color}
+   * @param {!Color} fgColor
+   * @return {!Color}
    */
   blendWith(fgColor) {
-    var rgba = [];
-    Common.Color.blendColors(fgColor._rgba, this._rgba, rgba);
-    return new Common.Color(rgba, Common.Color.Format.RGBA);
+    /** @type {!Array.<number>} */
+    const rgba = [];
+    Color.blendColors(fgColor._rgba, this._rgba, rgba);
+    return new Color(rgba, Format.RGBA);
   }
-};
+}
 
 /** @type {!RegExp} */
-Common.Color.Regex = /((?:rgb|hsl)a?\([^)]+\)|#[0-9a-fA-F]{8}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3,4}|\b[a-zA-Z]+\b(?!-))/g;
+export const Regex = /((?:rgb|hsl)a?\([^)]+\)|#[0-9a-fA-F]{8}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3,4}|\b[a-zA-Z]+\b(?!-))/g;
 
 /**
  * @enum {string}
  */
-Common.Color.Format = {
+export const Format = {
   Original: 'original',
   Nickname: 'nickname',
   HEX: 'hex',
@@ -677,15 +746,8 @@ Common.Color.Format = {
   HSLA: 'hsla'
 };
 
-
-/** @type {!Array<number>} */
-Common.Color.hsva2rgba._tmpHSLA = [0, 0, 0, 0];
-
-
-Common.Color.calculateContrastRatio._blendedFg = [0, 0, 0, 0];
-
-
-Common.Color.Nicknames = {
+/** @type {!Object<string, !Array.<number>>} */
+export const Nicknames = {
   'aliceblue': [240, 248, 255],
   'antiquewhite': [250, 235, 215],
   'aqua': [0, 255, 255],
@@ -837,30 +899,31 @@ Common.Color.Nicknames = {
   'transparent': [0, 0, 0, 0],
 };
 
-Common.Color.PageHighlight = {
-  Content: Common.Color.fromRGBA([111, 168, 220, .66]),
-  ContentLight: Common.Color.fromRGBA([111, 168, 220, .5]),
-  ContentOutline: Common.Color.fromRGBA([9, 83, 148]),
-  Padding: Common.Color.fromRGBA([147, 196, 125, .55]),
-  PaddingLight: Common.Color.fromRGBA([147, 196, 125, .4]),
-  Border: Common.Color.fromRGBA([255, 229, 153, .66]),
-  BorderLight: Common.Color.fromRGBA([255, 229, 153, .5]),
-  Margin: Common.Color.fromRGBA([246, 178, 107, .66]),
-  MarginLight: Common.Color.fromRGBA([246, 178, 107, .5]),
-  EventTarget: Common.Color.fromRGBA([255, 196, 196, .66]),
-  Shape: Common.Color.fromRGBA([96, 82, 177, 0.8]),
-  ShapeMargin: Common.Color.fromRGBA([96, 82, 127, .6])
+export const PageHighlight = {
+  Content: Color.fromRGBA([111, 168, 220, .66]),
+  ContentLight: Color.fromRGBA([111, 168, 220, .5]),
+  ContentOutline: Color.fromRGBA([9, 83, 148]),
+  Padding: Color.fromRGBA([147, 196, 125, .55]),
+  PaddingLight: Color.fromRGBA([147, 196, 125, .4]),
+  Border: Color.fromRGBA([255, 229, 153, .66]),
+  BorderLight: Color.fromRGBA([255, 229, 153, .5]),
+  Margin: Color.fromRGBA([246, 178, 107, .66]),
+  MarginLight: Color.fromRGBA([246, 178, 107, .5]),
+  EventTarget: Color.fromRGBA([255, 196, 196, .66]),
+  Shape: Color.fromRGBA([96, 82, 177, 0.8]),
+  ShapeMargin: Color.fromRGBA([96, 82, 127, .6]),
+  CssGrid: Color.fromRGBA([0x4b, 0, 0x82, 1])
 };
 
-Common.Color.Generator = class {
+export class Generator {
   /**
-   * @param {!{min: number, max: number}|number=} hueSpace
+   * @param {!{min: number, max: number, count: (number|undefined)}|number=} hueSpace
    * @param {!{min: number, max: number, count: (number|undefined)}|number=} satSpace
    * @param {!{min: number, max: number, count: (number|undefined)}|number=} lightnessSpace
    * @param {!{min: number, max: number, count: (number|undefined)}|number=} alphaSpace
    */
   constructor(hueSpace, satSpace, lightnessSpace, alphaSpace) {
-    this._hueSpace = hueSpace || {min: 0, max: 360};
+    this._hueSpace = hueSpace || {min: 0, max: 360, count: undefined};
     this._satSpace = satSpace || 67;
     this._lightnessSpace = lightnessSpace || 80;
     this._alphaSpace = alphaSpace || 1;
@@ -881,7 +944,7 @@ Common.Color.Generator = class {
    * @return {string}
    */
   colorForID(id) {
-    var color = this._colors.get(id);
+    let color = this._colors.get(id);
     if (!color) {
       color = this._generateColorForID(id);
       this._colors.set(id, color);
@@ -894,11 +957,11 @@ Common.Color.Generator = class {
    * @return {string}
    */
   _generateColorForID(id) {
-    var hash = String.hashCode(id);
-    var h = this._indexToValueInSpace(hash, this._hueSpace);
-    var s = this._indexToValueInSpace(hash >> 8, this._satSpace);
-    var l = this._indexToValueInSpace(hash >> 16, this._lightnessSpace);
-    var a = this._indexToValueInSpace(hash >> 24, this._alphaSpace);
+    const hash = String.hashCode(id);
+    const h = this._indexToValueInSpace(hash, this._hueSpace);
+    const s = this._indexToValueInSpace(hash >> 8, this._satSpace);
+    const l = this._indexToValueInSpace(hash >> 16, this._lightnessSpace);
+    const a = this._indexToValueInSpace(hash >> 24, this._alphaSpace);
     return `hsla(${h}, ${s}%, ${l}%, ${a})`;
   }
 
@@ -908,10 +971,16 @@ Common.Color.Generator = class {
    * @return {number}
    */
   _indexToValueInSpace(index, space) {
-    if (typeof space === 'number')
+    if (typeof space === 'number') {
       return space;
-    var count = space.count || space.max - space.min;
+    }
+    const count = space.count || space.max - space.min;
     index %= count;
     return space.min + Math.floor(index / (count - 1) * (space.max - space.min));
   }
-};
+}
+
+/** @type {!Array<number>} */
+Color.hsva2rgba._tmpHSLA = [0, 0, 0, 0];
+
+Color.calculateContrastRatio._blendedFg = [0, 0, 0, 0];

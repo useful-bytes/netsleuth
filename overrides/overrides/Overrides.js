@@ -1,9 +1,9 @@
 
-Runtime._queryParamsObject.ws = location.host + location.pathname;
+Root.Runtime._queryParamsObject.set('ws',location.host + location.pathname);
 document.title = location.pathname.split('/')[2] + ' - netsleuth';
 
 InspectorFrontendHost.copyText = function(text) {
-	SDK.targetManager._mainConnection.sendMessage(JSON.stringify({
+	SDK.targetManager.mainTarget()._router._connection._socket.send(JSON.stringify({
 		method: 'Clipboard.write',
 		params: {
 			text: text
@@ -21,37 +21,74 @@ Help = {
 };
 
 
+var gwModel;
 SDK.GatewayModel = class extends SDK.SDKModel {
 	constructor(target) {
 		super(target);
 		target.registerGatewayDispatcher(this);
 		this.state = 0;
+		gwModel = this;
+
+		SDK.multitargetNetworkManager.addEventListener(SDK.MultitargetNetworkManager.Events.ConditionsChanged, ()=>this.updateIcon());
+		SDK.multitargetNetworkManager.addEventListener(SDK.MultitargetNetworkManager.Events.BlockedPatternsChanged, ()=>this.updateIcon());
 	}
 
 	connectionState(state, message) {
 		this.state = state;
 		this.message = message;
+		this.updateIcon();
 		this.dispatchEventToListeners(SDK.GatewayModel.Events.ConnectionState);
 	}
 
 	securityState(insecure, message) {
 		this.insecure = insecure;
 		this.insecureMessage = message;
+		this.updateIcon();
 		this.dispatchEventToListeners(SDK.GatewayModel.Events.ConnectionState);
 	}
 
+	updateIcon() {
+		var throttling = SDK.multitargetNetworkManager.isThrottling(),
+			blocking = SDK.multitargetNetworkManager.isBlocking(),
+			offline = SDK.multitargetNetworkManager.isOffline();
+
+
+		var icon = null;
+		if (this.state != 2) {
+			icon = UI.Icon.create('smallicon-error');
+			icon.title = this.message || 'Disconnected';
+		} else if (throttling || blocking) {
+			icon = UI.Icon.create('smallicon-warning');
+			var msgs = [];
+			if (offline) msgs.push('Offline mode -- all requests will be blocked');
+			else if (throttling) msgs.push('Network throttling enabled');
+			if (blocking) msgs.push('Request blocking enabled -- matching requests will be blocked');
+			icon.title = msgs.join(', and ');
+
+		} else if (this.insecure) {
+			icon = UI.Icon.create('smallicon-orange-ball');
+			icon.title = this.insecureMessage || 'Insecure';
+		}
+		if (UI.inspectorView) UI.inspectorView.setPanelIcon('network', icon);
+
+	}
+
+	// REQUEST body data received
 	updateRequestBody(id, body, sentToDisk) {
 		var req = getReq(id);
 		if (req) {
+			if (!req._requestFormData) req._requestFormData = '';
 			if (sentToDisk) {
-				req.requestFormData += '\n\n…';
+				req._requestFormData += '\n\n…';
 			} else {
-				req.requestFormData += body;
+				req._requestFormData += body;
 			}
+			req.setRequestFormData(true, req._requestFormData);
 			req.dispatchEventToListeners(SDK.NetworkRequest.Events.RequestHeadersChanged);
 		}
 	}
 
+	// RESPONSE body data received
 	dataReceived(requestId, chunk) {
 		var req = getReq(requestId);
 		if (req) {
@@ -181,6 +218,10 @@ favicon.src = location.href + '/favicon.ico';
 
 NS = {
 	reconnect: function() {
+		if (gwModel) {
+			gwModel.state = 3;
+			gwModel.updateIcon();
+		}
 		fetch(location.href + '/health').then(function(res) {
 			if (res.ok) window.location.reload();
 			else setTimeout(NS.reconnect, 5000);

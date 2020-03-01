@@ -23,16 +23,33 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import * as Common from '../common/common.js';
+import * as Components from '../components/components.js';
+import * as ObjectUI from '../object_ui/object_ui.js';
+import * as SDK from '../sdk/sdk.js';
+import * as UI from '../ui/ui.js';
+
+import {resolveScopeInObject, resolveThisObject} from './SourceMapNamesResolver.js';
+
 /**
- * @implements {UI.ContextFlavorListener}
+ * @implements {UI.ContextFlavorListener.ContextFlavorListener}
  * @unrestricted
  */
-Sources.ScopeChainSidebarPane = class extends UI.VBox {
+export class ScopeChainSidebarPaneBase extends UI.Widget.VBox {
   constructor() {
     super(true);
     this.registerRequiredCSS('sources/scopeChainSidebarPane.css');
-    this._expandController = new ObjectUI.ObjectPropertiesSectionExpandController();
-    this._linkifier = new Components.Linkifier();
+    this._treeOutline = new ObjectUI.ObjectPropertiesSection.ObjectPropertiesSectionsTreeOutline();
+    this._treeOutline.registerRequiredCSS('sources/scopeChainSidebarPane.css');
+    this._treeOutline.setShowSelectionOnKeyboardFocus(/* show */ true);
+    this._expandController =
+        new ObjectUI.ObjectPropertiesSection.ObjectPropertiesSectionsTreeExpandController(this._treeOutline);
+    this._linkifier = new Components.Linkifier.Linkifier();
+    this._infoElement = createElement('div');
+    this._infoElement.className = 'gray-info-message';
+    this._infoElement.textContent = ls`Not paused`;
+    this._infoElement.tabIndex = -1;
     this._update();
   }
 
@@ -44,94 +61,177 @@ Sources.ScopeChainSidebarPane = class extends UI.VBox {
     this._update();
   }
 
-  _update() {
-    var callFrame = UI.context.flavor(SDK.DebuggerModel.CallFrame);
-    var details = UI.context.flavor(SDK.DebuggerPausedDetails);
-    this._linkifier.reset();
-    Sources.SourceMapNamesResolver.resolveThisObject(callFrame).then(this._innerUpdate.bind(this, details, callFrame));
-  }
-
   /**
-   * @param {?SDK.DebuggerPausedDetails} details
-   * @param {?SDK.DebuggerModel.CallFrame} callFrame
-   * @param {?SDK.RemoteObject} thisObject
+   * @override
    */
-  _innerUpdate(details, callFrame, thisObject) {
-    this.contentElement.removeChildren();
-
-    if (!details || !callFrame) {
-      var infoElement = createElement('div');
-      infoElement.className = 'gray-info-message';
-      infoElement.textContent = Common.UIString('Not paused');
-      this.contentElement.appendChild(infoElement);
+  focus() {
+    if (this.hasFocus()) {
       return;
     }
 
-    var foundLocalScope = false;
-    var scopeChain = callFrame.scopeChain();
-    for (var i = 0; i < scopeChain.length; ++i) {
-      var scope = scopeChain[i];
-      var title = scope.typeName();
-      var emptyPlaceholder = null;
-      var extraProperties = [];
+    if (self.UI.context.flavor(SDK.DebuggerModel.DebuggerPausedDetails)) {
+      this._treeOutline.forceSelect();
+    }
+  }
 
-      switch (scope.type()) {
-        case Protocol.Debugger.ScopeType.Local:
+  _getScopeChain(callFrame) {
+    return [];
+  }
+
+  _update() {
+    const callFrame = self.UI.context.flavor(SDK.DebuggerModel.CallFrame);
+    const details = self.UI.context.flavor(SDK.DebuggerModel.DebuggerPausedDetails);
+    this._linkifier.reset();
+    resolveThisObject(callFrame).then(this._innerUpdate.bind(this, details, callFrame));
+  }
+
+  /**
+   * @param {?SDK.DebuggerModel.DebuggerPausedDetails} details
+   * @param {?SDK.DebuggerModel.CallFrame} callFrame
+   * @param {?SDK.RemoteObject.RemoteObject} thisObject
+   */
+  _innerUpdate(details, callFrame, thisObject) {
+    this._treeOutline.removeChildren();
+    this.contentElement.removeChildren();
+
+    if (!details || !callFrame) {
+      this.contentElement.appendChild(this._infoElement);
+      return;
+    }
+
+    this.contentElement.appendChild(this._treeOutline.element);
+    let foundLocalScope = false;
+    const scopeChain = this._getScopeChain(callFrame);
+    if (scopeChain) {
+      for (let i = 0; i < scopeChain.length; ++i) {
+        const scope = scopeChain[i];
+        const extraProperties = this._extraPropertiesForScope(scope, details, callFrame, thisObject, i === 0);
+
+        if (scope.type() === Protocol.Debugger.ScopeType.Local) {
           foundLocalScope = true;
-          emptyPlaceholder = Common.UIString('No variables');
-          if (thisObject)
-            extraProperties.push(new SDK.RemoteObjectProperty('this', thisObject));
-          if (i === 0) {
-            var exception = details.exception();
-            if (exception) {
-              extraProperties.push(new SDK.RemoteObjectProperty(
-                  Common.UIString('Exception'), exception, undefined, undefined, undefined, undefined, undefined,
-                  true));
-            }
-            var returnValue = callFrame.returnValue();
-            if (returnValue) {
-              extraProperties.push(new SDK.RemoteObjectProperty(
-                  Common.UIString('Return value'), returnValue, undefined, undefined, undefined, undefined, undefined,
-                  true));
-            }
-          }
-          break;
-        case Protocol.Debugger.ScopeType.Closure:
-          var scopeName = scope.name();
-          if (scopeName)
-            title = Common.UIString('Closure (%s)', UI.beautifyFunctionName(scopeName));
-          else
-            title = Common.UIString('Closure');
-          emptyPlaceholder = Common.UIString('No variables');
-          break;
+        }
+
+        const section = this._createScopeSectionTreeElement(scope, extraProperties);
+        if (scope.type() === Protocol.Debugger.ScopeType.Global) {
+          section.collapse();
+        } else if (!foundLocalScope || scope.type() === Protocol.Debugger.ScopeType.Local) {
+          section.expand();
+        }
+
+        this._treeOutline.appendChild(section);
+        if (i === 0) {
+          section.select(/* omitFocus */ true);
+        }
       }
-
-      var subtitle = scope.description();
-      if (!title || title === subtitle)
-        subtitle = undefined;
-
-      var titleElement = createElementWithClass('div', 'scope-chain-sidebar-pane-section-header');
-      titleElement.createChild('div', 'scope-chain-sidebar-pane-section-subtitle').textContent = subtitle;
-      titleElement.createChild('div', 'scope-chain-sidebar-pane-section-title').textContent = title;
-
-      var section = new ObjectUI.ObjectPropertiesSection(
-          Sources.SourceMapNamesResolver.resolveScopeInObject(scope), titleElement, this._linkifier, emptyPlaceholder,
-          true, extraProperties);
-      this._expandController.watchSection(title + (subtitle ? ':' + subtitle : ''), section);
-
-      if (scope.type() === Protocol.Debugger.ScopeType.Global)
-        section.objectTreeElement().collapse();
-      else if (!foundLocalScope || scope.type() === Protocol.Debugger.ScopeType.Local)
-        section.objectTreeElement().expand();
-
-      section.element.classList.add('scope-chain-sidebar-pane-section');
-      this.contentElement.appendChild(section.element);
     }
     this._sidebarPaneUpdatedForTest();
   }
 
+  /**
+   * @param {!SDK.DebuggerModel.Scope} scope
+   * @param {!Array.<!SDK.RemoteObject.RemoteObjectProperty>} extraProperties
+   * @return {!ObjectUI.ObjectPropertiesSection.RootElement}
+   */
+  _createScopeSectionTreeElement(scope, extraProperties) {
+    let emptyPlaceholder = null;
+    if (scope.type() === Protocol.Debugger.ScopeType.Local || Protocol.Debugger.ScopeType.Closure) {
+      emptyPlaceholder = ls`No variables`;
+    }
+
+    let title = scope.typeName();
+    if (scope.type() === Protocol.Debugger.ScopeType.Closure) {
+      const scopeName = scope.name();
+      if (scopeName) {
+        title = ls`Closure (${UI.UIUtils.beautifyFunctionName(scopeName)})`;
+      } else {
+        title = ls`Closure`;
+      }
+    }
+    let subtitle = scope.description();
+    if (!title || title === subtitle) {
+      subtitle = undefined;
+    }
+
+    const titleElement = createElementWithClass('div', 'scope-chain-sidebar-pane-section-header tree-element-title');
+    titleElement.createChild('div', 'scope-chain-sidebar-pane-section-subtitle').textContent = subtitle;
+    titleElement.createChild('div', 'scope-chain-sidebar-pane-section-title').textContent = title;
+
+    const section = new ObjectUI.ObjectPropertiesSection.RootElement(
+        resolveScopeInObject(scope), this._linkifier, emptyPlaceholder,
+        /* ignoreHasOwnProperty */ true, extraProperties);
+    section.title = titleElement;
+    section.listItemElement.classList.add('scope-chain-sidebar-pane-section');
+    this._expandController.watchSection(title + (subtitle ? ':' + subtitle : ''), section);
+
+    return section;
+  }
+
+  /**
+   * @param {!SDK.DebuggerModel.Scope} scope
+   * @param {?SDK.DebuggerModel.DebuggerPausedDetails} details
+   * @param {?SDK.DebuggerModel.CallFrame} callFrame
+   * @param {?SDK.RemoteObject.RemoteObject} thisObject
+   * @param {boolean} isFirstScope
+   * @return {!Array.<!SDK.RemoteObject.RemoteObjectProperty>}
+   */
+  _extraPropertiesForScope(scope, details, callFrame, thisObject, isFirstScope) {
+    if (scope.type() !== Protocol.Debugger.ScopeType.Local) {
+      return [];
+    }
+
+    const extraProperties = [];
+    if (thisObject) {
+      extraProperties.push(new SDK.RemoteObject.RemoteObjectProperty('this', thisObject));
+    }
+    if (isFirstScope) {
+      const exception = details.exception();
+      if (exception) {
+        extraProperties.push(new SDK.RemoteObject.RemoteObjectProperty(
+            Common.UIString.UIString('Exception'), exception, undefined, undefined, undefined, undefined, undefined,
+            /* synthetic */ true));
+      }
+      const returnValue = callFrame.returnValue();
+      if (returnValue) {
+        extraProperties.push(new SDK.RemoteObject.RemoteObjectProperty(
+            Common.UIString.UIString('Return value'), returnValue, undefined, undefined, undefined, undefined,
+            undefined,
+            /* synthetic */ true, callFrame.setReturnValue.bind(callFrame)));
+      }
+    }
+
+    return extraProperties;
+  }
+
   _sidebarPaneUpdatedForTest() {
   }
-};
+}
 
-Sources.ScopeChainSidebarPane._pathSymbol = Symbol('path');
+/**
+ * @unrestricted
+ */
+export class SourceScopeChainSidebarPane extends ScopeChainSidebarPaneBase {
+  constructor() {
+    super();
+  }
+  /**
+   * @override
+   */
+  _getScopeChain(callFrame) {
+    return callFrame.sourceScopeChain;
+  }
+}
+
+/**
+ * @unrestricted
+ */
+export class ScopeChainSidebarPane extends ScopeChainSidebarPaneBase {
+  /**
+   * @override
+   */
+  _getScopeChain(callFrame) {
+    return callFrame.scopeChain();
+  }
+}
+
+
+export const pathSymbol = Symbol('path');

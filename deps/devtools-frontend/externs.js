@@ -28,7 +28,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// WebKit Web Facing API
+/* eslint-disable no-unused-vars */
+
+// Blink Web Facing API
 
 /**
  * @param {!Object} object
@@ -66,28 +68,11 @@ KeyboardEvent.DOM_KEY_LOCATION_NUMPAD;
  */
 Array.prototype.remove = function(value, onlyFirst) {};
 /**
- * @param {!Array.<!T>} array
- * @this {Array.<!T>}
- * @template T
- */
-Array.prototype.pushAll = function(array) {};
-/**
  * @return {!Object.<string, boolean>}
  * @this {Array.<T>}
  * @template T
  */
 Array.prototype.keySet = function() {};
-/**
- * @param {number} index
- * @return {!Array.<!T>}
- * @this {Array.<T>}
- * @template T
- */
-Array.prototype.rotate = function(index) {};
-/**
- * @this {Array.<number>}
- */
-Array.prototype.sortNumbers = function() {};
 /**
  * @param {!S} object
  * @param {function(!S,!T):number=} comparator
@@ -128,14 +113,6 @@ Array.prototype.binaryIndexOf = function(value, comparator) {};
 Array.prototype.sortRange = function(comparator, leftBound, rightBound, sortWindowLeft, sortWindowRight) {};
 
 /**
- * @param {function(!T,!T): number=} comparator
- * @return {!Array.<T>}
- * @this {Array.<T>}
- * @template T
- */
-Array.prototype.stableSort = function(comparator) {};
-
-/**
  * @this {Array.<number>}
  * @param {function(number,number):boolean} comparator
  * @param {number} left
@@ -144,14 +121,6 @@ Array.prototype.stableSort = function(comparator) {};
  * @return {number}
  */
 Array.prototype.partition = function(comparator, left, right, pivotIndex) {};
-
-/**
- * @this {Array.<number>}
- * @param {number} k
- * @param {function(number,number):boolean=} comparator
- * @return {number}
- */
-Array.prototype.qselect = function(k, comparator) {};
 
 /**
  * @param {string} field
@@ -195,6 +164,18 @@ Array.prototype.mergeOrdered = function(array, comparator) {};
  */
 Int32Array.prototype.lowerBound = function(object, comparator, left, right) {};
 
+// TODO(luoe): remove these BigInt and ArrayLike types once closure supports them.
+/**
+ * @param {number|string} value
+ */
+const BigInt = function(value) {};
+
+/** @typedef {*} */
+const bigint = null;
+
+/** @typedef {Array|NodeList|Arguments|{length: number}} */
+let ArrayLike;
+
 // File System API
 /**
  * @constructor
@@ -212,7 +193,7 @@ DOMFileSystem.prototype.root = null;
  */
 window.domAutomationController;
 
-var DevToolsHost = function() {};
+const DevToolsHost = function() {};
 
 /** @typedef {{type:string, id:(number|undefined),
               label:(string|undefined), enabled:(boolean|undefined), checked:(boolean|undefined),
@@ -258,9 +239,14 @@ DevToolsHost.getSelectionBackgroundColor = function() {};
 DevToolsHost.getSelectionForegroundColor = function() {};
 
 /**
- * @return {boolean}
+ * @return {string}
  */
-DevToolsHost.isUnderTest = function() {};
+DevToolsHost.getInactiveSelectionBackgroundColor = function() {};
+
+/**
+ * @return {string}
+ */
+DevToolsHost.getInactiveSelectionForegroundColor = function() {};
 
 /**
  * @return {boolean}
@@ -282,12 +268,6 @@ DevToolsHost.upgradeDraggedFileSystemPermissions = function(fileSystem) {};
 /** Extensions API */
 
 /** @constructor */
-function AuditCategory() {
-}
-/** @constructor */
-function AuditResult() {
-}
-/** @constructor */
 function EventSink() {
 }
 /** @constructor */
@@ -303,7 +283,7 @@ function PanelWithSidebar() {
 function Resource() {
 }
 
-var extensionServer;
+let extensionServer;
 
 /**
  * @constructor
@@ -323,7 +303,7 @@ function ExtensionReloadOptions() {
   this.userAgent = '';
 }
 
-var Adb = {};
+const Adb = {};
 /** @typedef {{id: string, name: string, url: string, attached: boolean}} */
 Adb.Page;
 /** @typedef {{id: string, adbBrowserChromeVersion: string, compatibleVersion: boolean, adbBrowserName: string, source: string, adbBrowserVersion: string, pages: !Array<!Adb.Page>}} */
@@ -352,7 +332,7 @@ Adb.NetworkDiscoveryConfig;
 Adb.Config;
 
 /** @const */
-var module = {};
+const module = {};
 
 /**
  * @constructor
@@ -375,7 +355,7 @@ diff_match_patch.prototype = {
 };
 
 /** @constructor */
-var Doc = function() {};
+const Doc = function() {};
 Doc.prototype = {
   /** @type {number} */
   scrollLeft: 0,
@@ -384,7 +364,7 @@ Doc.prototype = {
 };
 
 /** @constructor */
-var CodeMirror = function(element, config) {};
+const CodeMirror = function(element, config) {};
 CodeMirror.on = function(obj, type, handler) {};
 CodeMirror.prototype = {
   /** @type {!Doc} */
@@ -402,6 +382,8 @@ CodeMirror.prototype = {
    */
   addOverlay: function(spec, options) {},
   addWidget: function(pos, node, scroll, vert, horiz) {},
+  /** @param {boolean=} isClosed bv */
+  changeGeneration: function(isClosed) {},
   charCoords: function(pos, mode) {},
   clearGutter: function(gutterID) {},
   clearHistory: function() {},
@@ -470,7 +452,8 @@ CodeMirror.prototype = {
   indentLine: function(n, dir, aggressive) {},
   indentSelection: function(how) {},
   indexFromPos: function(coords) {},
-  isClean: function() {},
+  /** @param {number=} generation */
+  isClean: function(generation) {},
   iterLinkedDocs: function(f) {},
   lastLine: function() {},
   lineCount: function() {},
@@ -518,7 +501,7 @@ CodeMirror.prototype = {
   setHistory: function(histData) {},
   setLine: function(line, text) {},
   setOption: function(option, value) {},
-  setSelection: function(anchor, head) {},
+  setSelection: function(anchor, head, options) {},
   /**
    * @param {number=} primaryIndex
    * @param {?Object=} config
@@ -531,9 +514,9 @@ CodeMirror.prototype = {
   undo: function() {},
   unlinkDoc: function(other) {}
 };
-/** @type {!{cursorDiv: Element}} */
+/** @type {!{cursorDiv: Element, lineSpace: Element, gutters: Element}} */
 CodeMirror.prototype.display;
-/** @type {!{mode: string}} */
+/** @type {!{devtoolsAccessibleName: string, mode: string, lineWrapping: boolean}} */
 CodeMirror.prototype.options;
 /** @type {!Object} */
 CodeMirror.Pass;
@@ -546,6 +529,36 @@ CodeMirror.overlayMode = function(mode1, mode2, squashSpans) {};
 CodeMirror.defineMode = function(modeName, modeConstructor) {};
 CodeMirror.startState = function(mode) {};
 CodeMirror.copyState = function(mode, state) {};
+CodeMirror.inputStyles = {};
+CodeMirror.inputStyles.textarea = class {
+  constructor() {
+    /** @type {!HTMLTextAreaElement} */
+    this.textarea;
+    this.prevInput = '';
+    this.composing = false;
+    this.contextMenuPending = false;
+    /** @type {!CodeMirror} */
+    this.cm;
+  }
+  /**
+   * @param {!Object} display
+   */
+  init(display) {
+  }
+
+  /**
+   * @param {boolean=} typing
+   */
+  reset(typing) {
+  }
+
+  /**
+   * @return {boolean}
+   */
+  poll() {
+    return false;
+  }
+};
 
 /** @typedef {{canceled: boolean, from: !CodeMirror.Pos, to: !CodeMirror.Pos, text: string, origin: string, cancel: function()}} */
 CodeMirror.BeforeChangeObject;
@@ -623,36 +636,13 @@ CodeMirror.defineMIME = function(mime, mode) {};
 /** @type {boolean} */
 window.dispatchStandaloneTestRunnerMessages;
 
-/**
- * @param {Array.<Object>} keyframes
- * @param {number|Object} timing
- * @return {Object}
- */
-Element.prototype.animate = function(keyframes, timing) {};
-
-/**
- * @override
- * @param {string} type
- * @param {(!EventListener|!function (!Event): (boolean|undefined)|null)} listener
- * @param {(boolean|!{capture: (boolean|undefined), once: (boolean|undefined), passive: (boolean|undefined)})=} options
- * @this {EventTarget}
- */
-Element.prototype.addEventListener = function(type, listener, options) {};
-
-var acorn = {
+const acorn = {
   /**
    * @param {string} text
    * @param {Object.<string, boolean>} options
    * @return {!ESTree.Node}
    */
   parse: function(text, options) {},
-
-  /**
-   * @param {string} text
-   * @param {Object.<string, boolean>} options
-   * @return {!ESTree.Node}
-   */
-  parse_dammit: function(text, options) {},
 
   /**
    * @param {string} text
@@ -673,7 +663,16 @@ var acorn = {
   }
 };
 
-var Acorn = {};
+acorn.loose = {};
+
+/**
+ * @param {string} text
+ * @param {Object.<string, boolean>} options
+ * @return {!ESTree.Node}
+ */
+acorn.loose.parse = function(text, options) {};
+
+const Acorn = {};
 /**
  * @constructor
  */
@@ -707,7 +706,39 @@ Acorn.Comment;
  */
 Acorn.TokenOrComment;
 
-var ESTree = {};
+const dagre = {};
+dagre.graphlib = {};
+/**
+ * @constructor
+ */
+dagre.graphlib.Graph = function() {};
+
+dagre.graphlib.json = {};
+
+/**
+ * @param {string} graphData
+ * @return {!dagre.graphlib.Graph}
+ */
+dagre.graphlib.json.read = function(graphData) {};
+
+/**
+ * @param {!dagre.graphlib.Graph} graph
+ * @return {string}
+ */
+dagre.graphlib.json.write = function(graph) {};
+
+/**
+ * @param {!dagre.graphlib.Graph} graph
+ * @param {?Object=} options
+ */
+dagre.layout = function(graph, options) {};
+// Since the object types in JSDoc should use capitalized `Dagre`, dagre is renamed as Dagre below.
+// Note that `var Dagre={}` will be added in dagre_module.js, so to prevent variable redefinition,
+// the workaround is to name the module+folder as `dagre_layout`. This workaround is similar to
+// `cm` and `CodeMirror`.
+const Dagre = dagre;
+
+const ESTree = {};
 
 /**
  * @constructor
@@ -765,42 +796,6 @@ ESTree.TemplateLiteralNode = function() {
   /** @type {!Array.<!ESTree.Node>} */
   this.expressions;
 };
-/** @type {!Object} */
-var Gonzales = {};
-var gonzales = {
-  /**
-   * @param {string} text
-   * @param {!Object=} options
-   * @return {!Gonzales.Node}
-   */
-  parse: function(text, options) {},
-};
-
-/**
- * @constructor
- */
-Gonzales.Location = function() {
-  /** @type {number} */
-  this.line;
-  /** @type {number} */
-  this.column;
-};
-
-/**
- * @constructor
- */
-Gonzales.Node = function() {
-  /** @type {string} */
-  this.type;
-  /** @type {string} */
-  this.syntax;
-  /** @type {!Gonzales.Location} */
-  this.start;
-  /** @type {!Gonzales.Location} */
-  this.end;
-  /** @type {(string|!Array<!Gonzales.Node>)} */
-  this.content;
-};
 
 /**
  * @type {string}
@@ -815,7 +810,7 @@ DOMException.ABORT_ERR;
  * @constructor
  * @param {!Object} params
  */
-var Terminal = function(params) {};
+const Terminal = function(params) {};
 
 Terminal.prototype = {
   fit: function() {},
@@ -825,3 +820,706 @@ Terminal.prototype = {
   /** @param {string} eventName * @param {!Function} handler */
   on: function(eventName, handler) {}
 };
+
+/**
+ * @param {string} context
+ * @return {!Console}
+ */
+Console.prototype.context = function(context) {};
+
+// Globally defined functions
+
+/**
+ * @param {!Array<string>|string} strings
+ * @param {...*} vararg
+ * @return {string}
+ */
+const ls = function(strings, vararg) {};
+
+/**
+* @param {string} tagName
+* @param {string=} customElementType
+* @return {!Element}
+*/
+const createElement = function(tagName, customElementType) {};
+
+/**
+ * @param {number|string} data
+ * @return {!Text}
+ */
+const createTextNode = function(data) {};
+
+/**
+ * @param {string} elementName
+ * @param {string=} className
+ * @param {string=} customElementType
+ * @return {!Element}
+ */
+const createElementWithClass = function(elementName, className, customElementType) {};
+
+/**
+ * @param {string} childType
+ * @param {string=} className
+ * @return {!Element}
+ */
+const createSVGElement = function(childType, className) {};
+
+/**
+ * @return {!DocumentFragment}
+ */
+const createDocumentFragment = function() {};
+
+/**
+ * @param {!Event} event
+ * @return {boolean}
+ */
+const isEnterKey = function(event) {};
+
+/**
+ * @param {!Event} event
+ * @return {boolean}
+ */
+const isEnterOrSpaceKey = function(event) {};
+
+/**
+ * @param {!Event} event
+ * @return {boolean}
+ */
+const isEscKey = function(event) {};
+
+/**
+ * @param {!ExtensionDescriptor} extensionInfo
+ * @param {string} inspectedTabId
+ * @param {string} themeName
+ * @param {!Array<number>} keysToForward
+ * @param {function(!Object, !Object)|undefined} testHook
+ * @return {string}
+ */
+const buildExtensionAPIInjectedScript = function(extensionInfo, inspectedTabId, themeName, keysToForward, testHook) {};
+
+/**
+ * @param {number} m
+ * @param {number} n
+ * @return {number}
+ */
+const mod = function(m, n) {};
+
+/**
+ * @param {string} query
+ * @param {boolean} caseSensitive
+ * @param {boolean} isRegex
+ * @return {!RegExp}
+ */
+const createSearchRegex = function(query, caseSensitive, isRegex) {};
+
+/**
+ * @param {string} query
+ * @param {string=} flags
+ * @return {!RegExp}
+ */
+const createPlainTextSearchRegex = function(query, flags) {};
+
+/**
+ * @param {number} spacesCount
+ * @return {string}
+ */
+const spacesPadding = function(spacesCount) {};
+
+/**
+ * @param {number} value
+ * @param {number} symbolsCount
+ * @return {string}
+ */
+const numberToStringWithSpacesPadding = function(value, symbolsCount) {};
+
+/**
+ * @param {string} url
+ * @return {!Promise.<string>}
+ */
+const loadXHR = function(url) {};
+
+/**
+ * @param {*} value
+ */
+const suppressUnused = function(value) {};
+
+/**
+ * TODO: move into its own module
+ * @param {function()} callback
+ */
+const runOnWindowLoad = function(callback) {};
+
+/**
+ * @template T
+ * @param {function(new:T, ...)} constructorFunction
+ * @return {!T}
+ */
+const singleton = function(constructorFunction) {};
+
+/**
+ * @param {?string} content
+ * @return {number}
+ */
+const base64ToSize = function(content) {};
+
+/**
+ * @param {?string} input
+ * @return {string}
+ */
+const unescapeCssString = function(input) {};
+
+/**
+ * @constructor
+ * @param {function(!Array<*>)} callback
+ */
+const ResizeObserver = function(callback) {};
+
+
+// Lighthouse Report Renderer
+
+/**
+ * @constructor
+ * @param {!Document} document
+ */
+const DOM = function(document) {};
+
+/**
+ * @constructor
+ * @param {!DOM} dom
+ */
+const ReportRenderer = function(dom) {};
+
+ReportRenderer.prototype = {
+  /**
+   * @param {!ReportRenderer.ReportJSON} report
+   * @param {!Element} container Parent element to render the report into.
+   */
+  renderReport: function(report, container) {},
+
+  /**
+   * @param {!Document|!Element} context
+   */
+  setTemplateContext: function(context) {},
+
+};
+
+/**
+ * @constructor
+ * @param {!DOM} dom
+ */
+const ReportUIFeatures = function(dom) {
+  /** @type {!ReportRenderer.ReportJSON} */
+  this.json;
+
+  /** @type {!Document} */
+  this._document;
+};
+
+ReportUIFeatures.prototype = {
+  /**
+   * @param {!Document|!Element} context
+   */
+  setTemplateContext: function(context) {},
+
+  /**
+   * @param {!ReportRenderer.ReportJSON} report
+   */
+  initFeatures: function(report) {},
+
+  _resetUIState: function() {},
+};
+
+/**
+ * @typedef {{
+ *     rawValue: (number|boolean|undefined),
+ *     id: string,
+ *     title: string,
+ *     description: string,
+ *     explanation: (string|undefined),
+ *     errorMessage: (string|undefined),
+ *     displayValue: (string|Array<string|number>|undefined),
+ *     scoreDisplayMode: string,
+ *     error: boolean,
+ *     score: (number|null),
+ *     details: (!DetailsRenderer.DetailsJSON|undefined),
+ * }}
+ */
+ReportRenderer.AuditResultJSON;
+
+/**
+ * @typedef {{
+ *     id: string,
+ *     score: (number|null),
+ *     weight: number,
+ *     group: (string|undefined),
+ *     result: ReportRenderer.AuditResultJSON
+ * }}
+ */
+ReportRenderer.AuditJSON;
+
+/**
+ * @typedef {{
+ *     title: string,
+ *     id: string,
+ *     score: (number|null),
+ *     description: (string|undefined),
+ *     manualDescription: string,
+ *     auditRefs: !Array<!ReportRenderer.AuditJSON>
+ * }}
+ */
+ReportRenderer.CategoryJSON;
+
+/**
+ * @typedef {{
+ *     title: string,
+ *     description: (string|undefined),
+ * }}
+ */
+ReportRenderer.GroupJSON;
+
+/**
+ * @typedef {{
+ *     lighthouseVersion: string,
+ *     userAgent: string,
+ *     fetchTime: string,
+ *     timing: {total: number},
+ *     requestedUrl: string,
+ *     finalUrl: string,
+ *     runWarnings: (!Array<string>|undefined),
+ *     artifacts: {traces: {defaultPass: {traceEvents: !Array}}},
+ *     audits: !Object<string, !ReportRenderer.AuditResultJSON>,
+ *     categories: !Object<string, !ReportRenderer.CategoryJSON>,
+ *     categoryGroups: !Object<string, !ReportRenderer.GroupJSON>,
+ * }}
+ */
+ReportRenderer.ReportJSON;
+
+/**
+ * @typedef {{
+ *     traces: {defaultPass: {traceEvents: !Array}},
+ * }}
+ */
+ReportRenderer.RunnerResultArtifacts;
+
+/**
+ * @typedef {{
+ *     lhr: !ReportRenderer.ReportJSON,
+ *     artifacts: ReportRenderer.RunnerResultArtifacts,
+ *     report: string,
+ *     stack: string
+ * }}
+ */
+ReportRenderer.RunnerResult;
+
+
+/**
+ * @constructor
+ * @param {!DOM} dom
+ * @param {!DetailsRenderer} detailsRenderer
+ */
+const CategoryRenderer = function(dom, detailsRenderer) {};
+
+
+/**
+ * @constructor
+ * @param {!DOM} dom
+ */
+const DetailsRenderer = function(dom) {};
+
+DetailsRenderer.prototype = {
+  /**
+   * @param {!DetailsRenderer.NodeDetailsJSON} item
+   * @return {!Element}
+   */
+  renderNode: function(item) {},
+};
+
+/**
+ * @typedef {{
+ *     type: string,
+ *     value: (string|number|undefined),
+ *     summary: (DetailsRenderer.OpportunitySummary|undefined),
+ *     granularity: (number|undefined),
+ *     displayUnit: (string|undefined)
+ * }}
+ */
+DetailsRenderer.DetailsJSON;
+
+/**
+ * @typedef {{
+ *     type: string,
+ *     path: (string|undefined),
+ *     selector: (string|undefined),
+ *     snippet:(string|undefined)
+ * }}
+ */
+DetailsRenderer.NodeDetailsJSON;
+
+/**
+ * @typedef {{
+ *     sourceUrl: (string|undefined),
+ *     sourceLine: (string|undefined),
+ *     sourceColumn: (string|undefined),
+ * }}
+ */
+DetailsRenderer.SourceLocationDetailsJSON;
+
+/** @typedef {{
+ *     wastedMs: (number|undefined),
+ *     wastedBytes: (number|undefined),
+ * }}
+ */
+DetailsRenderer.OpportunitySummary;
+
+const LighthouseReportGenerator = class {
+  /**
+   * @param {!ReportRenderer.ReportJSON} lhr
+   * @return {string}
+   */
+  generateReportHtml(lhr) {
+    return '';
+  }
+};
+
+/** @interface */
+class InspectorFrontendHostAPI {
+  /**
+   * @param {string=} type
+   */
+  addFileSystem(type) {
+  }
+
+  loadCompleted() {
+  }
+
+  /**
+   * @param {number} requestId
+   * @param {string} fileSystemPath
+   * @param {string} excludedFolders
+   */
+  indexPath(requestId, fileSystemPath, excludedFolders) {
+  }
+
+  /**
+   * Requests inspected page to be placed atop of the inspector frontend with specified bounds.
+   * @param {{x: number, y: number, width: number, height: number}} bounds
+   */
+  setInspectedPageBounds(bounds) {
+  }
+
+  /**
+   * @param {!Array<string>} certChain
+   */
+  showCertificateViewer(certChain) {
+  }
+
+  /**
+   * @param {string} shortcuts
+   */
+  setWhitelistedShortcuts(shortcuts) {
+  }
+
+  /**
+   * @param {boolean} active
+   */
+  setEyeDropperActive(active) {
+  }
+
+  inspectElementCompleted() {
+  }
+
+  /**
+   * @param {string} url
+   */
+  openInNewTab(url) {
+  }
+
+  /**
+   * @param {string} fileSystemPath
+   */
+  showItemInFolder(fileSystemPath) {
+  }
+
+  /**
+   * @param {string} fileSystemPath
+   */
+  removeFileSystem(fileSystemPath) {
+  }
+
+  requestFileSystems() {
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} content
+   * @param {boolean} forceSaveAs
+   */
+  save(url, content, forceSaveAs) {
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} content
+   */
+  append(url, content) {
+  }
+
+  /**
+   * @param {string} url
+   */
+  close(url) {
+  }
+
+  /**
+   * @param {number} requestId
+   * @param {string} fileSystemPath
+   * @param {string} query
+   */
+  searchInPath(requestId, fileSystemPath, query) {
+  }
+
+  /**
+   * @param {number} requestId
+   */
+  stopIndexing(requestId) {
+  }
+
+  bringToFront() {
+  }
+
+  closeWindow() {
+  }
+
+  copyText(text) {
+  }
+
+  /**
+   * @param {string} url
+   */
+  inspectedURLChanged(url) {
+  }
+
+  /**
+   * @param {string} fileSystemId
+   * @param {string} registeredName
+   * @return {?DOMFileSystem}
+   */
+  isolatedFileSystem(fileSystemId, registeredName) {
+  }
+
+  /**
+   * @param {string} url
+   * @param {string} headers
+   * @param {number} streamId
+   * @param {function(!InspectorFrontendHostAPI.LoadNetworkResourceResult)} callback
+   */
+  loadNetworkResource(url, headers, streamId, callback) {
+  }
+
+  /**
+   * @param {function(!Object<string, string>)} callback
+   */
+  getPreferences(callback) {
+  }
+
+  /**
+   * @param {string} name
+   * @param {string} value
+   */
+  setPreference(name, value) {
+  }
+
+  /**
+   * @param {string} name
+   */
+  removePreference(name) {
+  }
+
+  clearPreferences() {
+  }
+
+  /**
+   * @param {!FileSystem} fileSystem
+   */
+  upgradeDraggedFileSystemPermissions(fileSystem) {
+  }
+
+  /**
+   * @return {string}
+   */
+  platform() {
+  }
+
+  /**
+   * @param {string} actionName
+   * @param {number} actionCode
+   * @param {number} bucketSize
+   */
+  recordEnumeratedHistogram(actionName, actionCode, bucketSize) {
+  }
+
+  /**
+   * @param {string} histogramName
+   * @param {number} duration
+   */
+  recordPerformanceHistogram(histogramName, duration) {
+  }
+
+  /**
+   * @param {string} umaName
+   */
+  recordUserMetricsAction(umaName) {
+  }
+
+  /**
+   * @param {string} message
+   */
+  sendMessageToBackend(message) {
+  }
+
+  /**
+   * @param {!Adb.Config} config
+   */
+  setDevicesDiscoveryConfig(config) {
+  }
+
+  /**
+   * @param {boolean} enabled
+   */
+  setDevicesUpdatesEnabled(enabled) {
+  }
+
+  /**
+   * @param {string} pageId
+   * @param {string} action
+   */
+  performActionOnRemotePage(pageId, action) {
+  }
+
+  /**
+   * @param {string} browserId
+   * @param {string} url
+   */
+  openRemotePage(browserId, url) {
+  }
+
+  openNodeFrontend() {
+  }
+
+  /**
+   * @param {string} origin
+   * @param {string} script
+   */
+  setInjectedScriptForOrigin(origin, script) {
+  }
+
+  /**
+   * @param {boolean} isDocked
+   * @param {function()} callback
+   */
+  setIsDocked(isDocked, callback) {
+  }
+
+  /**
+   * @return {number}
+   */
+  zoomFactor() {
+  }
+
+  zoomIn() {
+  }
+
+  zoomOut() {
+  }
+
+  resetZoom() {
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @param {!Array.<!InspectorFrontendHostAPI.ContextMenuDescriptor>} items
+   * @param {!Document} document
+   */
+  showContextMenuAtPoint(x, y, items, document) {
+  }
+
+  /**
+   * @param {function()} callback
+   */
+  reattach(callback) {
+  }
+
+  readyForTest() {
+  }
+
+  connectionReady() {
+  }
+
+  /**
+   * @param {boolean} value
+   */
+  setOpenNewWindowForPopups(value) {
+  }
+
+  /**
+   * @return {boolean}
+   */
+  isHostedMode() {
+  }
+
+  /**
+   * @param {function(!ExtensionDescriptor)} callback
+   */
+  setAddExtensionCallback(callback) {
+  }
+}
+
+/** @typedef
+{{
+    type: string,
+    id: (number|undefined),
+    label: (string|undefined),
+    enabled: (boolean|undefined),
+    checked: (boolean|undefined),
+    subItems: (!Array.<!InspectorFrontendHostAPI.ContextMenuDescriptor>|undefined)
+}} */
+InspectorFrontendHostAPI.ContextMenuDescriptor;
+
+/** @typedef
+{{
+    statusCode: number,
+    headers: (!Object.<string, string>|undefined),
+    netError: (number|undefined),
+    netErrorName: (string|undefined),
+    urlValid: (boolean|undefined),
+    messageOverride: (string|undefined)
+}} */
+InspectorFrontendHostAPI.LoadNetworkResourceResult;
+
+/**
+ * @interface
+ */
+class ServicePort {
+  /**
+   * @param {function(string)} messageHandler
+   * @param {function(string)} closeHandler
+   */
+  setHandlers(messageHandler, closeHandler) {
+  }
+
+  /**
+   * @param {string} message
+   * @return {!Promise<boolean>}
+   */
+  send(message) {
+  }
+
+  /**
+   * @return {!Promise<boolean>}
+   */
+  close() {
+  }
+}
+
+const fabric = {};

@@ -2,56 +2,76 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-Changes.ChangesSidebar = class extends UI.Widget {
+import * as Common from '../common/common.js';
+import * as Snippets from '../snippets/snippets.js';
+import * as UI from '../ui/ui.js';
+import * as Workspace from '../workspace/workspace.js';
+import * as WorkspaceDiff from '../workspace_diff/workspace_diff.js';
+
+export class ChangesSidebar extends UI.Widget.Widget {
   /**
-   * @param {!WorkspaceDiff.WorkspaceDiff} workspaceDiff
+   * @param {!WorkspaceDiff.WorkspaceDiff.WorkspaceDiffImpl} workspaceDiff
    */
   constructor(workspaceDiff) {
     super();
-    this._treeoutline = new UI.TreeOutlineInShadow();
+    this._treeoutline = new UI.TreeOutline.TreeOutlineInShadow();
     this._treeoutline.registerRequiredCSS('changes/changesSidebar.css');
     this._treeoutline.setComparator((a, b) => a.titleAsText().compareTo(b.titleAsText()));
     this._treeoutline.addEventListener(UI.TreeOutline.Events.ElementSelected, this._selectionChanged, this);
+    UI.ARIAUtils.markAsTablist(this._treeoutline.contentElement);
 
     this.element.appendChild(this._treeoutline.element);
 
-    /** @type {!Map<!Workspace.UISourceCode, !Changes.ChangesSidebar.UISourceCodeTreeElement>} */
+    /** @type {!Map<!Workspace.UISourceCode.UISourceCode, !UISourceCodeTreeElement>} */
     this._treeElements = new Map();
     this._workspaceDiff = workspaceDiff;
     this._workspaceDiff.modifiedUISourceCodes().forEach(this._addUISourceCode.bind(this));
     this._workspaceDiff.addEventListener(
-        WorkspaceDiff.Events.ModifiedStatusChanged, this._uiSourceCodeMofiedStatusChanged, this);
+        WorkspaceDiff.WorkspaceDiff.Events.ModifiedStatusChanged, this._uiSourceCodeMofiedStatusChanged, this);
   }
 
   /**
-   * @return {?Workspace.UISourceCode}
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @param {boolean=} omitFocus
+   */
+  selectUISourceCode(uiSourceCode, omitFocus) {
+    const treeElement = this._treeElements.get(uiSourceCode);
+    if (!treeElement) {
+      return;
+    }
+    treeElement.select(omitFocus);
+  }
+
+  /**
+   * @return {?Workspace.UISourceCode.UISourceCode}
    */
   selectedUISourceCode() {
     return this._treeoutline.selectedTreeElement ? this._treeoutline.selectedTreeElement.uiSourceCode : null;
   }
 
   _selectionChanged() {
-    this.dispatchEventToListeners(Changes.ChangesSidebar.Events.SelectedUISourceCodeChanged);
+    this.dispatchEventToListeners(Events.SelectedUISourceCodeChanged);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _uiSourceCodeMofiedStatusChanged(event) {
-    if (event.data.isModified)
+    if (event.data.isModified) {
       this._addUISourceCode(event.data.uiSourceCode);
-    else
+    } else {
       this._removeUISourceCode(event.data.uiSourceCode);
+    }
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   _removeUISourceCode(uiSourceCode) {
-    var treeElement = this._treeElements.get(uiSourceCode);
+    const treeElement = this._treeElements.get(uiSourceCode);
     this._treeElements.delete(uiSourceCode);
     if (this._treeoutline.selectedTreeElement === treeElement) {
-      var nextElementToSelect = treeElement.previousSibling || treeElement.nextSibling;
+      const nextElementToSelect = treeElement.previousSibling || treeElement.nextSibling;
       if (nextElementToSelect) {
         nextElementToSelect.select(true);
       } else {
@@ -64,37 +84,40 @@ Changes.ChangesSidebar = class extends UI.Widget {
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   _addUISourceCode(uiSourceCode) {
-    var treeElement = new Changes.ChangesSidebar.UISourceCodeTreeElement(uiSourceCode);
+    const treeElement = new UISourceCodeTreeElement(uiSourceCode);
     this._treeElements.set(uiSourceCode, treeElement);
     this._treeoutline.appendChild(treeElement);
-    if (!this._treeoutline.selectedTreeElement)
+    if (!this._treeoutline.selectedTreeElement) {
       treeElement.select(true);
+    }
   }
-};
+}
 
 /**
  * @enum {symbol}
  */
-Changes.ChangesSidebar.Events = {
+export const Events = {
   SelectedUISourceCodeChanged: Symbol('SelectedUISourceCodeChanged')
 };
 
-Changes.ChangesSidebar.UISourceCodeTreeElement = class extends UI.TreeElement {
+export class UISourceCodeTreeElement extends UI.TreeOutline.TreeElement {
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   constructor(uiSourceCode) {
     super();
     this.uiSourceCode = uiSourceCode;
     this.listItemElement.classList.add('navigator-' + uiSourceCode.contentType().name() + '-tree-item');
+    UI.ARIAUtils.markAsTab(this.listItemElement);
 
-    var iconType = 'largeicon-navigator-file';
-    if (this.uiSourceCode.contentType() === Common.resourceTypes.Snippet)
+    let iconType = 'largeicon-navigator-file';
+    if (Snippets.ScriptSnippetFileSystem.isSnippetsUISourceCode(this.uiSourceCode)) {
       iconType = 'largeicon-navigator-snippet';
-    var defaultIcon = UI.Icon.create(iconType, 'icon');
+    }
+    const defaultIcon = UI.Icon.Icon.create(iconType, 'icon');
     this.setLeadingIcons([defaultIcon]);
 
     this._eventListeners = [
@@ -107,18 +130,20 @@ Changes.ChangesSidebar.UISourceCodeTreeElement = class extends UI.TreeElement {
   }
 
   _updateTitle() {
-    var titleText = this.uiSourceCode.displayName();
-    if (this.uiSourceCode.isDirty() || Persistence.persistence.hasUnsavedCommittedChanges(this.uiSourceCode))
+    let titleText = this.uiSourceCode.displayName();
+    if (this.uiSourceCode.isDirty()) {
       titleText = '*' + titleText;
+    }
     this.title = titleText;
 
-    var tooltip = this.uiSourceCode.url();
-    if (this.uiSourceCode.contentType().isFromSourceMap())
-      tooltip = Common.UIString('%s (from source map)', this.uiSourceCode.displayName());
+    let tooltip = this.uiSourceCode.url();
+    if (this.uiSourceCode.contentType().isFromSourceMap()) {
+      tooltip = Common.UIString.UIString('%s (from source map)', this.uiSourceCode.displayName());
+    }
     this.tooltip = tooltip;
   }
 
   dispose() {
-    Common.EventTarget.removeEventListeners(this._eventListeners);
+    Common.EventTarget.EventTarget.removeEventListeners(this._eventListeners);
   }
-};
+}

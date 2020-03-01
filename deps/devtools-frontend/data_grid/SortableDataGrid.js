@@ -1,27 +1,28 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import {ColumnDescriptor, Events, Parameters} from './DataGrid.js';  // eslint-disable-line no-unused-vars
+import {ViewportDataGrid, ViewportDataGridNode} from './ViewportDataGrid.js';
+
 /**
  * @unrestricted
- * @extends {DataGrid.ViewportDataGrid<!NODE_TYPE>}
+ * @extends {ViewportDataGrid<!NODE_TYPE>}
  * @template NODE_TYPE
  */
-DataGrid.SortableDataGrid = class extends DataGrid.ViewportDataGrid {
+export class SortableDataGrid extends ViewportDataGrid {
   /**
-   * @param {!Array<!DataGrid.DataGrid.ColumnDescriptor>} columnsArray
-   * @param {function(!NODE_TYPE, string, string, string)=} editCallback
-   * @param {function(!NODE_TYPE)=} deleteCallback
-   * @param {function()=} refreshCallback
+   * @param {!Parameters} dataGridParameters
    */
-  constructor(columnsArray, editCallback, deleteCallback, refreshCallback) {
-    super(columnsArray, editCallback, deleteCallback, refreshCallback);
+  constructor(dataGridParameters) {
+    super(dataGridParameters);
     /** @type {function(!NODE_TYPE, !NODE_TYPE):number} */
-    this._sortingFunction = DataGrid.SortableDataGrid.TrivialComparator;
-    this.setRootNode(/** @type {!DataGrid.SortableDataGridNode<!NODE_TYPE>} */ (new DataGrid.SortableDataGridNode()));
+    this._sortingFunction = SortableDataGrid.TrivialComparator;
+    this.setRootNode(/** @type {!SortableDataGridNode<!NODE_TYPE>} */ (new SortableDataGridNode()));
   }
 
   /**
-   * @param {!DataGrid.SortableDataGridNode} a
+   * @param {!SortableDataGridNode} a
    * @param {!DataGrid.SortableDataGridNode} b
    * @return {number}
    */
@@ -31,29 +32,29 @@ DataGrid.SortableDataGrid = class extends DataGrid.ViewportDataGrid {
 
   /**
    * @param {string} columnId
-   * @param {!DataGrid.SortableDataGridNode} a
+   * @param {!SortableDataGridNode} a
    * @param {!DataGrid.SortableDataGridNode} b
    * @return {number}
    */
   static NumericComparator(columnId, a, b) {
-    var aValue = a.data[columnId];
-    var bValue = b.data[columnId];
-    var aNumber = Number(aValue instanceof Node ? aValue.textContent : aValue);
-    var bNumber = Number(bValue instanceof Node ? bValue.textContent : bValue);
+    const aValue = a.data[columnId];
+    const bValue = b.data[columnId];
+    const aNumber = Number(aValue instanceof Node ? aValue.textContent : aValue);
+    const bNumber = Number(bValue instanceof Node ? bValue.textContent : bValue);
     return aNumber < bNumber ? -1 : (aNumber > bNumber ? 1 : 0);
   }
 
   /**
    * @param {string} columnId
-   * @param {!DataGrid.SortableDataGridNode} a
+   * @param {!SortableDataGridNode} a
    * @param {!DataGrid.SortableDataGridNode} b
    * @return {number}
    */
   static StringComparator(columnId, a, b) {
-    var aValue = a.data[columnId];
-    var bValue = b.data[columnId];
-    var aString = aValue instanceof Node ? aValue.textContent : String(aValue);
-    var bString = bValue instanceof Node ? bValue.textContent : String(bValue);
+    const aValue = a.data[columnId];
+    const bValue = b.data[columnId];
+    const aString = aValue instanceof Node ? aValue.textContent : String(aValue);
+    const bString = bValue instanceof Node ? bValue.textContent : String(bValue);
     return aString < bString ? -1 : (aString > bString ? 1 : 0);
   }
 
@@ -72,53 +73,58 @@ DataGrid.SortableDataGrid = class extends DataGrid.ViewportDataGrid {
   /**
    * @param {!Array.<string>} columnNames
    * @param {!Array.<string>} values
-   * @return {?DataGrid.SortableDataGrid<!DataGrid.SortableDataGridNode>}
+   * @param {string} displayName
+   * @return {?SortableDataGrid<!SortableDataGridNode>}
    */
-  static create(columnNames, values) {
-    var numColumns = columnNames.length;
-    if (!numColumns)
+  static create(columnNames, values, displayName) {
+    const numColumns = columnNames.length;
+    if (!numColumns) {
       return null;
+    }
 
-    var columns = /** @type {!Array<!DataGrid.DataGrid.ColumnDescriptor>} */ ([]);
-    for (var i = 0; i < columnNames.length; ++i)
+    const columns = /** @type {!Array<!ColumnDescriptor>} */ ([]);
+    for (let i = 0; i < columnNames.length; ++i) {
       columns.push({id: String(i), title: columnNames[i], width: columnNames[i].length, sortable: true});
+    }
 
-    var nodes = [];
-    for (var i = 0; i < values.length / numColumns; ++i) {
-      var data = {};
-      for (var j = 0; j < columnNames.length; ++j)
+    const nodes = [];
+    for (let i = 0; i < values.length / numColumns; ++i) {
+      const data = {};
+      for (let j = 0; j < columnNames.length; ++j) {
         data[j] = values[numColumns * i + j];
+      }
 
-      var node = new DataGrid.SortableDataGridNode(data);
+      const node = new SortableDataGridNode(data);
       node.selectable = false;
       nodes.push(node);
     }
 
-    var dataGrid = new DataGrid.SortableDataGrid(columns);
-    var length = nodes.length;
-    var rootNode = dataGrid.rootNode();
-    for (var i = 0; i < length; ++i)
+    const dataGrid = new SortableDataGrid({displayName, columns});
+    const length = nodes.length;
+    const rootNode = dataGrid.rootNode();
+    for (let i = 0; i < length; ++i) {
       rootNode.appendChild(nodes[i]);
+    }
 
-    dataGrid.addEventListener(DataGrid.DataGrid.Events.SortingChanged, sortDataGrid);
+    dataGrid.addEventListener(Events.SortingChanged, sortDataGrid);
 
     function sortDataGrid() {
-      var nodes = dataGrid.rootNode().children;
-      var sortColumnId = dataGrid.sortColumnId();
-      if (!sortColumnId)
+      const nodes = dataGrid.rootNode().children;
+      const sortColumnId = dataGrid.sortColumnId();
+      if (!sortColumnId) {
         return;
+      }
 
-      var columnIsNumeric = true;
-      for (var i = 0; i < nodes.length; i++) {
-        var value = nodes[i].data[sortColumnId];
+      let columnIsNumeric = true;
+      for (let i = 0; i < nodes.length; i++) {
+        const value = nodes[i].data[sortColumnId];
         if (isNaN(value instanceof Node ? value.textContent : value)) {
           columnIsNumeric = false;
           break;
         }
       }
 
-      var comparator =
-          columnIsNumeric ? DataGrid.SortableDataGrid.NumericComparator : DataGrid.SortableDataGrid.StringComparator;
+      const comparator = columnIsNumeric ? SortableDataGrid.NumericComparator : SortableDataGrid.StringComparator;
       dataGrid.sortNodes(comparator.bind(null, sortColumnId), !dataGrid.isSortOrderAscending());
     }
     return dataGrid;
@@ -128,7 +134,7 @@ DataGrid.SortableDataGrid = class extends DataGrid.ViewportDataGrid {
    * @param {!NODE_TYPE} node
    */
   insertChild(node) {
-    var root = /** @type {!DataGrid.SortableDataGridNode<!NODE_TYPE>} */ (this.rootNode());
+    const root = /** @type {!SortableDataGridNode<!NODE_TYPE>} */ (this.rootNode());
     root.insertChildOrdered(node);
   }
 
@@ -137,19 +143,19 @@ DataGrid.SortableDataGrid = class extends DataGrid.ViewportDataGrid {
    * @param {boolean} reverseMode
    */
   sortNodes(comparator, reverseMode) {
-    this._sortingFunction = DataGrid.SortableDataGrid.Comparator.bind(null, comparator, reverseMode);
+    this._sortingFunction = SortableDataGrid.Comparator.bind(null, comparator, reverseMode);
     this.rootNode().recalculateSiblings(0);
     this.rootNode()._sortChildren(reverseMode);
     this.scheduleUpdateStructure();
   }
-};
+}
 
 /**
  * @unrestricted
- * @extends {DataGrid.ViewportDataGridNode<!NODE_TYPE>}
+ * @extends {ViewportDataGridNode<!NODE_TYPE>}
  * @template NODE_TYPE
  */
-DataGrid.SortableDataGridNode = class extends DataGrid.ViewportDataGridNode {
+export class SortableDataGridNode extends ViewportDataGridNode {
   /**
    * @param {?Object.<string, *>=} data
    * @param {boolean=} hasChildren
@@ -167,9 +173,11 @@ DataGrid.SortableDataGridNode = class extends DataGrid.ViewportDataGridNode {
 
   _sortChildren() {
     this.children.sort(this.dataGrid._sortingFunction);
-    for (var i = 0; i < this.children.length; ++i)
+    for (let i = 0; i < this.children.length; ++i) {
       this.children[i].recalculateSiblings(i);
-    for (var child of this.children)
+    }
+    for (const child of this.children) {
       child._sortChildren();
+    }
   }
-};
+}

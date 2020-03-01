@@ -1,51 +1,147 @@
+// Copyright 2020 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import {DebuggerModel} from './DebuggerModel.js';            // eslint-disable-line no-unused-vars
+import {RemoteObject} from './RemoteObject.js';              // eslint-disable-line no-unused-vars
+import {RuntimeModel} from './RuntimeModel.js';              // eslint-disable-line no-unused-vars
+import {Capability, SDKModel, Target} from './SDKModel.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @unrestricted
  */
-SDK.HeapProfilerModel = class extends SDK.SDKModel {
+export class HeapProfilerModel extends SDKModel {
   /**
-   * @param {!SDK.Target} target
+   * @param {!Target} target
    */
   constructor(target) {
     super(target);
-    target.registerHeapProfilerDispatcher(new SDK.HeapProfilerDispatcher(this));
+    target.registerHeapProfilerDispatcher(new HeapProfilerDispatcher(this));
     this._enabled = false;
     this._heapProfilerAgent = target.heapProfilerAgent();
-    this._runtimeModel = /** @type {!SDK.RuntimeModel} */ (target.model(SDK.RuntimeModel));
+    this._memoryAgent = target.memoryAgent();
+    this._runtimeModel = /** @type {!RuntimeModel} */ (target.model(RuntimeModel));
+    this._samplingProfilerDepth = 0;
   }
 
   /**
-   * @return {!SDK.DebuggerModel}
+   * @return {!DebuggerModel}
    */
   debuggerModel() {
     return this._runtimeModel.debuggerModel();
   }
 
   /**
-   * @return {!SDK.RuntimeModel}
+   * @return {!RuntimeModel}
    */
   runtimeModel() {
     return this._runtimeModel;
   }
 
   enable() {
-    if (this._enabled)
+    if (this._enabled) {
       return;
+    }
 
     this._enabled = true;
     this._heapProfilerAgent.enable();
   }
 
-  startSampling() {
-    var defaultSamplingIntervalInBytes = 16384;
-    this._heapProfilerAgent.startSampling(defaultSamplingIntervalInBytes);
+  /**
+   * @param {number=} samplingRateInBytes
+   */
+  startSampling(samplingRateInBytes) {
+    if (this._samplingProfilerDepth++) {
+      return;
+    }
+    const defaultSamplingIntervalInBytes = 16384;
+    this._heapProfilerAgent.startSampling(samplingRateInBytes || defaultSamplingIntervalInBytes);
   }
 
   /**
    * @return {!Promise<?Protocol.HeapProfiler.SamplingHeapProfile>}
    */
   stopSampling() {
-    this._isRecording = false;
+    if (!this._samplingProfilerDepth) {
+      throw new Error('Sampling profiler is not running.');
+    }
+    if (--this._samplingProfilerDepth) {
+      return this.getSamplingProfile();
+    }
     return this._heapProfilerAgent.stopSampling();
+  }
+
+  /**
+   * @return {!Promise<?Protocol.HeapProfiler.SamplingHeapProfile>}
+   */
+  getSamplingProfile() {
+    return this._heapProfilerAgent.getSamplingProfile();
+  }
+
+  startNativeSampling() {
+    const defaultSamplingIntervalInBytes = 65536;
+    this._memoryAgent.startSampling(defaultSamplingIntervalInBytes);
+  }
+
+  /**
+   * @return {!Promise<!NativeHeapProfile>}
+   */
+  async stopNativeSampling() {
+    const rawProfile = /** @type {!Protocol.Memory.SamplingProfile} */ (await this._memoryAgent.getSamplingProfile());
+    this._memoryAgent.stopSampling();
+    return this._convertNativeProfile(rawProfile);
+  }
+
+  /**
+   * @return {!Promise<!NativeHeapProfile>}
+   */
+  async takeNativeSnapshot() {
+    const rawProfile =
+        /** @type {!Protocol.Memory.SamplingProfile} */ (await this._memoryAgent.getAllTimeSamplingProfile());
+    return this._convertNativeProfile(rawProfile);
+  }
+
+  /**
+   * @return {!Promise<!NativeHeapProfile>}
+   */
+  async takeNativeBrowserSnapshot() {
+    const rawProfile =
+        /** @type {!Protocol.Memory.SamplingProfile} */ (await this._memoryAgent.getBrowserSamplingProfile());
+    return this._convertNativeProfile(rawProfile);
+  }
+
+  /**
+   * @param {!Protocol.Memory.SamplingProfile} rawProfile
+   * @return {!NativeHeapProfile}
+   */
+  _convertNativeProfile(rawProfile) {
+    const head = /** @type {!Protocol.HeapProfiler.SamplingHeapProfileNode} */
+        ({children: new Map(), selfSize: 0, callFrame: {functionName: '(root)', url: ''}});
+    for (const sample of rawProfile.samples) {
+      const node = sample.stack.reverse().reduce((node, name) => {
+        let child = node.children.get(name);
+        if (child) {
+          return child;
+        }
+        const namespace = /^([^:]*)::/.exec(name);
+        child = {
+          children: new Map(),
+          callFrame: {functionName: name, url: namespace && namespace[1] || ''},
+          selfSize: 0
+        };
+        node.children.set(name, child);
+        return child;
+      }, head);
+      node.selfSize += sample.total;
+    }
+
+    function convertChildren(node) {
+      node.children = Array.from(node.children.values());
+      node.children.forEach(convertChildren);
+    }
+    convertChildren(head);
+
+    return new NativeHeapProfile(head, rawProfile.modules);
   }
 
   /**
@@ -66,11 +162,11 @@ SDK.HeapProfilerModel = class extends SDK.SDKModel {
   /**
    * @param {string} snapshotObjectId
    * @param {string} objectGroupName
-   * @return {!Promise<?SDK.RemoteObject>}
+   * @return {!Promise<?RemoteObject>}
    */
-  objectForSnapshotObjectId(snapshotObjectId, objectGroupName) {
-    return this._heapProfilerAgent.getObjectByHeapObjectId(snapshotObjectId, objectGroupName)
-        .then(result => result && result.type ? this._runtimeModel.createRemoteObject(result) : null);
+  async objectForSnapshotObjectId(snapshotObjectId, objectGroupName) {
+    const result = await this._heapProfilerAgent.getObjectByHeapObjectId(snapshotObjectId, objectGroupName);
+    return result && result.type && this._runtimeModel.createRemoteObject(result) || null;
   }
 
   /**
@@ -83,10 +179,11 @@ SDK.HeapProfilerModel = class extends SDK.SDKModel {
 
   /**
    * @param {boolean} reportProgress
+   * @param {boolean} treatGlobalObjectsAsRoots
    * @return {!Promise}
    */
-  takeHeapSnapshot(reportProgress) {
-    return this._heapProfilerAgent.takeHeapSnapshot(reportProgress);
+  takeHeapSnapshot(reportProgress, treatGlobalObjectsAsRoots) {
+    return this._heapProfilerAgent.takeHeapSnapshot(reportProgress, treatGlobalObjectsAsRoots);
   }
 
   /**
@@ -109,7 +206,7 @@ SDK.HeapProfilerModel = class extends SDK.SDKModel {
    * @param {!Array<number>} samples
    */
   heapStatsUpdate(samples) {
-    this.dispatchEventToListeners(SDK.HeapProfilerModel.Events.HeapStatsUpdate, samples);
+    this.dispatchEventToListeners(Events.HeapStatsUpdate, samples);
   }
 
   /**
@@ -117,15 +214,14 @@ SDK.HeapProfilerModel = class extends SDK.SDKModel {
    * @param {number} timestamp
    */
   lastSeenObjectId(lastSeenObjectId, timestamp) {
-    this.dispatchEventToListeners(
-        SDK.HeapProfilerModel.Events.LastSeenObjectId, {lastSeenObjectId: lastSeenObjectId, timestamp: timestamp});
+    this.dispatchEventToListeners(Events.LastSeenObjectId, {lastSeenObjectId: lastSeenObjectId, timestamp: timestamp});
   }
 
   /**
    * @param {string} chunk
    */
   addHeapSnapshotChunk(chunk) {
-    this.dispatchEventToListeners(SDK.HeapProfilerModel.Events.AddHeapSnapshotChunk, chunk);
+    this.dispatchEventToListeners(Events.AddHeapSnapshotChunk, chunk);
   }
 
   /**
@@ -134,19 +230,16 @@ SDK.HeapProfilerModel = class extends SDK.SDKModel {
    * @param {boolean=} finished
    */
   reportHeapSnapshotProgress(done, total, finished) {
-    this.dispatchEventToListeners(
-        SDK.HeapProfilerModel.Events.ReportHeapSnapshotProgress, {done: done, total: total, finished: finished});
+    this.dispatchEventToListeners(Events.ReportHeapSnapshotProgress, {done: done, total: total, finished: finished});
   }
 
   resetProfiles() {
-    this.dispatchEventToListeners(SDK.HeapProfilerModel.Events.ResetProfiles, this);
+    this.dispatchEventToListeners(Events.ResetProfiles, this);
   }
-};
-
-SDK.SDKModel.register(SDK.HeapProfilerModel, SDK.Target.Capability.JS, false);
+}
 
 /** @enum {symbol} */
-SDK.HeapProfilerModel.Events = {
+export const Events = {
   HeapStatsUpdate: Symbol('HeapStatsUpdate'),
   LastSeenObjectId: Symbol('LastSeenObjectId'),
   AddHeapSnapshotChunk: Symbol('AddHeapSnapshotChunk'),
@@ -155,10 +248,25 @@ SDK.HeapProfilerModel.Events = {
 };
 
 /**
- * @implements {Protocol.HeapProfilerDispatcher}
+ * @implements {Protocol.Profiler.Profile}
+ * @extends {Protocol.HeapProfiler.SamplingHeapProfile}
+ */
+class NativeHeapProfile {
+  /**
+   * @param {!Protocol.HeapProfiler.SamplingHeapProfileNode} head
+   * @param {!Array<!Protocol.Memory.Module>} modules
+   */
+  constructor(head, modules) {
+    this.head = head;
+    this.modules = modules;
+  }
+}
+
+/**
+ * @extends {Protocol.HeapProfilerDispatcher}
  * @unrestricted
  */
-SDK.HeapProfilerDispatcher = class {
+class HeapProfilerDispatcher {
   constructor(model) {
     this._heapProfilerModel = model;
   }
@@ -204,4 +312,6 @@ SDK.HeapProfilerDispatcher = class {
   resetProfiles() {
     this._heapProfilerModel.resetProfiles();
   }
-};
+}
+
+SDKModel.register(HeapProfilerModel, Capability.JS, false);

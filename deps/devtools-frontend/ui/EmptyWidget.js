@@ -28,10 +28,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import {VBox} from './Widget.js';
+import {XLink} from './XLink.js';
+
 /**
  * @unrestricted
  */
-UI.EmptyWidget = class extends UI.VBox {
+export class EmptyWidget extends VBox {
   /**
    * @param {string} text
    */
@@ -40,7 +43,7 @@ UI.EmptyWidget = class extends UI.VBox {
     this.registerRequiredCSS('ui/emptyWidget.css');
     this.element.classList.add('empty-view-scroller');
     this._contentElement = this.element.createChild('div', 'empty-view');
-    this._textElement = this._contentElement.createChild('h2');
+    this._textElement = this._contentElement.createChild('div', 'empty-bold-text');
     this._textElement.textContent = text;
   }
 
@@ -52,9 +55,17 @@ UI.EmptyWidget = class extends UI.VBox {
   }
 
   /**
+   * @param {string} link
+   * @return {!Node}
+   */
+  appendLink(link) {
+    return this._contentElement.appendChild(XLink.create(link, 'Learn more'));
+  }
+
+  /**
    * @param {string} text
    */
   set text(text) {
     this._textElement.textContent = text;
   }
-};
+}

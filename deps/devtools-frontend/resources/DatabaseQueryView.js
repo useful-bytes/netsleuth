@@ -23,10 +23,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as DataGrid from '../data_grid/data_grid.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
  */
-Resources.DatabaseQueryView = class extends UI.VBox {
+export class DatabaseQueryView extends UI.Widget.VBox {
   constructor(database) {
     super();
 
@@ -35,22 +38,130 @@ Resources.DatabaseQueryView = class extends UI.VBox {
     this.element.classList.add('storage-view', 'query', 'monospace');
     this.element.addEventListener('selectstart', this._selectStart.bind(this), false);
 
+    this._queryWrapper = this.element.createChild('div', 'database-query-group-messages');
+    this._queryWrapper.addEventListener('focusin', this._onFocusIn.bind(this));
+    this._queryWrapper.addEventListener('focusout', this._onFocusOut.bind(this));
+    this._queryWrapper.addEventListener('keydown', this._onKeyDown.bind(this));
+    this._queryWrapper.tabIndex = -1;
+
     this._promptContainer = this.element.createChild('div', 'database-query-prompt-container');
-    this._promptContainer.appendChild(UI.Icon.create('smallicon-text-prompt', 'prompt-icon'));
+    this._promptContainer.appendChild(UI.Icon.Icon.create('smallicon-text-prompt', 'prompt-icon'));
     this._promptElement = this._promptContainer.createChild('div');
     this._promptElement.className = 'database-query-prompt';
-    this._promptElement.addEventListener('keydown', this._promptKeyDown.bind(this), true);
+    this._promptElement.addEventListener('keydown', this._promptKeyDown.bind(this));
 
-    this._prompt = new UI.TextPrompt();
+    this._prompt = new UI.TextPrompt.TextPrompt();
     this._prompt.initialize(this.completions.bind(this), ' ');
     this._proxyElement = this._prompt.attach(this._promptElement);
 
     this.element.addEventListener('click', this._messagesClicked.bind(this), true);
+
+    /** @type {!Array<!Element>} */
+    this._queryResults = [];
+    this._virtualSelectedIndex = -1;
+    /** @type {?Element} */
+    this._lastSelectedElement;
+    /** @type {number} */
+    this._selectionTimeout = 0;
   }
 
   _messagesClicked() {
-    if (!this._prompt.isCaretInsidePrompt() && !this.element.hasSelection())
+    this._prompt.focus();
+    if (!this._prompt.isCaretInsidePrompt() && !this.element.hasSelection()) {
       this._prompt.moveCaretToEndOfPrompt();
+    }
+  }
+
+  /**
+   * @param {!Event} event
+   */
+  _onKeyDown(event) {
+    if (UI.UIUtils.isEditing() || !this._queryResults.length || event.shiftKey) {
+      return;
+    }
+    switch (event.key) {
+      case 'ArrowUp':
+        if (this._virtualSelectedIndex > 0) {
+          this._virtualSelectedIndex--;
+        } else {
+          return;
+        }
+        break;
+      case 'ArrowDown':
+        if (this._virtualSelectedIndex < this._queryResults.length - 1) {
+          this._virtualSelectedIndex++;
+        } else {
+          return;
+        }
+        break;
+      case 'Home':
+        this._virtualSelectedIndex = 0;
+        break;
+      case 'End':
+        this._virtualSelectedIndex = this._queryResults.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.consume(true);
+    this._updateFocusedItem();
+  }
+
+  /**
+   * @param {!Event} event
+   */
+  _onFocusIn(event) {
+    // Make default selection when moving from external (e.g. prompt) to the container.
+    if (this._virtualSelectedIndex === -1 && this._isOutsideViewport(/** @type {?Element} */ (event.relatedTarget)) &&
+        event.target === this._queryWrapper && this._queryResults.length) {
+      this._virtualSelectedIndex = this._queryResults.length - 1;
+    }
+    this._updateFocusedItem();
+  }
+
+  /**
+   * @param {!Event} event
+   */
+  _onFocusOut(event) {
+    // Remove selection when focus moves to external location (e.g. prompt).
+    if (this._isOutsideViewport(/** @type {?Element} */ (event.relatedTarget))) {
+      this._virtualSelectedIndex = -1;
+    }
+    this._updateFocusedItem();
+
+    this._queryWrapper.scrollTop = 10000000;
+  }
+
+  /**
+   * @param {?Element} element
+   * @return {boolean}
+   */
+  _isOutsideViewport(element) {
+    return !!element && !element.isSelfOrDescendant(this._queryWrapper);
+  }
+
+  _updateFocusedItem() {
+    let index = this._virtualSelectedIndex;
+    if (this._queryResults.length && this._virtualSelectedIndex < 0) {
+      index = this._queryResults.length - 1;
+    }
+
+    const selectedElement = index >= 0 ? this._queryResults[index] : null;
+    const changed = this._lastSelectedElement !== selectedElement;
+    const containerHasFocus = this._queryWrapper === this.element.ownerDocument.deepActiveElement();
+
+    if (selectedElement && (changed || containerHasFocus) && this.element.hasFocus()) {
+      if (!selectedElement.hasFocus()) {
+        selectedElement.focus();
+      }
+    }
+
+    if (this._queryResults.length && !this._queryWrapper.hasFocus()) {
+      this._queryWrapper.tabIndex = 0;
+    } else {
+      this._queryWrapper.tabIndex = -1;
+    }
+    this._lastSelectedElement = selectedElement;
   }
 
   /**
@@ -60,30 +171,33 @@ Resources.DatabaseQueryView = class extends UI.VBox {
    * @return {!Promise<!UI.SuggestBox.Suggestions>}
    */
   async completions(expression, prefix, force) {
-    if (!prefix)
+    if (!prefix) {
       return [];
+    }
 
     prefix = prefix.toLowerCase();
-    var tableNames = await this.database.tableNames();
+    const tableNames = await this.database.tableNames();
     return tableNames.map(name => name + ' ')
-        .concat(Resources.DatabaseQueryView._SQL_BUILT_INS)
+        .concat(SQL_BUILT_INS)
         .filter(proposal => proposal.toLowerCase().startsWith(prefix))
         .map(completion => ({text: completion}));
   }
 
   _selectStart(event) {
-    if (this._selectionTimeout)
+    if (this._selectionTimeout) {
       clearTimeout(this._selectionTimeout);
+    }
 
     this._prompt.clearAutocomplete();
 
     /**
-     * @this {Resources.DatabaseQueryView}
+     * @this {DatabaseQueryView}
      */
     function moveBackIfOutside() {
       delete this._selectionTimeout;
-      if (!this._prompt.isCaretInsidePrompt() && !this.element.hasSelection())
+      if (!this._prompt.isCaretInsidePrompt() && !this.element.hasSelection()) {
         this._prompt.moveCaretToEndOfPrompt();
+      }
       this._prompt.autoCompleteSoon();
     }
 
@@ -97,47 +211,63 @@ Resources.DatabaseQueryView = class extends UI.VBox {
     }
   }
 
-  _enterKeyPressed(event) {
+  async _enterKeyPressed(event) {
     event.consume(true);
 
+    const query = this._prompt.textWithCurrentSuggestion();
     this._prompt.clearAutocomplete();
 
-    var query = this._prompt.text();
-    if (!query.length)
+    if (!query.length) {
       return;
+    }
 
+    this._prompt.setEnabled(false);
+    try {
+      const result = await new Promise((resolve, reject) => {
+        this.database.executeSql(
+            query, (columnNames, values) => resolve({columnNames, values}), errorText => reject(errorText));
+      });
+      this._queryFinished(query, result.columnNames, result.values);
+    } catch (e) {
+      this._appendErrorQueryResult(query, e);
+    }
+    this._prompt.setEnabled(true);
     this._prompt.setText('');
-
-    this.database.executeSql(query, this._queryFinished.bind(this, query), this._queryError.bind(this, query));
+    this._prompt.focus();
   }
 
   _queryFinished(query, columnNames, values) {
-    var dataGrid = DataGrid.SortableDataGrid.create(columnNames, values);
-    var trimmedQuery = query.trim();
+    const dataGrid = DataGrid.SortableDataGrid.SortableDataGrid.create(columnNames, values, ls`Database Query`);
+    const trimmedQuery = query.trim();
 
+    let view = null;
     if (dataGrid) {
       dataGrid.setStriped(true);
       dataGrid.renderInline();
-      this._appendViewQueryResult(trimmedQuery, dataGrid.asWidget());
       dataGrid.autoSizeColumns(5);
+      view = dataGrid.asWidget();
+      dataGrid.setFocusable(false);
     }
+    this._appendViewQueryResult(trimmedQuery, view);
 
-    if (trimmedQuery.match(/^create /i) || trimmedQuery.match(/^drop table /i))
-      this.dispatchEventToListeners(Resources.DatabaseQueryView.Events.SchemaUpdated, this.database);
-  }
-
-  _queryError(query, errorMessage) {
-    this._appendErrorQueryResult(query, errorMessage);
+    if (trimmedQuery.match(/^create /i) || trimmedQuery.match(/^drop table /i)) {
+      this.dispatchEventToListeners(Events.SchemaUpdated, this.database);
+    }
   }
 
   /**
    * @param {string} query
-   * @param {!UI.Widget} view
+   * @param {?UI.Widget.Widget} view
    */
   _appendViewQueryResult(query, view) {
-    var resultElement = this._appendQueryResult(query);
-    view.show(resultElement);
-    this._promptElement.scrollIntoView(false);
+    const resultElement = this._appendQueryResult(query);
+    if (view) {
+      view.show(resultElement);
+    } else {
+      resultElement.remove();
+    }
+
+    this._scrollResultIntoView();
   }
 
   /**
@@ -145,11 +275,16 @@ Resources.DatabaseQueryView = class extends UI.VBox {
    * @param {string} errorText
    */
   _appendErrorQueryResult(query, errorText) {
-    var resultElement = this._appendQueryResult(query);
+    const resultElement = this._appendQueryResult(query);
     resultElement.classList.add('error');
-    resultElement.appendChild(UI.Icon.create('smallicon-error', 'prompt-icon'));
+    resultElement.appendChild(UI.Icon.Icon.create('smallicon-error', 'prompt-icon'));
     resultElement.createTextChild(errorText);
 
+    this._scrollResultIntoView();
+  }
+
+  _scrollResultIntoView() {
+    this._queryResults[this._queryResults.length - 1].scrollIntoView(false);
     this._promptElement.scrollIntoView(false);
   }
 
@@ -157,29 +292,36 @@ Resources.DatabaseQueryView = class extends UI.VBox {
    * @param {string} query
    */
   _appendQueryResult(query) {
-    var element = createElement('div');
+    const element = createElement('div');
     element.className = 'database-user-query';
-    element.appendChild(UI.Icon.create('smallicon-user-command', 'prompt-icon'));
-    this.element.insertBefore(element, this._promptContainer);
+    element.tabIndex = -1;
 
-    var commandTextElement = createElement('span');
+    UI.ARIAUtils.setAccessibleName(element, ls`Query: ${query}`);
+    this._queryResults.push(element);
+    this._updateFocusedItem();
+
+    element.appendChild(UI.Icon.Icon.create('smallicon-user-command', 'prompt-icon'));
+
+    const commandTextElement = createElement('span');
     commandTextElement.className = 'database-query-text';
     commandTextElement.textContent = query;
     element.appendChild(commandTextElement);
 
-    var resultElement = createElement('div');
+    const resultElement = createElement('div');
     resultElement.className = 'database-query-result';
     element.appendChild(resultElement);
+
+    this._queryWrapper.appendChild(element);
     return resultElement;
   }
-};
+}
 
 /** @enum {symbol} */
-Resources.DatabaseQueryView.Events = {
+export const Events = {
   SchemaUpdated: Symbol('SchemaUpdated')
 };
 
-Resources.DatabaseQueryView._SQL_BUILT_INS = [
+export const SQL_BUILT_INS = [
   'SELECT ', 'FROM ', 'WHERE ', 'LIMIT ', 'DELETE FROM ', 'CREATE ', 'DROP ', 'TABLE ', 'INDEX ', 'UPDATE ',
   'INSERT INTO ', 'VALUES ('
 ];

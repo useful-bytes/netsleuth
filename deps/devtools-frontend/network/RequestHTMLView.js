@@ -28,18 +28,20 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
  */
-Network.RequestHTMLView = class extends UI.VBox {
+export class RequestHTMLView extends UI.Widget.VBox {
   /**
    * @param {string} dataURL
    */
   constructor(dataURL) {
-    super();
-
-    this._dataURL = dataURL;
-    this.element.classList.add('html', 'request-view');
+    super(true);
+    this.registerRequiredCSS('network/requestHTMLView.css');
+    this._dataURL = encodeURI(dataURL).replace(/#/g, '%23');
+    this.contentElement.classList.add('html', 'request-view');
   }
 
   /**
@@ -53,16 +55,19 @@ Network.RequestHTMLView = class extends UI.VBox {
    * @override
    */
   willHide() {
-    this.element.removeChildren();
+    this.contentElement.removeChildren();
   }
 
   _createIFrame() {
     // We need to create iframe again each time because contentDocument
     // is deleted when iframe is removed from its parent.
-    this.element.removeChildren();
-    var iframe = createElement('iframe');
+    this.contentElement.removeChildren();
+    const iframe = createElement('iframe');
+    iframe.className = 'html-preview-frame';
     iframe.setAttribute('sandbox', '');  // Forbid to run JavaScript and set unique origin.
     iframe.setAttribute('src', this._dataURL);
-    this.element.appendChild(iframe);
+    iframe.setAttribute('tabIndex', -1);
+    UI.ARIAUtils.markAsPresentation(iframe);
+    this.contentElement.appendChild(iframe);
   }
-};
+}

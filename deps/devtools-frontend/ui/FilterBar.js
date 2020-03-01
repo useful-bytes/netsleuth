@@ -28,10 +28,22 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Common from '../common/common.js';
+import * as Host from '../host/host.js';
+
+import * as ARIAUtils from './ARIAUtils.js';
+import {KeyboardShortcut, Modifiers} from './KeyboardShortcut.js';
+import {bindCheckbox} from './SettingsUI.js';
+import {Suggestions} from './SuggestBox.js';  // eslint-disable-line no-unused-vars
+import {Events, TextPrompt} from './TextPrompt.js';
+import {ToolbarButton, ToolbarSettingToggle} from './Toolbar.js';  // eslint-disable-line no-unused-vars
+import {CheckboxLabel} from './UIUtils.js';
+import {HBox} from './Widget.js';
+
 /**
  * @unrestricted
  */
-UI.FilterBar = class extends UI.HBox {
+export class FilterBar extends HBox {
   /**
    * @param {string} name
    * @param {boolean=} visibleByDefault
@@ -42,8 +54,10 @@ UI.FilterBar = class extends UI.HBox {
     this._enabled = true;
     this.element.classList.add('filter-bar');
 
-    this._stateSetting = Common.settings.createSetting('filterBar-' + name + '-toggled', !!visibleByDefault);
-    this._filterButton = new UI.ToolbarSettingToggle(this._stateSetting, 'largeicon-filter', Common.UIString('Filter'));
+    // Note: go via self.Common for globally-namespaced singletons.
+    this._stateSetting = self.self.Common.settings.createSetting('filterBar-' + name + '-toggled', !!visibleByDefault);
+    this._filterButton =
+        new ToolbarSettingToggle(this._stateSetting, 'largeicon-filter', Common.UIString.UIString('Filter'));
 
     this._filters = [];
 
@@ -52,19 +66,19 @@ UI.FilterBar = class extends UI.HBox {
   }
 
   /**
-   * @return {!UI.ToolbarButton}
+   * @return {!ToolbarButton}
    */
   filterButton() {
     return this._filterButton;
   }
 
   /**
-   * @param {!UI.FilterUI} filter
+   * @param {!FilterUI} filter
    */
   addFilter(filter) {
     this._filters.push(filter);
     this.element.appendChild(filter.element());
-    filter.addEventListener(UI.FilterUI.Events.FilterChanged, this._filterChanged, this);
+    filter.addEventListener(FilterUI.Events.FilterChanged, this._filterChanged, this);
     this._updateFilterButton();
   }
 
@@ -84,10 +98,11 @@ UI.FilterBar = class extends UI.HBox {
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _filterChanged(event) {
     this._updateFilterButton();
+    this.dispatchEventToListeners(FilterBar.Events.Changed);
   }
 
   /**
@@ -99,10 +114,10 @@ UI.FilterBar = class extends UI.HBox {
   }
 
   _updateFilterBar() {
-    if (!this.parentWidget() || this._showingWidget)
+    if (!this.parentWidget() || this._showingWidget) {
       return;
-    var visible = this._alwaysShowFilters || (this._stateSetting.get() && this._enabled);
-    if (visible) {
+    }
+    if (this.visible()) {
       this._showingWidget = true;
       this.showWidget();
       this._showingWidget = false;
@@ -115,9 +130,9 @@ UI.FilterBar = class extends UI.HBox {
    * @override
    */
   focus() {
-    for (var i = 0; i < this._filters.length; ++i) {
-      if (this._filters[i] instanceof UI.TextFilterUI) {
-        var textFilterUI = /** @type {!UI.TextFilterUI} */ (this._filters[i]);
+    for (let i = 0; i < this._filters.length; ++i) {
+      if (this._filters[i] instanceof TextFilterUI) {
+        const textFilterUI = /** @type {!TextFilterUI} */ (this._filters[i]);
         textFilterUI.focus();
         break;
       }
@@ -125,9 +140,10 @@ UI.FilterBar = class extends UI.HBox {
   }
 
   _updateFilterButton() {
-    var isActive = false;
-    for (var filter of this._filters)
+    let isActive = false;
+    for (const filter of this._filters) {
       isActive = isActive || filter.isActive();
+    }
     this._filterButton.setDefaultWithRedColor(isActive);
     this._filterButton.setToggleWithRedColor(isActive);
   }
@@ -137,81 +153,74 @@ UI.FilterBar = class extends UI.HBox {
     this._filters = [];
     this._updateFilterButton();
   }
+
+  setting() {
+    return this._stateSetting;
+  }
+
+  visible() {
+    return this._alwaysShowFilters || (this._stateSetting.get() && this._enabled);
+  }
+}
+
+FilterBar.Events = {
+  Changed: Symbol('Changed'),
 };
 
 /**
  * @interface
- * @extends {Common.EventTarget}
  */
-UI.FilterUI = function() {};
-
-/** @enum {symbol} */
-UI.FilterUI.Events = {
-  FilterChanged: Symbol('FilterChanged')
-};
-
-UI.FilterUI.prototype = {
+export class FilterUI extends Common.EventTarget.EventTarget {
   /**
    * @return {boolean}
    */
-  isActive() {},
+  isActive() {
+  }
 
   /**
    * @return {!Element}
    */
   element() {}
+}
+
+/** @enum {symbol} */
+FilterUI.Events = {
+  FilterChanged: Symbol('FilterChanged')
 };
 
 /**
- * @implements {UI.FilterUI}
+ * @implements {FilterUI}
  * @unrestricted
  */
-UI.TextFilterUI = class extends Common.Object {
-  /**
-   * @param {boolean=} supportRegex
-   */
-  constructor(supportRegex) {
+export class TextFilterUI extends Common.ObjectWrapper.ObjectWrapper {
+  constructor() {
     super();
-    this._supportRegex = !!supportRegex;
-    this._regex = null;
-
     this._filterElement = createElement('div');
     this._filterElement.className = 'filter-text-filter';
 
     this._filterInputElement = this._filterElement.createChild('span', 'filter-input-field');
 
-    this._prompt = new UI.TextPrompt();
+    this._prompt = new TextPrompt();
     this._prompt.initialize(this._completions.bind(this), ' ');
     this._proxyElement = this._prompt.attach(this._filterInputElement);
-    this._prompt.setPlaceholder(Common.UIString('Filter'));
+    this._proxyElement.title = Common.UIString.UIString('e.g. /small[\\d]+/ url:a.com/b');
+    this._prompt.setPlaceholder(Common.UIString.UIString('Filter'));
+    this._prompt.addEventListener(Events.TextChanged, this._valueChanged.bind(this));
 
-    this._proxyElement.addEventListener('keydown', this._onInputKeyDown.bind(this), false);
-    this._prompt.addEventListener(UI.TextPrompt.Events.TextChanged, this._valueChanged.bind(this));
-
-    /** @type {?function(string, string, boolean=):!Promise<!UI.SuggestBox.Suggestions>} */
+    /** @type {?function(string, string, boolean=):!Promise<!Suggestions>} */
     this._suggestionProvider = null;
-
-    if (this._supportRegex) {
-      this._filterElement.classList.add('supports-regex');
-      var label = UI.CheckboxLabel.create(Common.UIString('Regex'));
-      this._regexCheckBox = label.checkboxElement;
-      this._regexCheckBox.id = 'text-filter-regex';
-      this._regexCheckBox.addEventListener('change', this._valueChanged.bind(this), false);
-      this._filterElement.appendChild(label);
-
-      this._regexLabel = this._filterElement.textElement;
-    }
   }
 
   /**
    * @param {string} expression
    * @param {string} prefix
    * @param {boolean=} force
-   * @return {!Promise<!UI.SuggestBox.Suggestions>}
+   * @return {!Promise<!Suggestions>}
    */
   _completions(expression, prefix, force) {
-    if (this._suggestionProvider && !this.isRegexChecked())
+    if (this._suggestionProvider) {
       return this._suggestionProvider(expression, prefix, force);
+    }
     return Promise.resolve([]);
   }
   /**
@@ -231,13 +240,6 @@ UI.TextFilterUI = class extends Common.Object {
   }
 
   /**
-   * @return {boolean}
-   */
-  isRegexChecked() {
-    return this._supportRegex ? this._regexCheckBox.checked : false;
-  }
-
-  /**
    * @return {string}
    */
   value() {
@@ -252,27 +254,12 @@ UI.TextFilterUI = class extends Common.Object {
     this._valueChanged();
   }
 
-  /**
-   * @param {boolean} checked
-   */
-  setRegexChecked(checked) {
-    if (this._supportRegex)
-      this._regexCheckBox.checked = checked;
-  }
-
-  /**
-   * @return {?RegExp}
-   */
-  regex() {
-    return this._regex;
-  }
-
   focus() {
     this._filterInputElement.focus();
   }
 
   /**
-   * @param {(function(string, string, boolean=):!Promise<!UI.SuggestBox.Suggestions>)} suggestionProvider
+   * @param {(function(string, string, boolean=):!Promise<!Suggestions>)} suggestionProvider
    */
   setSuggestionProvider(suggestionProvider) {
     this._prompt.clearAutocomplete();
@@ -280,73 +267,53 @@ UI.TextFilterUI = class extends Common.Object {
   }
 
   _valueChanged() {
-    var filterQuery = this.value();
-
-    this._regex = null;
-    this._filterInputElement.classList.remove('filter-text-invalid');
-    if (filterQuery) {
-      if (this.isRegexChecked()) {
-        try {
-          this._regex = new RegExp(filterQuery, 'i');
-        } catch (e) {
-          this._filterInputElement.classList.add('filter-text-invalid');
-        }
-      } else {
-        this._regex = createPlainTextSearchRegex(filterQuery, 'i');
-      }
-    }
-
-    this._dispatchFilterChanged();
+    this.dispatchEventToListeners(FilterUI.Events.FilterChanged, null);
   }
 
-  _dispatchFilterChanged() {
-    this.dispatchEventToListeners(UI.FilterUI.Events.FilterChanged, null);
+  clear() {
+    this.setValue('');
   }
-
-  /**
-   * @param {!Event} event
-   */
-  _onInputKeyDown(event) {
-    if (isEnterKey(event))
-      event.consume(true);
-  }
-};
+}
 
 /**
- * @implements {UI.FilterUI}
+ * @implements {FilterUI}
  * @unrestricted
  */
-UI.NamedBitSetFilterUI = class extends Common.Object {
+export class NamedBitSetFilterUI extends Common.ObjectWrapper.ObjectWrapper {
   /**
-   * @param {!Array.<!UI.NamedBitSetFilterUI.Item>} items
-   * @param {!Common.Setting=} setting
+   * @param {!Array.<!Item>} items
+   * @param {!Common.Settings.Setting=} setting
    */
   constructor(items, setting) {
     super();
     this._filtersElement = createElementWithClass('div', 'filter-bitset-filter');
-    this._filtersElement.title = Common.UIString(
-        '%sClick to select multiple types',
-        UI.KeyboardShortcut.shortcutToString('', UI.KeyboardShortcut.Modifiers.CtrlOrMeta));
+    ARIAUtils.markAsListBox(this._filtersElement);
+    ARIAUtils.markAsMultiSelectable(this._filtersElement);
+    this._filtersElement.title = Common.UIString.UIString(
+        '%sClick to select multiple types', KeyboardShortcut.shortcutToString('', Modifiers.CtrlOrMeta));
 
     this._allowedTypes = {};
-    this._typeFilterElements = {};
-    this._addBit(UI.NamedBitSetFilterUI.ALL_TYPES, Common.UIString('All'));
+    /** @type {!Array.<!Element>} */
+    this._typeFilterElements = [];
+    this._addBit(NamedBitSetFilterUI.ALL_TYPES, Common.UIString.UIString('All'));
+    this._typeFilterElements[0].tabIndex = 0;
     this._filtersElement.createChild('div', 'filter-bitset-filter-divider');
 
-    for (var i = 0; i < items.length; ++i)
+    for (let i = 0; i < items.length; ++i) {
       this._addBit(items[i].name, items[i].label, items[i].title);
+    }
 
     if (setting) {
       this._setting = setting;
       setting.addChangeListener(this._settingChanged.bind(this));
       this._settingChanged();
     } else {
-      this._toggleTypeFilter(UI.NamedBitSetFilterUI.ALL_TYPES, false /* allowMultiSelect */);
+      this._toggleTypeFilter(NamedBitSetFilterUI.ALL_TYPES, false /* allowMultiSelect */);
     }
   }
 
   reset() {
-    this._toggleTypeFilter(UI.NamedBitSetFilterUI.ALL_TYPES, false /* allowMultiSelect */);
+    this._toggleTypeFilter(NamedBitSetFilterUI.ALL_TYPES, false /* allowMultiSelect */);
   }
 
   /**
@@ -354,7 +321,7 @@ UI.NamedBitSetFilterUI = class extends Common.Object {
    * @return {boolean}
    */
   isActive() {
-    return !this._allowedTypes[UI.NamedBitSetFilterUI.ALL_TYPES];
+    return !this._allowedTypes[NamedBitSetFilterUI.ALL_TYPES];
   }
 
   /**
@@ -370,27 +337,32 @@ UI.NamedBitSetFilterUI = class extends Common.Object {
    * @return {boolean}
    */
   accept(typeName) {
-    return !!this._allowedTypes[UI.NamedBitSetFilterUI.ALL_TYPES] || !!this._allowedTypes[typeName];
+    return !!this._allowedTypes[NamedBitSetFilterUI.ALL_TYPES] || !!this._allowedTypes[typeName];
   }
 
   _settingChanged() {
-    var allowedTypes = this._setting.get();
+    const allowedTypes = this._setting.get();
     this._allowedTypes = {};
-    for (var typeName in this._typeFilterElements) {
-      if (allowedTypes[typeName])
-        this._allowedTypes[typeName] = true;
+    for (const element of this._typeFilterElements) {
+      if (allowedTypes[element.typeName]) {
+        this._allowedTypes[element.typeName] = true;
+      }
     }
     this._update();
   }
 
   _update() {
-    if ((Object.keys(this._allowedTypes).length === 0) || this._allowedTypes[UI.NamedBitSetFilterUI.ALL_TYPES]) {
+    if ((Object.keys(this._allowedTypes).length === 0) || this._allowedTypes[NamedBitSetFilterUI.ALL_TYPES]) {
       this._allowedTypes = {};
-      this._allowedTypes[UI.NamedBitSetFilterUI.ALL_TYPES] = true;
+      this._allowedTypes[NamedBitSetFilterUI.ALL_TYPES] = true;
     }
-    for (var typeName in this._typeFilterElements)
-      this._typeFilterElements[typeName].classList.toggle('selected', this._allowedTypes[typeName]);
-    this.dispatchEventToListeners(UI.FilterUI.Events.FilterChanged, null);
+    for (const element of this._typeFilterElements) {
+      const typeName = element.typeName;
+      const active = !!this._allowedTypes[typeName];
+      element.classList.toggle('selected', active);
+      ARIAUtils.setSelected(element, active);
+    }
+    this.dispatchEventToListeners(FilterUI.Events.FilterChanged, null);
   }
 
   /**
@@ -399,25 +371,74 @@ UI.NamedBitSetFilterUI = class extends Common.Object {
    * @param {string=} title
    */
   _addBit(name, label, title) {
-    var typeFilterElement = this._filtersElement.createChild('li', name);
+    const typeFilterElement = this._filtersElement.createChild('span', name);
+    typeFilterElement.tabIndex = -1;
     typeFilterElement.typeName = name;
     typeFilterElement.createTextChild(label);
-    if (title)
+    ARIAUtils.markAsOption(typeFilterElement);
+    if (title) {
       typeFilterElement.title = title;
+    }
     typeFilterElement.addEventListener('click', this._onTypeFilterClicked.bind(this), false);
-    this._typeFilterElements[name] = typeFilterElement;
+    typeFilterElement.addEventListener('keydown', this._onTypeFilterKeydown.bind(this), false);
+    this._typeFilterElements.push(typeFilterElement);
   }
 
   /**
    * @param {!Event} e
    */
   _onTypeFilterClicked(e) {
-    var toggle;
-    if (Host.isMac())
+    let toggle;
+    if (Host.Platform.isMac()) {
       toggle = e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
-    else
+    } else {
       toggle = e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey;
+    }
     this._toggleTypeFilter(e.target.typeName, toggle);
+  }
+
+  /**
+   * @param {!Event} event
+   */
+  _onTypeFilterKeydown(event) {
+    const element = /** @type {?Element} */ (event.target);
+    if (!element) {
+      return;
+    }
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      if (this._keyFocusNextBit(element, true /* selectPrevious */)) {
+        event.consume(true);
+      }
+    } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      if (this._keyFocusNextBit(element, false /* selectPrevious */)) {
+        event.consume(true);
+      }
+    } else if (isEnterOrSpaceKey(event)) {
+      this._onTypeFilterClicked(event);
+    }
+  }
+
+  /**
+   * @param {!Element} target
+   * @param {boolean} selectPrevious
+   * @returns {!boolean}
+   */
+  _keyFocusNextBit(target, selectPrevious) {
+    const index = this._typeFilterElements.indexOf(target);
+    if (index === -1) {
+      return false;
+    }
+    const nextIndex = selectPrevious ? index - 1 : index + 1;
+    if (nextIndex < 0 || nextIndex >= this._typeFilterElements.length) {
+      return false;
+    }
+
+    const nextElement = this._typeFilterElements[nextIndex];
+    nextElement.tabIndex = 0;
+    target.tabIndex = -1;
+    nextElement.focus();
+    return true;
   }
 
   /**
@@ -425,47 +446,47 @@ UI.NamedBitSetFilterUI = class extends Common.Object {
    * @param {boolean} allowMultiSelect
    */
   _toggleTypeFilter(typeName, allowMultiSelect) {
-    if (allowMultiSelect && typeName !== UI.NamedBitSetFilterUI.ALL_TYPES)
-      this._allowedTypes[UI.NamedBitSetFilterUI.ALL_TYPES] = false;
-    else
+    if (allowMultiSelect && typeName !== NamedBitSetFilterUI.ALL_TYPES) {
+      this._allowedTypes[NamedBitSetFilterUI.ALL_TYPES] = false;
+    } else {
       this._allowedTypes = {};
+    }
 
     this._allowedTypes[typeName] = !this._allowedTypes[typeName];
 
-    if (this._setting)
+    if (this._setting) {
       this._setting.set(this._allowedTypes);
-    else
+    } else {
       this._update();
+    }
   }
-};
+}
 
-/** @typedef {{name: string, label: string, title: (string|undefined)}} */
-UI.NamedBitSetFilterUI.Item;
-
-UI.NamedBitSetFilterUI.ALL_TYPES = 'all';
+NamedBitSetFilterUI.ALL_TYPES = 'all';
 
 /**
- * @implements {UI.FilterUI}
+ * @implements {FilterUI}
  * @unrestricted
  */
-UI.CheckboxFilterUI = class extends Common.Object {
+export class CheckboxFilterUI extends Common.ObjectWrapper.ObjectWrapper {
   /**
    * @param {string} className
    * @param {string} title
    * @param {boolean=} activeWhenChecked
-   * @param {!Common.Setting=} setting
+   * @param {!Common.Settings.Setting=} setting
    */
   constructor(className, title, activeWhenChecked, setting) {
     super();
     this._filterElement = createElementWithClass('div', 'filter-checkbox-filter');
     this._activeWhenChecked = !!activeWhenChecked;
-    this._label = UI.CheckboxLabel.create(title);
+    this._label = CheckboxLabel.create(title);
     this._filterElement.appendChild(this._label);
     this._checkboxElement = this._label.checkboxElement;
-    if (setting)
-      UI.SettingsUI.bindCheckbox(this._checkboxElement, setting);
-    else
+    if (setting) {
+      bindCheckbox(this._checkboxElement, setting);
+    } else {
       this._checkboxElement.checked = true;
+    }
     this._checkboxElement.addEventListener('change', this._fireUpdated.bind(this), false);
   }
 
@@ -507,7 +528,7 @@ UI.CheckboxFilterUI = class extends Common.Object {
   }
 
   _fireUpdated() {
-    this.dispatchEventToListeners(UI.FilterUI.Events.FilterChanged, null);
+    this.dispatchEventToListeners(FilterUI.Events.FilterChanged, null);
   }
 
   /**
@@ -518,4 +539,7 @@ UI.CheckboxFilterUI = class extends Common.Object {
     this._label.backgroundColor = backgroundColor;
     this._label.borderColor = borderColor;
   }
-};
+}
+
+/** @typedef {{name: string, label: string, title: (string|undefined)}} */
+export let Item;

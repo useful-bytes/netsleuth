@@ -1,11 +1,25 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
 /**
  * @unrestricted
  */
-Common.Trie = class {
+export class Trie {
   constructor() {
+    /** @type {number} */
+    this._size;
+    /** @type {number} */
+    this._root = 0;
+    /** @type {!Array<!Object<string, number>>} */
+    this._edges;
+    /** @type {!Array<boolean>} */
+    this._isWord;
+    /** @type {!Array<number>} */
+    this._wordsInSubtree;
+    /** @type {!Array<number>} */
+    this._freeNodes;
+
     this.clear();
   }
 
@@ -13,20 +27,20 @@ Common.Trie = class {
    * @param {string} word
    */
   add(word) {
-    var node = this._root;
+    let node = this._root;
     ++this._wordsInSubtree[this._root];
-    for (var i = 0; i < word.length; ++i) {
-      var edge = word[i];
-      var next = this._edges[node][edge];
+    for (let i = 0; i < word.length; ++i) {
+      const edge = word[i];
+      let next = this._edges[node][edge];
       if (!next) {
         if (this._freeNodes.length) {
           // No need to reset any fields since they were properly cleaned up in remove().
-          next = this._freeNodes.pop();
+          next = /** @type {number} */ (this._freeNodes.pop());
         } else {
           next = this._size++;
           this._isWord.push(false);
           this._wordsInSubtree.push(0);
-          this._edges.push({__proto__: null});
+          this._edges.push(/** @type {?} */ ({__proto__: null}));
         }
         this._edges[node][edge] = next;
       }
@@ -41,13 +55,14 @@ Common.Trie = class {
    * @return {boolean}
    */
   remove(word) {
-    if (!this.has(word))
+    if (!this.has(word)) {
       return false;
-    var node = this._root;
+    }
+    let node = this._root;
     --this._wordsInSubtree[this._root];
-    for (var i = 0; i < word.length; ++i) {
-      var edge = word[i];
-      var next = this._edges[node][edge];
+    for (let i = 0; i < word.length; ++i) {
+      const edge = word[i];
+      const next = this._edges[node][edge];
       if (!--this._wordsInSubtree[next]) {
         delete this._edges[node][edge];
         this._freeNodes.push(next);
@@ -63,11 +78,12 @@ Common.Trie = class {
    * @return {boolean}
    */
   has(word) {
-    var node = this._root;
-    for (var i = 0; i < word.length; ++i) {
+    let node = this._root;
+    for (let i = 0; i < word.length; ++i) {
       node = this._edges[node][word[i]];
-      if (!node)
+      if (!node) {
         return false;
+      }
     }
     return this._isWord[node];
   }
@@ -78,13 +94,15 @@ Common.Trie = class {
    */
   words(prefix) {
     prefix = prefix || '';
-    var node = this._root;
-    for (var i = 0; i < prefix.length; ++i) {
+    let node = this._root;
+    for (let i = 0; i < prefix.length; ++i) {
       node = this._edges[node][prefix[i]];
-      if (!node)
+      if (!node) {
         return [];
+      }
     }
-    var results = [];
+    /** @type {!Array<string>} */
+    const results = [];
     this._dfs(node, prefix, results);
     return results;
   }
@@ -95,11 +113,13 @@ Common.Trie = class {
    * @param {!Array<string>} results
    */
   _dfs(node, prefix, results) {
-    if (this._isWord[node])
+    if (this._isWord[node]) {
       results.push(prefix);
-    var edges = this._edges[node];
-    for (var edge in edges)
+    }
+    const edges = this._edges[node];
+    for (const edge in edges) {
       this._dfs(edges[edge], prefix + edge, results);
+    }
   }
 
   /**
@@ -108,14 +128,16 @@ Common.Trie = class {
    * @return {string}
    */
   longestPrefix(word, fullWordOnly) {
-    var node = this._root;
-    var wordIndex = 0;
-    for (var i = 0; i < word.length; ++i) {
+    let node = this._root;
+    let wordIndex = 0;
+    for (let i = 0; i < word.length; ++i) {
       node = this._edges[node][word[i]];
-      if (!node)
+      if (!node) {
         break;
-      if (!fullWordOnly || this._isWord[node])
+      }
+      if (!fullWordOnly || this._isWord[node]) {
         wordIndex = i + 1;
+      }
     }
     return word.substring(0, wordIndex);
   }
@@ -124,7 +146,7 @@ Common.Trie = class {
     this._size = 1;
     this._root = 0;
     /** @type {!Array<!Object<string, number>>} */
-    this._edges = [{__proto__: null}];
+    this._edges = [/** @type {?} */ ({__proto__: null})];
     /** @type {!Array<boolean>} */
     this._isWord = [false];
     /** @type {!Array<number>} */
@@ -132,4 +154,4 @@ Common.Trie = class {
     /** @type {!Array<number>} */
     this._freeNodes = [];
   }
-};
+}

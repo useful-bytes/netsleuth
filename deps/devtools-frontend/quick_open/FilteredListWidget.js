@@ -1,15 +1,19 @@
-/*
- * Copyright (c) 2012 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file.
- */
+// Copyright 2012 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as Diff from '../diff/diff.js';
+import * as TextUtils from '../text_utils/text_utils.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
- * @implements {UI.ListDelegate}
+ * @implements {UI.ListControl.ListDelegate}
  */
-QuickOpen.FilteredListWidget = class extends UI.VBox {
+export class FilteredListWidget extends UI.Widget.VBox {
   /**
-   * @param {?QuickOpen.FilteredListWidget.Provider} provider
+   * @param {?Provider} provider
    * @param {!Array<string>=} promptHistory
    * @param {function(string)=} queryChangedCallback
    */
@@ -19,14 +23,16 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
 
     this.contentElement.classList.add('filtered-list-widget');
     this.contentElement.addEventListener('keydown', this._onKeyDown.bind(this), true);
+    UI.ARIAUtils.markAsCombobox(this.contentElement);
     this.registerRequiredCSS('quick_open/filteredListWidget.css');
 
     this._promptElement = this.contentElement.createChild('div', 'filtered-list-widget-input');
+    UI.ARIAUtils.setAccessibleName(this._promptElement, ls`Quick open prompt`);
     this._promptElement.setAttribute('spellcheck', 'false');
     this._promptElement.setAttribute('contenteditable', 'plaintext-only');
-    this._prompt = new UI.TextPrompt();
+    this._prompt = new UI.TextPrompt.TextPrompt();
     this._prompt.initialize(() => Promise.resolve([]));
-    var promptProxy = this._prompt.attach(this._promptElement);
+    const promptProxy = this._prompt.attach(this._promptElement);
     promptProxy.addEventListener('input', this._onInput.bind(this), false);
     promptProxy.classList.add('filtered-list-widget-prompt-element');
 
@@ -34,14 +40,17 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
     this._progressElement = this._bottomElementsContainer.createChild('div', 'filtered-list-widget-progress');
     this._progressBarElement = this._progressElement.createChild('div', 'filtered-list-widget-progress-bar');
 
-    /** @type {!UI.ListModel<number>} */
-    this._items = new UI.ListModel();
-    /** @type {!UI.ListControl<number>} */
-    this._list = new UI.ListControl(this._items, this, UI.ListMode.EqualHeightItems);
+    /** @type {!UI.ListModel.ListModel<number>} */
+    this._items = new UI.ListModel.ListModel();
+    /** @type {!UI.ListControl.ListControl<number>} */
+    this._list = new UI.ListControl.ListControl(this._items, this, UI.ListControl.ListMode.EqualHeightItems);
     this._itemElementsContainer = this._list.element;
     this._itemElementsContainer.classList.add('container');
     this._bottomElementsContainer.appendChild(this._itemElementsContainer);
     this._itemElementsContainer.addEventListener('click', this._onClick.bind(this), false);
+    UI.ARIAUtils.markAsListBox(this._itemElementsContainer);
+    UI.ARIAUtils.setControls(this._promptElement, this._itemElementsContainer);
+    UI.ARIAUtils.setAutocomplete(this._promptElement, UI.ARIAUtils.AutocompleteInteractionModel.list);
 
     this._notFoundElement = this._bottomElementsContainer.createChild('div', 'not-found-text');
     this._notFoundElement.classList.add('hidden');
@@ -54,59 +63,44 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
   }
 
   /**
-   * @param {string} query
-   * @return {!RegExp}
-   */
-  static filterRegex(query) {
-    const toEscape = String.regexSpecialCharacters();
-    var regexString = '';
-    for (var i = 0; i < query.length; ++i) {
-      var c = query.charAt(i);
-      if (toEscape.indexOf(c) !== -1)
-        c = '\\' + c;
-      if (i)
-        regexString += '[^\\0' + c + ']*';
-      regexString += c;
-    }
-    return new RegExp(regexString, 'i');
-  }
-
-  /**
    * @param {!Element} element
    * @param {string} query
    * @param {boolean=} caseInsensitive
    * @return {boolean}
    */
   static highlightRanges(element, query, caseInsensitive) {
-    if (!query)
+    if (!query) {
       return false;
+    }
 
     /**
      * @param {string} text
      * @param {string} query
-     * @return {?Array.<!TextUtils.SourceRange>}
+     * @return {?Array.<!TextUtils.TextRange.SourceRange>}
      */
     function rangesForMatch(text, query) {
-      var opcodes = Diff.Diff.charDiff(query, text);
-      var offset = 0;
-      var ranges = [];
-      for (var i = 0; i < opcodes.length; ++i) {
-        var opcode = opcodes[i];
-        if (opcode[0] === Diff.Diff.Operation.Equal)
-          ranges.push(new TextUtils.SourceRange(offset, opcode[1].length));
-        else if (opcode[0] !== Diff.Diff.Operation.Insert)
+      const opcodes = Diff.Diff.DiffWrapper.charDiff(query, text);
+      let offset = 0;
+      const ranges = [];
+      for (let i = 0; i < opcodes.length; ++i) {
+        const opcode = opcodes[i];
+        if (opcode[0] === Diff.Diff.Operation.Equal) {
+          ranges.push(new TextUtils.TextRange.SourceRange(offset, opcode[1].length));
+        } else if (opcode[0] !== Diff.Diff.Operation.Insert) {
           return null;
+        }
         offset += opcode[1].length;
       }
       return ranges;
     }
 
-    var text = element.textContent;
-    var ranges = rangesForMatch(text, query);
-    if (!ranges || caseInsensitive)
+    const text = element.textContent;
+    let ranges = rangesForMatch(text, query);
+    if (!ranges || caseInsensitive) {
       ranges = rangesForMatch(text.toUpperCase(), query.toUpperCase());
+    }
     if (ranges) {
-      UI.highlightRangesWithStyleClass(element, ranges, 'highlight');
+      UI.UIUtils.highlightRangesWithStyleClass(element, ranges, 'highlight');
       return true;
     }
     return false;
@@ -114,17 +108,20 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
 
   /**
    * @param {string} placeholder
+   * @param {string=} ariaPlaceholder
    */
-  setPlaceholder(placeholder) {
-    this._prompt.setPlaceholder(placeholder);
+  setPlaceholder(placeholder, ariaPlaceholder) {
+    this._prompt.setPlaceholder(placeholder, ariaPlaceholder);
   }
 
   showAsDialog() {
-    this._dialog = new UI.Dialog();
-    this._dialog.setMaxContentSize(new UI.Size(504, 340));
+    this._dialog = new UI.Dialog.Dialog();
+    UI.ARIAUtils.setAccessibleName(this._dialog.contentElement, ls`Quick open`);
+    this._dialog.setMaxContentSize(new UI.Geometry.Size(504, 340));
     this._dialog.setSizeBehavior(UI.GlassPane.SizeBehavior.SetExactWidthMaxHeight);
     this._dialog.setContentPosition(null, 22);
     this.show(this._dialog.contentElement);
+    UI.ARIAUtils.setExpanded(this.contentElement, true);
     this._dialog.show();
   }
 
@@ -136,19 +133,22 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
   }
 
   /**
-   * @param {?QuickOpen.FilteredListWidget.Provider} provider
+   * @param {?Provider} provider
    */
   setProvider(provider) {
-    if (provider === this._provider)
+    if (provider === this._provider) {
       return;
+    }
 
-    if (this._provider)
+    if (this._provider) {
       this._provider.detach();
+    }
     this._clearTimers();
 
     this._provider = provider;
-    if (this.isShowing())
+    if (this.isShowing()) {
       this._attachProvider();
+    }
   }
 
   _attachProvider() {
@@ -183,9 +183,11 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
    * @override
    */
   willHide() {
-    if (this._provider)
+    if (this._provider) {
       this._provider.detach();
+    }
     this._clearTimers();
+    UI.ARIAUtils.setExpanded(this.contentElement, false);
   }
 
   _clearTimers() {
@@ -202,22 +204,24 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
    * @param {!Event} event
    */
   _onEnter(event) {
-    event.preventDefault();
-    if (!this._provider)
+    if (!this._provider) {
       return;
-    var selectedIndexInProvider = this._provider.itemCount() ? this._list.selectedItem() : null;
+    }
+    const selectedIndexInProvider = this._provider.itemCount() ? this._list.selectedItem() : null;
 
     this._selectItem(selectedIndexInProvider);
-    if (this._dialog)
+    if (this._dialog) {
       this._dialog.hide();
+    }
   }
 
   /**
-   * @param {?QuickOpen.FilteredListWidget.Provider} provider
+   * @param {?Provider} provider
    */
   _itemsLoaded(provider) {
-    if (this._loadTimeout || provider !== this._provider)
+    if (this._loadTimeout || provider !== this._provider) {
       return;
+    }
     this._loadTimeout = setTimeout(this._updateAfterItemsLoaded.bind(this), 0);
   }
 
@@ -232,12 +236,13 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
    * @return {!Element}
    */
   createElementForItem(item) {
-    var itemElement = createElement('div');
+    const itemElement = createElement('div');
     itemElement.className = 'filtered-list-widget-item ' + (this._provider.renderAsTwoRows() ? 'two-rows' : 'one-row');
-    var titleElement = itemElement.createChild('div', 'filtered-list-widget-title');
-    var subtitleElement = itemElement.createChild('div', 'filtered-list-widget-subtitle');
+    const titleElement = itemElement.createChild('div', 'filtered-list-widget-title');
+    const subtitleElement = itemElement.createChild('div', 'filtered-list-widget-subtitle');
     subtitleElement.textContent = '\u200B';
     this._provider.renderItem(item, this._cleanValue(), titleElement, subtitleElement);
+    UI.ARIAUtils.markAsOption(itemElement);
     return itemElement;
   }
 
@@ -268,30 +273,36 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
    * @param {?Element} toElement
    */
   selectedItemChanged(from, to, fromElement, toElement) {
-    if (fromElement)
+    if (fromElement) {
       fromElement.classList.remove('selected');
-    if (toElement)
+    }
+    if (toElement) {
       toElement.classList.add('selected');
+    }
+    UI.ARIAUtils.setActiveDescendant(this._promptElement, toElement);
   }
 
   /**
    * @param {!Event} event
    */
   _onClick(event) {
-    var item = this._list.itemForNode(/** @type {?Node} */ (event.target));
-    if (item === null)
+    const item = this._list.itemForNode(/** @type {?Node} */ (event.target));
+    if (item === null) {
       return;
+    }
 
     event.consume(true);
     this._selectItem(item);
-    if (this._dialog)
+    if (this._dialog) {
       this._dialog.hide();
+    }
   }
 
   /**
    * @param {string} query
    */
   setQuery(query) {
+    this._prompt.focus();
     this._prompt.setText(query);
     this._queryChanged();
     this._prompt.autoCompleteSoon(true);
@@ -302,16 +313,18 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
    * @return {boolean}
    */
   _tabKeyPressed() {
-    var userEnteredText = this._prompt.text();
-    var completion;
-    for (var i = this._promptHistory.length - 1; i >= 0; i--) {
+    const userEnteredText = this._prompt.text();
+    let completion;
+    for (let i = this._promptHistory.length - 1; i >= 0; i--) {
       if (this._promptHistory[i] !== userEnteredText && this._promptHistory[i].startsWith(userEnteredText)) {
         completion = this._promptHistory[i];
         break;
       }
     }
-    if (!completion)
+    if (!completion) {
       return false;
+    }
+    this._prompt.focus();
     this._prompt.setText(completion);
     this._prompt.setDOMSelection(userEnteredText.length, completion.length);
     this._scheduleFilter();
@@ -328,8 +341,9 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
       clearTimeout(this._scoringTimer);
       delete this._scoringTimer;
 
-      if (this._refreshListWithCurrentResult)
+      if (this._refreshListWithCurrentResult) {
         this._refreshListWithCurrentResult();
+      }
     }
 
     if (!this._provider) {
@@ -344,21 +358,21 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
     this._progressBarElement.classList.remove('filtered-widget-progress-fade');
     this._progressBarElement.classList.remove('hidden');
 
-    var query = this._provider.rewriteQuery(this._cleanValue());
+    const query = this._provider.rewriteQuery(this._cleanValue());
     this._query = query;
 
-    var filterRegex = query ? QuickOpen.FilteredListWidget.filterRegex(query) : null;
+    const filterRegex = query ? String.filterRegex(query) : null;
 
-    var filteredItems = [];
+    const filteredItems = [];
 
-    var bestScores = [];
-    var bestItems = [];
-    var bestItemsToCollect = 100;
-    var minBestScore = 0;
-    var overflowItems = [];
-    var scoreStartTime = window.performance.now();
+    const bestScores = [];
+    const bestItems = [];
+    const bestItemsToCollect = 100;
+    let minBestScore = 0;
+    const overflowItems = [];
+    const scoreStartTime = window.performance.now();
 
-    var maxWorkItems = Number.constrain(10, 500, (this._provider.itemCount() / 10) | 0);
+    const maxWorkItems = Number.constrain(10, 500, (this._provider.itemCount() / 10) | 0);
 
     scoreItems.call(this, 0);
 
@@ -373,25 +387,28 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
 
     /**
      * @param {number} fromIndex
-     * @this {QuickOpen.FilteredListWidget}
+     * @this {FilteredListWidget}
      */
     function scoreItems(fromIndex) {
       delete this._scoringTimer;
-      var workDone = 0;
+      let workDone = 0;
+      let i;
 
-      for (var i = fromIndex; i < this._provider.itemCount() && workDone < maxWorkItems; ++i) {
+      for (i = fromIndex; i < this._provider.itemCount() && workDone < maxWorkItems; ++i) {
         // Filter out non-matching items quickly.
-        if (filterRegex && !filterRegex.test(this._provider.itemKeyAt(i)))
+        if (filterRegex && !filterRegex.test(this._provider.itemKeyAt(i))) {
           continue;
+        }
 
         // Score item.
-        var score = this._provider.itemScoreAt(i, query);
-        if (query)
+        const score = this._provider.itemScoreAt(i, query);
+        if (query) {
           workDone++;
+        }
 
         // Find its index in the scores array (earlier elements have bigger scores).
         if (score > minBestScore || bestScores.length < bestItemsToCollect) {
-          var index = bestScores.upperBound(score, compareIntegers);
+          const index = bestScores.upperBound(score, compareIntegers);
           bestScores.splice(index, 0, score);
           bestItems.splice(index, 0, i);
           if (bestScores.length > bestItemsToCollect) {
@@ -411,8 +428,9 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
       // Process everything in chunks.
       if (i < this._provider.itemCount()) {
         this._scoringTimer = setTimeout(scoreItems.bind(this, i), 0);
-        if (window.performance.now() - scoreStartTime > 50)
+        if (window.performance.now() - scoreStartTime > 50) {
           this._progressBarElement.style.transform = 'scaleX(' + i / this._provider.itemCount() + ')';
+        }
         return;
       }
       if (window.performance.now() - scoreStartTime > 100) {
@@ -434,12 +452,14 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
     delete this._refreshListWithCurrentResult;
     filteredItems = [].concat(bestItems, overflowItems, filteredItems);
     this._updateNotFoundMessage(!!filteredItems.length);
-    var oldHeight = this._list.element.offsetHeight;
+    const oldHeight = this._list.element.offsetHeight;
     this._items.replaceAll(filteredItems);
-    if (filteredItems.length)
+    if (filteredItems.length) {
       this._list.selectItem(filteredItems[0]);
-    if (this._list.element.offsetHeight !== oldHeight)
+    }
+    if (this._list.element.offsetHeight !== oldHeight) {
       this._list.viewportResized();
+    }
     this._itemsFilteredForTest();
   }
 
@@ -449,8 +469,10 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
   _updateNotFoundMessage(hasItems) {
     this._list.element.classList.toggle('hidden', !hasItems);
     this._notFoundElement.classList.toggle('hidden', hasItems);
-    if (!hasItems)
+    if (!hasItems) {
       this._notFoundElement.textContent = this._provider.notFoundText(this._cleanValue());
+      UI.ARIAUtils.alert(this._notFoundElement.textContent, this._notFoundElement);
+    }
   }
 
   _onInput() {
@@ -459,17 +481,29 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
   }
 
   _queryChanged() {
-    if (this._queryChangedCallback)
+    if (this._queryChangedCallback) {
       this._queryChangedCallback(this._value());
-    if (this._provider)
+    }
+    if (this._provider) {
       this._provider.queryChanged(this._cleanValue());
+    }
+  }
+
+  /**
+   * @override
+   * @param {?Element} fromElement
+   * @param {?Element} toElement
+   * @return {boolean}
+   */
+  updateSelectedItemARIA(fromElement, toElement) {
+    return false;
   }
 
   /**
    * @param {!Event} event
    */
   _onKeyDown(event) {
-    var handled = false;
+    let handled = false;
     switch (event.key) {
       case 'Enter':
         this._onEnter(event);
@@ -490,13 +524,15 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
         handled = this._list.selectItemNextPage(false);
         break;
     }
-    if (handled)
+    if (handled) {
       event.consume(true);
+    }
   }
 
   _scheduleFilter() {
-    if (this._filterTimer)
+    if (this._filterTimer) {
       return;
+    }
     this._filterTimer = setTimeout(this._filterItems.bind(this), 0);
   }
 
@@ -505,17 +541,18 @@ QuickOpen.FilteredListWidget = class extends UI.VBox {
    */
   _selectItem(itemIndex) {
     this._promptHistory.push(this._value());
-    if (this._promptHistory.length > 100)
+    if (this._promptHistory.length > 100) {
       this._promptHistory.shift();
+    }
     this._provider.selectItem(itemIndex, this._cleanValue());
   }
-};
+}
 
 
 /**
  * @unrestricted
  */
-QuickOpen.FilteredListWidget.Provider = class {
+export class Provider {
   /**
    * @param {function():void} refreshCallback
    */
@@ -596,9 +633,9 @@ QuickOpen.FilteredListWidget.Provider = class {
    * @return {string}
    */
   notFoundText(query) {
-    return Common.UIString('No results found');
+    return Common.UIString.UIString('No results found');
   }
 
   detach() {
   }
-};
+}

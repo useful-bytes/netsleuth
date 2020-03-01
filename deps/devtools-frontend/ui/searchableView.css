@@ -5,7 +5,7 @@
  */
 
 .search-bar {
-    flex: 0 0 29px;
+    flex: 0 0 31px;
     background-color: #eee;
     border-top: 1px solid #ccc;
     display: flex;
@@ -14,7 +14,7 @@
 }
 
 .search-bar.replaceable {
-    flex: 0 0 55px;
+    flex: 0 0 57px;
 }
 
 .search-replace {
@@ -29,19 +29,13 @@
     outline: none;
 }
 
-.toolbar-replace-checkbox {
-    margin-top: 4px;
-    margin-right: 2px;
-    display: block;
-}
-
 .toolbar-search {
     display: flex;
     width: 100%;
 }
 
 .toolbar-search > div {
-    margin: 0px 2px;
+    margin: 2px 2px;
     flex-shrink: 0;
 }
 
@@ -81,7 +75,8 @@
 }
 
 .toolbar-search-buttons {
-    flex-basis: 182px;
+    display: flex;
+    flex-direction: column;
 }
 
 .toolbar-replace-control,
@@ -131,4 +126,17 @@
     padding: 0 4px;
     color: rgb(165, 165, 165);
     align-self: center;
+}
+
+.first-row-buttons {
+    display: flex;
+    justify-content: space-between;
+}
+
+.toolbar-search > .replace-toggle-toolbar {
+    margin: 2px -2px 0 0;
+}
+
+.toolbar-search-options {
+    margin: 0 auto;
 }

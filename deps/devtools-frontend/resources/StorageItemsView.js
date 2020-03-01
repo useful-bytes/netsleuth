@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-Resources.StorageItemsView = class extends UI.VBox {
+import * as Common from '../common/common.js';
+import * as UI from '../ui/ui.js';
+
+export class StorageItemsView extends UI.Widget.VBox {
   /**
    * @param {string} title
    * @param {string} filterName
@@ -12,49 +15,51 @@ Resources.StorageItemsView = class extends UI.VBox {
     /** @type {?RegExp} */
     this._filterRegex = null;
 
-    this._deleteAllButton = this._addButton(Common.UIString('Clear All'), 'largeicon-clear', this.deleteAllItems);
+    this._refreshButton = this._addButton(Common.UIString.UIString('Refresh'), 'largeicon-refresh', this.refreshItems);
+
+    this._mainToolbar = new UI.Toolbar.Toolbar('top-resources-toolbar', this.element);
+
+    this._filterItem = new UI.Toolbar.ToolbarInput(Common.UIString.UIString('Filter'), '', 0.4);
+    this._filterItem.addEventListener(UI.Toolbar.ToolbarInput.Event.TextChanged, this._filterChanged, this);
+
+    const toolbarSeparator = new UI.Toolbar.ToolbarSeparator();
+    this._deleteAllButton =
+        this._addButton(Common.UIString.UIString('Clear All'), 'largeicon-clear', this.deleteAllItems);
     this._deleteSelectedButton =
-        this._addButton(Common.UIString('Delete Selected'), 'largeicon-delete', this.deleteSelectedItem);
-    this._refreshButton = this._addButton(Common.UIString('Refresh'), 'largeicon-refresh', this.refreshItems);
+        this._addButton(Common.UIString.UIString('Delete Selected'), 'largeicon-delete', this.deleteSelectedItem);
 
-    this._mainToolbar = new UI.Toolbar('top-resources-toolbar', this.element);
-
-    this._filterItem = new UI.ToolbarInput(Common.UIString('Filter'), 0.4, undefined, true);
-    this._filterItem.addEventListener(UI.ToolbarInput.Event.TextChanged, this._filterChanged, this);
-
-    var toolbarItems = [this._refreshButton, this._deleteAllButton, this._deleteSelectedButton, this._filterItem];
-    for (var item of toolbarItems)
+    const toolbarItems =
+        [this._refreshButton, this._filterItem, toolbarSeparator, this._deleteAllButton, this._deleteSelectedButton];
+    for (const item of toolbarItems) {
       this._mainToolbar.appendToolbarItem(item);
+    }
+  }
 
-    this.element.addEventListener('contextmenu', this._showContextMenu.bind(this), true);
+
+  /**
+   * @param {!UI.Toolbar.ToolbarItem} item
+   */
+  appendToolbarItem(item) {
+    this._mainToolbar.appendToolbarItem(item);
   }
 
   /**
    * @param {string} label
    * @param {string} glyph
    * @param {!Function} callback
-   * @return {!UI.ToolbarButton}
+   * @return {!UI.Toolbar.ToolbarButton}
    */
   _addButton(label, glyph, callback) {
-    var button = new UI.ToolbarButton(label, glyph);
-    button.addEventListener(UI.ToolbarButton.Events.Click, callback, this);
+    const button = new UI.Toolbar.ToolbarButton(label, glyph);
+    button.addEventListener(UI.Toolbar.ToolbarButton.Events.Click, callback, this);
     return button;
   }
 
   /**
-   * @param {!Event} event
-   */
-  _showContextMenu(event) {
-    var contextMenu = new UI.ContextMenu(event);
-    contextMenu.appendItem(Common.UIString('Refresh'), this.refreshItems.bind(this));
-    contextMenu.show();
-  }
-
-  /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _filterChanged(event) {
-    var text = /** @type {?string} */ (event.data);
+    const text = /** @type {?string} */ (event.data);
     this._filterRegex = text ? new RegExp(text.escapeForRegExp(), 'i') : null;
     this.refreshItems();
   }
@@ -66,8 +71,9 @@ Resources.StorageItemsView = class extends UI.VBox {
    * @protected
    */
   filter(items, keyFunction) {
-    if (!this._filterRegex)
+    if (!this._filterRegex) {
       return items;
+    }
     return items.filter(item => this._filterRegex.test(keyFunction(item)));
   }
 
@@ -118,4 +124,4 @@ Resources.StorageItemsView = class extends UI.VBox {
 
   refreshItems() {
   }
-};
+}

@@ -1,10 +1,13 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+
 /**
  * @unrestricted
  */
-UI.ZoomManager = class extends Common.Object {
+export class ZoomManager extends Common.ObjectWrapper.ObjectWrapper {
   /**
    * @param {!Window} window
    * @param {!InspectorFrontendHostAPI} frontendHost
@@ -40,19 +43,15 @@ UI.ZoomManager = class extends Common.Object {
   }
 
   _onWindowResize() {
-    var oldZoomFactor = this._zoomFactor;
+    const oldZoomFactor = this._zoomFactor;
     this._zoomFactor = this._frontendHost.zoomFactor();
-    if (oldZoomFactor !== this._zoomFactor)
-      this.dispatchEventToListeners(UI.ZoomManager.Events.ZoomChanged, {from: oldZoomFactor, to: this._zoomFactor});
+    if (oldZoomFactor !== this._zoomFactor) {
+      this.dispatchEventToListeners(Events.ZoomChanged, {from: oldZoomFactor, to: this._zoomFactor});
+    }
   }
-};
+}
 
 /** @enum {symbol} */
-UI.ZoomManager.Events = {
+export const Events = {
   ZoomChanged: Symbol('ZoomChanged')
 };
-
-/**
- * @type {!UI.ZoomManager}
- */
-UI.zoomManager;

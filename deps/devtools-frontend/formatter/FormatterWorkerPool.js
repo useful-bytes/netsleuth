@@ -1,47 +1,55 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+
+const MaxWorkers = 2;
+
 /**
  * @unrestricted
  */
-Formatter.FormatterWorkerPool = class {
+export class FormatterWorkerPool {
   constructor() {
     this._taskQueue = [];
-    /** @type {!Map<!Common.Worker, ?Formatter.FormatterWorkerPool.Task>} */
+    /** @type {!Map<!Common.Worker.WorkerWrapper, ?Task>} */
     this._workerTasks = new Map();
   }
 
   /**
-   * @return {!Common.Worker}
+   * @return {!Common.Worker.WorkerWrapper}
    */
   _createWorker() {
-    var worker = new Common.Worker('formatter_worker');
+    const worker = new Common.Worker.WorkerWrapper('formatter_worker_entrypoint');
     worker.onmessage = this._onWorkerMessage.bind(this, worker);
     worker.onerror = this._onWorkerError.bind(this, worker);
     return worker;
   }
 
   _processNextTask() {
-    if (!this._taskQueue.length)
+    if (!this._taskQueue.length) {
       return;
+    }
 
-    var freeWorker = this._workerTasks.keysArray().find(worker => !this._workerTasks.get(worker));
-    if (!freeWorker && this._workerTasks.size < Formatter.FormatterWorkerPool.MaxWorkers)
+    let freeWorker = [...this._workerTasks.keys()].find(worker => !this._workerTasks.get(worker));
+    if (!freeWorker && this._workerTasks.size < MaxWorkers) {
       freeWorker = this._createWorker();
-    if (!freeWorker)
+    }
+    if (!freeWorker) {
       return;
+    }
 
-    var task = this._taskQueue.shift();
+    const task = this._taskQueue.shift();
     this._workerTasks.set(freeWorker, task);
     freeWorker.postMessage({method: task.method, params: task.params});
   }
 
   /**
-   * @param {!Common.Worker} worker
+   * @param {!Common.Worker.WorkerWrapper} worker
    * @param {!MessageEvent} event
    */
   _onWorkerMessage(worker, event) {
-    var task = this._workerTasks.get(worker);
+    const task = this._workerTasks.get(worker);
     if (task.isChunked && event.data && !event.data['isLastChunk']) {
       task.callback(event.data);
       return;
@@ -53,16 +61,16 @@ Formatter.FormatterWorkerPool = class {
   }
 
   /**
-   * @param {!Common.Worker} worker
+   * @param {!Common.Worker.WorkerWrapper} worker
    * @param {!Event} event
    */
   _onWorkerError(worker, event) {
     console.error(event);
-    var task = this._workerTasks.get(worker);
+    const task = this._workerTasks.get(worker);
     worker.terminate();
     this._workerTasks.delete(worker);
 
-    var newWorker = this._createWorker();
+    const newWorker = this._createWorker();
     this._workerTasks.set(newWorker, null);
     this._processNextTask();
     task.callback(null);
@@ -74,7 +82,7 @@ Formatter.FormatterWorkerPool = class {
    * @param {function(boolean, *)} callback
    */
   _runChunkedTask(methodName, params, callback) {
-    var task = new Formatter.FormatterWorkerPool.Task(methodName, params, onData, true);
+    const task = new Task(methodName, params, onData, true);
     this._taskQueue.push(task);
     this._processNextTask();
 
@@ -86,8 +94,8 @@ Formatter.FormatterWorkerPool = class {
         callback(true, null);
         return;
       }
-      var isLastChunk = !!data['isLastChunk'];
-      var chunk = data['chunk'];
+      const isLastChunk = !!data['isLastChunk'];
+      const chunk = data['chunk'];
       callback(isLastChunk, chunk);
     }
   }
@@ -98,9 +106,9 @@ Formatter.FormatterWorkerPool = class {
    * @return {!Promise<*>}
    */
   _runTask(methodName, params) {
-    var callback;
-    var promise = new Promise(fulfill => callback = fulfill);
-    var task = new Formatter.FormatterWorkerPool.Task(methodName, params, callback, false);
+    let callback;
+    const promise = new Promise(fulfill => callback = fulfill);
+    const task = new Task(methodName, params, callback, false);
     this._taskQueue.push(task);
     this._processNextTask();
     return promise;
@@ -116,7 +124,7 @@ Formatter.FormatterWorkerPool = class {
 
   /**
    * @param {string} content
-   * @return {!Promise<!Array<!Formatter.FormatterWorkerPool.SCSSRule>>}
+   * @return {!Promise<!Array<!SCSSRule>>}
    */
   parseSCSS(content) {
     return this._runTask('parseSCSS', {content: content}).then(rules => rules || []);
@@ -126,11 +134,11 @@ Formatter.FormatterWorkerPool = class {
    * @param {string} mimeType
    * @param {string} content
    * @param {string} indentString
-   * @return {!Promise<!Formatter.FormatterWorkerPool.FormatResult>}
+   * @return {!Promise<!FormatResult>}
    */
   format(mimeType, content, indentString) {
-    var parameters = {mimeType: mimeType, content: content, indentString: indentString};
-    return /** @type {!Promise<!Formatter.FormatterWorkerPool.FormatResult>} */ (this._runTask('format', parameters));
+    const parameters = {mimeType: mimeType, content: content, indentString: indentString};
+    return /** @type {!Promise<!FormatResult>} */ (this._runTask('format', parameters));
   }
 
   /**
@@ -161,14 +169,14 @@ Formatter.FormatterWorkerPool = class {
      * @param {*} data
      */
     function onDataChunk(isLastChunk, data) {
-      var rules = /** @type {!Array<!Formatter.FormatterWorkerPool.CSSRule>} */ (data || []);
+      const rules = /** @type {!Array<!Formatter.FormatterWorkerPool.CSSRule>} */ (data || []);
       callback(isLastChunk, rules);
     }
   }
 
   /**
    * @param {string} content
-   * @param {function(boolean, !Array<!Formatter.FormatterWorkerPool.JSOutlineItem>)} callback
+   * @param {function(boolean, !Array<!JSOutlineItem>)} callback
    */
   javaScriptOutline(content, callback) {
     this._runChunkedTask('javaScriptOutline', {content: content}, onDataChunk);
@@ -178,7 +186,7 @@ Formatter.FormatterWorkerPool = class {
      * @param {*} data
      */
     function onDataChunk(isLastChunk, data) {
-      var items = /** @type {!Array.<!Formatter.FormatterWorkerPool.JSOutlineItem>} */ (data || []);
+      const items = /** @type {!Array.<!JSOutlineItem>} */ (data || []);
       callback(isLastChunk, items);
     }
   }
@@ -203,7 +211,7 @@ Formatter.FormatterWorkerPool = class {
 
     /**
      * @param {boolean} isLastChunk
-     * @param {!Array<!Formatter.FormatterWorkerPool.JSOutlineItem>} items
+     * @param {!Array<!JSOutlineItem>} items
      */
     function javaScriptCallback(isLastChunk, items) {
       callback(
@@ -222,14 +230,38 @@ Formatter.FormatterWorkerPool = class {
               rule => ({line: rule.lineNumber, column: rule.columnNumber, title: rule.selectorText || rule.atRule})));
     }
   }
-};
 
-Formatter.FormatterWorkerPool.MaxWorkers = 2;
+  /**
+   * @param {string} content
+   * @return {!Promise<?{baseExpression: string, possibleSideEffects:boolean}>}
+   */
+  findLastExpression(content) {
+    return /** @type {!Promise<?{baseExpression: string, possibleSideEffects:boolean}>} */ (
+        this._runTask('findLastExpression', {content}));
+  }
+
+  /**
+   * @param {string} content
+   * @return {!Promise<?{baseExpression: string, possibleSideEffects:boolean, receiver: string, argumentIndex: number, functionName: string}>}
+   */
+  findLastFunctionCall(content) {
+    return /** @type {!Promise<?{baseExpression: string, possibleSideEffects:boolean, receiver: string, argumentIndex: number, functionName: string}>} */ (
+        this._runTask('findLastFunctionCall', {content}));
+  }
+
+  /**
+   * @param {string} content
+   * @return {!Promise<!Array<string>>}
+   */
+  argumentsList(content) {
+    return /** @type {!Promise<!Array<string>>} */ (this._runTask('argumentsList', {content}));
+  }
+}
 
 /**
  * @unrestricted
  */
-Formatter.FormatterWorkerPool.Task = class {
+class Task {
   /**
    * @param {string} method
    * @param {!Object<string, string>} params
@@ -242,24 +274,19 @@ Formatter.FormatterWorkerPool.Task = class {
     this.callback = callback;
     this.isChunked = isChunked;
   }
-};
+}
 
-Formatter.FormatterWorkerPool.FormatResult = class {
+export class FormatResult {
   constructor() {
     /** @type {string} */
     this.content;
     /** @type {!Formatter.FormatterWorkerPool.FormatMapping} */
     this.mapping;
   }
-};
+}
 
-/** @typedef {{original: !Array<number>, formatted: !Array<number>}} */
-Formatter.FormatterWorkerPool.FormatMapping;
-
-/** @typedef {{line: number, column: number, title: string, subtitle: (string|undefined) }} */
-Formatter.FormatterWorkerPool.OutlineItem;
-
-Formatter.FormatterWorkerPool.JSOutlineItem = class {
+// eslint-disable-next-line no-unused-vars
+class JSOutlineItem {
   constructor() {
     /** @type {string} */
     this.name;
@@ -270,14 +297,10 @@ Formatter.FormatterWorkerPool.JSOutlineItem = class {
     /** @type {number} */
     this.column;
   }
-};
+}
 
-/**
- * @typedef {{startLine: number, startColumn: number, endLine: number, endColumn: number}}
- */
-Formatter.FormatterWorkerPool.TextRange;
-
-Formatter.FormatterWorkerPool.CSSProperty = class {
+// eslint-disable-next-line no-unused-vars
+class CSSProperty {
   constructor() {
     /** @type {string} */
     this.name;
@@ -292,9 +315,10 @@ Formatter.FormatterWorkerPool.CSSProperty = class {
     /** @type {(boolean|undefined)} */
     this.disabled;
   }
-};
+}
 
-Formatter.FormatterWorkerPool.CSSStyleRule = class {
+// eslint-disable-next-line no-unused-vars
+class CSSStyleRule {
   constructor() {
     /** @type {string} */
     this.selectorText;
@@ -304,22 +328,13 @@ Formatter.FormatterWorkerPool.CSSStyleRule = class {
     this.lineNumber;
     /** @type {number} */
     this.columnNumber;
-    /** @type {!Array.<!Formatter.FormatterWorkerPool.CSSProperty>} */
+    /** @type {!Array.<!CSSProperty>} */
     this.properties;
   }
-};
+}
 
-/**
- * @typedef {{atRule: string, lineNumber: number, columnNumber: number}}
- */
-Formatter.FormatterWorkerPool.CSSAtRule;
-
-/**
- * @typedef {(Formatter.FormatterWorkerPool.CSSStyleRule|Formatter.FormatterWorkerPool.CSSAtRule)}
- */
-Formatter.FormatterWorkerPool.CSSRule;
-
-Formatter.FormatterWorkerPool.SCSSProperty = class {
+// eslint-disable-next-line no-unused-vars
+class SCSSProperty {
   constructor() {
     /** @type {!Formatter.FormatterWorkerPool.TextRange} */
     this.range;
@@ -330,24 +345,29 @@ Formatter.FormatterWorkerPool.SCSSProperty = class {
     /** @type {boolean} */
     this.disabled;
   }
-};
+}
 
-Formatter.FormatterWorkerPool.SCSSRule = class {
+// eslint-disable-next-line no-unused-vars
+class SCSSRule {
   constructor() {
     /** @type {!Array<!Formatter.FormatterWorkerPool.TextRange>} */
     this.selectors;
-    /** @type {!Array<!Formatter.FormatterWorkerPool.SCSSProperty>} */
+    /** @type {!Array<!SCSSProperty>} */
     this.properties;
     /** @type {!Formatter.FormatterWorkerPool.TextRange} */
     this.styleRange;
   }
-};
+}
 
 /**
- * @return {!Formatter.FormatterWorkerPool}
+ * @return {!FormatterWorkerPool}
  */
-Formatter.formatterWorkerPool = function() {
-  if (!Formatter._formatterWorkerPool)
-    Formatter._formatterWorkerPool = new Formatter.FormatterWorkerPool();
+export function formatterWorkerPool() {
+  if (!Formatter._formatterWorkerPool) {
+    Formatter._formatterWorkerPool = new FormatterWorkerPool();
+  }
   return Formatter._formatterWorkerPool;
-};
+}
+
+/** @typedef {{line: number, column: number, title: string, subtitle: (string|undefined) }} */
+export let OutlineItem;

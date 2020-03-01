@@ -15,19 +15,20 @@
                 "Workspace.UILocation",
                 "SDK.RemoteObject",
                 "SDK.NetworkRequest",
-                "SourceFrame.UISourceCodeFrame"
+                "Sources.UISourceCodeFrame"
             ],
             "className": "Sources.SourcesPanel"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "category": "Debugger",
             "actionId": "debugger.toggle-pause",
             "iconClass": "largeicon-pause",
+            "toggleable": true,
             "toggledIconClass": "largeicon-resume",
             "className": "Sources.SourcesPanel.RevealingActionDelegate",
             "contextTypes": [
-                "Sources.SourcesPanel",
+                "Sources.SourcesView",
                 "UI.ShortcutRegistry.ForwardedShortcut"
             ],
             "options": [
@@ -52,13 +53,14 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
+            "category": "Debugger",
             "actionId": "debugger.step-over",
             "className": "Sources.SourcesPanel.DebuggingActionDelegate",
             "title": "Step over next function call",
             "iconClass": "largeicon-step-over",
             "contextTypes": [
-                "Sources.SourcesPanel"
+                "SDK.DebuggerPausedDetails"
             ],
             "bindings": [
                 {
@@ -72,13 +74,14 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
+            "category": "Debugger",
             "actionId": "debugger.step-into",
             "className": "Sources.SourcesPanel.DebuggingActionDelegate",
             "title": "Step into next function call",
-            "iconClass": "largeicon-step-in",
+            "iconClass": "largeicon-step-into",
             "contextTypes": [
-                "Sources.SourcesPanel"
+                "SDK.DebuggerPausedDetails"
             ],
             "bindings": [
                 {
@@ -92,13 +95,30 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
+            "category": "Debugger",
+            "actionId": "debugger.step",
+            "className": "Sources.SourcesPanel.DebuggingActionDelegate",
+            "title": "Step",
+            "iconClass": "largeicon-step",
+            "contextTypes": [
+                "SDK.DebuggerPausedDetails"
+            ],
+            "bindings": [
+                {
+                    "shortcut": "F9"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "category": "Debugger",
             "actionId": "debugger.step-out",
             "className": "Sources.SourcesPanel.DebuggingActionDelegate",
             "title": "Step out of current function",
             "iconClass": "largeicon-step-out",
             "contextTypes": [
-                "Sources.SourcesPanel"
+                "SDK.DebuggerPausedDetails"
             ],
             "bindings": [
                 {
@@ -112,13 +132,13 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "actionId": "debugger.run-snippet",
             "className": "Sources.SourcesPanel.DebuggingActionDelegate",
             "title": "Run snippet",
             "iconClass": "largeicon-play",
             "contextTypes": [
-                "Sources.SourcesPanel"
+                "Sources.SourcesView"
             ],
             "bindings": [
                 {
@@ -132,31 +152,15 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
-            "actionId": "sources.search.toggle",
-            "title": "Search all files",
-            "className": "Sources.AdvancedSearchView.ActionDelegate",
-            "category": "DevTools",
-            "bindings": [
-                {
-                    "platform": "mac",
-                    "shortcut": "Meta+Alt+F"
-                },
-                {
-                    "platform": "windows,linux",
-                    "shortcut": "Ctrl+Shift+F"
-                }
-            ]
-        },
-        {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "category": "Debugger",
             "actionId": "debugger.toggle-breakpoints-active",
             "iconClass": "largeicon-deactivate-breakpoints",
+            "toggleable": true,
             "toggledIconClass": "largeicon-activate-breakpoints",
             "className": "Sources.SourcesPanel.DebuggingActionDelegate",
             "contextTypes": [
-                "Sources.SourcesPanel"
+                "Sources.SourcesView"
             ],
             "options": [
                 {
@@ -180,17 +184,26 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "actionId": "sources.add-to-watch",
             "className": "Sources.WatchExpressionsSidebarPane",
             "title": "Add selected text to watches",
             "contextTypes": [
-                "SourceFrame.UISourceCodeFrame"
+                "Sources.UISourceCodeFrame"
             ],
             "bindings": [
                 {
                     "shortcut": "Ctrl+Shift+A"
                 }
+            ]
+        },
+        {
+            "type": "@UI.ContextMenu.Provider",
+            "actionId": "sources.add-to-watch",
+            "className": "Sources.WatchExpressionsSidebarPane",
+            "title": "Add to watch",
+            "contextTypes": [
+                "ObjectUI.ObjectPropertyTreeElement"
             ]
         },
         {
@@ -201,12 +214,19 @@
             "className": "Sources.WatchExpressionsSidebarPane"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "@UI.ContextMenu.Provider",
+            "contextTypes": [
+                "Workspace.UISourceCode"
+            ],
+            "className": "Sources.GutterDiffPlugin.ContextMenuProvider"
+        },
+        {
+            "type": "action",
             "actionId": "debugger.evaluate-selection",
             "className": "Sources.SourcesPanel.DebuggingActionDelegate",
-            "title": "Evaluate in console",
+            "title": "Evaluate selected text in console",
             "contextTypes": [
-                "SourceFrame.UISourceCodeFrame"
+                "Sources.UISourceCodeFrame"
             ],
             "bindings": [
                 {
@@ -234,12 +254,7 @@
         },
         {
             "type": "context-menu-item",
-            "location": "mainMenu/navigate",
-            "actionId": "sources.search.toggle"
-        },
-        {
-            "type": "context-menu-item",
-            "location": "navigatorMenu/navigate",
+            "location": "navigatorMenu/default",
             "actionId": "quickOpen.show"
         },
         {
@@ -247,6 +262,7 @@
             "contextTypes": [
                 "Workspace.UILocation"
             ],
+            "destination": "Sources panel",
             "className": "Sources.SourcesPanel.UILocationRevealer"
         },
         {
@@ -254,6 +270,7 @@
             "contextTypes": [
                 "SDK.DebuggerModel.Location"
             ],
+            "destination": "Sources panel",
             "className": "Sources.SourcesPanel.DebuggerLocationRevealer"
         },
         {
@@ -261,6 +278,7 @@
             "contextTypes": [
                 "Workspace.UISourceCode"
             ],
+            "destination": "Sources panel",
             "className": "Sources.SourcesPanel.UISourceCodeRevealer"
         },
         {
@@ -268,6 +286,7 @@
             "contextTypes": [
                 "SDK.DebuggerPausedDetails"
             ],
+            "destination": "Sources panel",
             "className": "Sources.SourcesPanel.DebuggerPausedDetailsRevealer"
         },
         {
@@ -281,73 +300,39 @@
         {
             "type": "view",
             "location": "navigator-view",
-            "id": "navigator-sources",
-            "title": "Sources",
-            "order": 1,
-            "persistence": "permanent",
-            "className": "Sources.SourcesNavigatorView",
-            "experiment": "!persistence2"
-        },
-        {
-            "type": "view",
-            "location": "navigator-view",
-            "id": "navigator-network",
-            "title": "Network",
-            "order": 2,
-            "persistence": "permanent",
-            "className": "Sources.NetworkNavigatorView",
-            "experiment": "persistence2"
-        },
-        {
-            "type": "view",
-            "location": "navigator-view",
             "id": "navigator-files",
             "title": "Filesystem",
             "order": 3,
             "persistence": "permanent",
-            "className": "Sources.FilesNavigatorView",
-            "experiment": "persistence2"
-        },
-        {
-            "type": "view",
-            "location": "navigator-view",
-            "id": "navigator-contentScripts",
-            "title": "Content scripts",
-            "order": 4,
-            "persistence": "permanent",
-            "className": "Sources.ContentScriptsNavigatorView"
+            "className": "Sources.FilesNavigatorView"
         },
         {
             "type": "view",
             "location": "navigator-view",
             "id": "navigator-snippets",
             "title": "Snippets",
-            "order": 5,
+            "order": 6,
             "persistence": "permanent",
             "className": "Sources.SnippetsNavigatorView"
         },
         {
-            "type": "@Sources.NavigatorView",
-            "viewId": "navigator-sources",
-            "className": "Sources.SourcesNavigatorView",
-            "experiment": "!persistence2"
+            "type": "view",
+            "location": "drawer-view",
+            "id": "sources.search-sources-tab",
+            "title": "Search",
+            "order": 7,
+            "persistence": "closeable",
+            "className": "Sources.SearchSourcesView"
         },
         {
             "type": "@Sources.NavigatorView",
             "viewId": "navigator-network",
-            "className": "Sources.NetworkNavigatorView",
-            "experiment": "persistence2"
+            "className": "Sources.NetworkNavigatorView"
         },
         {
             "type": "@Sources.NavigatorView",
             "viewId": "navigator-files",
-            "className": "Sources.FilesNavigatorView",
-            "experiment": "persistence2"
-        },
-        {
-            "type": "@Sources.NavigatorView",
-            "viewId": "navigator-contentScripts",
-            "className": "Sources.ContentScriptsNavigatorView"
+            "className": "Sources.FilesNavigatorView"
         },
         {
             "type": "@Sources.NavigatorView",
@@ -355,7 +340,7 @@
             "className": "Sources.SnippetsNavigatorView"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "actionId": "sources.switch-file",
             "className": "Sources.SourcesView.SwitchFileActionDelegate",
             "contextTypes": [
@@ -364,6 +349,20 @@
             "bindings": [
                 {
                     "shortcut": "Alt+O"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.rename",
+            "bindings": [
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "F2"
+                },
+                {
+                    "platform": "mac",
+                    "shortcut": "Enter"
                 }
             ]
         },
@@ -379,15 +378,35 @@
             "title": "Search in anonymous and content scripts",
             "settingName": "searchInAnonymousAndContentScripts",
             "settingType": "boolean",
-            "defaultValue": false
+            "defaultValue": false,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Search in anonymous and content scripts"
+                },
+                {
+                    "value": false,
+                    "title": "Do not search in anonymous and content scripts"
+                }
+            ]
         },
         {
             "type": "setting",
             "category": "Sources",
-            "title": "Automatically reveal files in navigator",
+            "title": "Automatically reveal files in sidebar",
             "settingName": "autoRevealInNavigator",
             "settingType": "boolean",
-            "defaultValue": false
+            "defaultValue": false,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Automatically reveal files in sidebar"
+                },
+                {
+                    "value": false,
+                    "title": "Do not automatically reveal files in sidebar"
+                }
+            ]
         },
         {
             "type": "setting",
@@ -395,7 +414,35 @@
             "title": "Enable JavaScript source maps",
             "settingName": "jsSourceMapsEnabled",
             "settingType": "boolean",
-            "defaultValue": true
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable JavaScript source maps"
+                },
+                {
+                    "value": false,
+                    "title": "Disable JavaScript source maps"
+                }
+            ]
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Enable tab moves focus",
+            "settingName": "textEditorTabMovesFocus",
+            "settingType": "boolean",
+            "defaultValue": false,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable tab moves focus"
+                },
+                {
+                    "value": false,
+                    "title": "Disable tab moves focus"
+                }
+            ]
         },
         {
             "type": "setting",
@@ -403,7 +450,17 @@
             "title": "Detect indentation",
             "settingName": "textEditorAutoDetectIndent",
             "settingType": "boolean",
-            "defaultValue": true
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Detect indentation"
+                },
+                {
+                    "value": false,
+                    "title": "Do not detect indentation"
+                }
+            ]
         },
         {
             "type": "setting",
@@ -411,7 +468,17 @@
             "title": "Autocompletion",
             "settingName": "textEditorAutocompletion",
             "settingType": "boolean",
-            "defaultValue": true
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable autocompletion"
+                },
+                {
+                    "value": false,
+                    "title": "Disable autocompletion"
+                }
+            ]
         },
         {
             "type": "setting",
@@ -419,7 +486,35 @@
             "title": "Bracket matching",
             "settingName": "textEditorBracketMatching",
             "settingType": "boolean",
-            "defaultValue": true
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable bracket matching"
+                },
+                {
+                    "value": false,
+                    "title": "Disable bracket matching"
+                }
+            ]
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Code folding",
+            "settingName": "textEditorCodeFolding",
+            "settingType": "boolean",
+            "defaultValue": false,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable code folding"
+                },
+                {
+                    "value": false,
+                    "title": "Disable code folding"
+                }
+            ]
         },
         {
             "type": "setting",
@@ -452,7 +547,17 @@
             "title": "Display variable values inline while debugging",
             "settingName": "inlineVariableValues",
             "settingType": "boolean",
-            "defaultValue": true
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Display variable values inline while debugging"
+                },
+                {
+                    "value": false,
+                    "title": "Do not display variable values inline while debugging"
+                }
+            ]
         },
         {
             "type": "setting",
@@ -460,24 +565,35 @@
             "title": "Enable CSS source maps",
             "settingName": "cssSourceMapsEnabled",
             "settingType": "boolean",
-            "defaultValue": true
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable CSS source maps"
+                },
+                {
+                    "value": false,
+                    "title": "Disable CSS source maps"
+                }
+            ]
         },
         {
-            "type": "view",
-            "location": "drawer-view",
-            "id": "sources.search",
-            "title": "Search",
-            "persistence": "closeable",
-            "order": 100,
-            "className": "Sources.AdvancedSearchView"
-        },
-        {
-            "type": "view",
-            "location": "drawer-view",
-            "id": "sources.history",
-            "title": "History",
-            "persistence": "transient",
-            "className": "Sources.RevisionHistoryView"
+            "type": "setting",
+            "category": "Sources",
+            "title": "Allow scrolling past end of file",
+            "settingName": "allowScrollPastEof",
+            "settingType": "boolean",
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Allow scrolling past end of file"
+                },
+                {
+                    "value": false,
+                    "title": "Disallow scrolling past end of file"
+                }
+            ]
         },
         {
             "type": "view",
@@ -489,72 +605,221 @@
             "className": "Sources.SourcesPanel.WrapperView"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "category": "Sources",
             "actionId": "sources.close-all",
-            "className": "Sources.SourcesView.CloseAllActionDelegate",
+            "className": "Sources.SourcesView.ActionDelegate",
             "title": "Close All"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
+            "actionId": "sources.jump-to-previous-location",
+            "className": "Sources.SourcesView.ActionDelegate",
+            "contextTypes": [
+                "Sources.SourcesView"
+            ],
+            "bindings": [
+                {
+                    "shortcut": "Alt+Minus"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.jump-to-next-location",
+            "className": "Sources.SourcesView.ActionDelegate",
+            "contextTypes": [
+                "Sources.SourcesView"
+            ],
+            "bindings": [
+                {
+                    "shortcut": "Alt+Plus"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.close-editor-tab",
+            "className": "Sources.SourcesView.ActionDelegate",
+            "contextTypes": [
+                "Sources.SourcesView"
+            ],
+            "bindings": [
+                {
+                    "shortcut": "Alt+w"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.go-to-line",
+            "className": "Sources.SourcesView.ActionDelegate",
+            "contextTypes": [
+                "Sources.SourcesView"
+            ],
+            "bindings": [
+                {
+                    "shortcut": "Ctrl+g"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.go-to-member",
+            "className": "Sources.SourcesView.ActionDelegate",
+            "contextTypes": [
+                "Sources.SourcesView"
+            ],
+            "bindings": [
+                {
+                    "platform":"windows,linux",
+                    "shortcut": "Ctrl+Shift+o"
+                },
+                {
+                    "platform":"mac",
+                    "shortcut": "Meta+Shift+o"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "debugger.toggle-breakpoint",
+            "bindings": [
+                {
+                    "platform":"windows,linux",
+                    "shortcut": "Ctrl+b"
+                },
+                {
+                    "platform":"mac",
+                    "shortcut": "Meta+b"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "debugger.toggle-breakpoint-enabled",
+            "bindings": [
+                {
+                    "platform":"windows,linux",
+                    "shortcut": "Ctrl+Shift+b"
+                },
+                {
+                    "platform":"mac",
+                    "shortcut": "Meta+Shift+b"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "debugger.breakpoint-input-window",
+            "bindings": [
+                {
+                    "platform":"windows,linux",
+                    "shortcut": "Ctrl+Alt+b"
+                },
+                {
+                    "platform":"mac",
+                    "shortcut": "Meta+Alt+b"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.save",
+            "className": "Sources.SourcesView.ActionDelegate",
+            "contextTypes": [
+                "Sources.SourcesView"
+            ],
+            "bindings": [
+                {
+                    "platform":"windows,linux",
+                    "shortcut": "Ctrl+s"
+                },
+                {
+                    "platform":"mac",
+                    "shortcut": "Meta+s"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.save-all",
+            "className": "Sources.SourcesView.ActionDelegate",
+            "contextTypes": [
+                "Sources.SourcesView"
+            ],
+            "bindings": [
+                {
+                    "platform":"windows,linux",
+                    "shortcut": "Ctrl+Shift+s"
+                },
+                {
+                    "platform":"mac",
+                    "shortcut": "Meta+Alt+s"
+                }
+            ]
+        },
+        {
+            "type": "action",
             "category": "Sources",
             "actionId": "sources.create-snippet",
-            "className": "Sources.SourcesNavigatorView.CreatingActionDelegate",
+            "className": "Sources.ActionDelegate",
             "title": "Create new snippet"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "category": "Sources",
             "actionId": "sources.add-folder-to-workspace",
-            "className": "Sources.SourcesNavigatorView.CreatingActionDelegate",
-            "title": "Add folder to workspace"
+            "className": "Sources.ActionDelegate",
+            "iconClass": "largeicon-add",
+            "title": "Add folder to workspace",
+            "condition": "!sources.hide_add_folder"
+        },
+        {
+            "type": "@UI.ToolbarItem.Provider",
+            "actionId": "sources.add-folder-to-workspace",
+            "location": "files-navigator-toolbar",
+            "showLabel": true,
+            "condition": "!sources.hide_add_folder"
         },
         {
             "type": "@UI.ViewLocationResolver",
             "name": "navigator-view",
-            "className": "Sources.SourcesPanel"
-        },
-        {
-            "type": "@UI.ViewLocationResolver",
-            "name": "sources-sidebar",
             "category": "Sources",
             "className": "Sources.SourcesPanel"
         },
         {
-            "type": "view",
-            "location": "sources-sidebar",
-            "id": "sources.xhrBreakpoints",
-            "title": "XHR Breakpoints",
-            "order": 5,
-            "hasToolbar": true,
-            "persistence": "permanent",
-            "className": "Sources.XHRBreakpointsSidebarPane"
+            "type": "@UI.ViewLocationResolver",
+            "name": "sources.sidebar-top",
+            "category": "Sources",
+            "className": "Sources.SourcesPanel"
         },
         {
-            "type": "view",
-            "location": "sources-sidebar",
-            "id": "sources.globalListeners",
-            "title": "Global Listeners",
-            "order": 8,
-            "hasToolbar": true,
-            "persistence": "permanent",
-            "className": "Sources.ObjectEventListenersSidebarPane"
+            "type": "@UI.ViewLocationResolver",
+            "name": "sources.sidebar-bottom",
+            "category": "Sources",
+            "className": "Sources.SourcesPanel"
         },
         {
-            "type": "view",
-            "location": "sources-sidebar",
-            "id": "sources.eventListenerBreakpoints",
-            "title": "Event Listener Breakpoints",
-            "order": 9,
-            "persistence": "permanent",
-            "className": "Sources.EventListenerBreakpointsSidebarPane"
+            "type": "@UI.ViewLocationResolver",
+            "name": "sources.sidebar-tabs",
+            "category": "Sources",
+            "className": "Sources.SourcesPanel"
         },
         {
             "type": "view",
             "id": "sources.threads",
             "title": "Threads",
             "persistence": "permanent",
-            "className": "Sources.ThreadsSidebarPane"
+            "className": "Sources.ThreadsSidebarPane",
+            "condition": "!sources.hide_thread_sidebar"
+        },
+        {
+            "type": "view",
+            "id": "sources.sourceScopeChain",
+            "title": "Source Scope",
+            "persistence": "permanent",
+            "className": "Sources.SourceScopeChainSidebarPane"
         },
         {
             "type": "view",
@@ -590,13 +855,6 @@
             "contextTypes": [
                 "SDK.DebuggerPausedDetails"
             ],
-            "className": "Sources.XHRBreakpointsSidebarPane"
-        },
-        {
-            "type": "@UI.ContextFlavorListener",
-            "contextTypes": [
-                "SDK.DebuggerPausedDetails"
-            ],
             "className": "Sources.CallStackSidebarPane"
         },
         {
@@ -604,11 +862,72 @@
             "contextTypes": [
                 "SDK.DebuggerModel.CallFrame"
             ],
+            "className": "Sources.SourceScopeChainSidebarPane"
+        },
+        {
+            "type": "@UI.ContextFlavorListener",
+            "contextTypes": [
+                "SDK.DebuggerModel.CallFrame"
+            ],
             "className": "Sources.ScopeChainSidebarPane"
+        },
+        {
+            "type": "action",
+            "category": "Debugger",
+            "actionId": "debugger.previous-call-frame",
+            "className": "Sources.CallStackSidebarPane.ActionDelegate",
+            "title": "Previous call frame",
+            "contextTypes": [
+                "SDK.DebuggerPausedDetails"
+            ],
+            "bindings": [
+                {
+                    "shortcut": "Ctrl+,"
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "category": "Debugger",
+            "actionId": "debugger.next-call-frame",
+            "className": "Sources.CallStackSidebarPane.ActionDelegate",
+            "title": "Next call frame",
+            "contextTypes": [
+                "SDK.DebuggerPausedDetails"
+            ],
+            "bindings": [
+                {
+                    "shortcut": "Ctrl+."
+                }
+            ]
+        },
+        {
+            "type": "action",
+            "actionId": "sources.search",
+            "title": "Search",
+            "className": "Sources.SearchSourcesView.ActionDelegate",
+            "category": "DevTools",
+            "bindings": [
+                {
+                    "platform": "mac",
+                    "shortcut": "Meta+Alt+F"
+                },
+                {
+                    "platform": "windows,linux",
+                    "shortcut": "Ctrl+Shift+F"
+                }
+            ]
+        },
+        {
+            "type": "context-menu-item",
+            "location": "mainMenu/default",
+            "actionId": "sources.search"
         }
+
     ],
     "dependencies": [
         "components",
+        "search",
         "source_frame",
         "snippets",
         "extensions",
@@ -618,24 +937,32 @@
         "color_picker",
         "event_listeners",
         "object_ui",
-        "formatter"
+        "formatter",
+        "coverage"
     ],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "sources.js",
+        "sources-legacy.js",
         "AddSourceMapURLDialog.js",
+        "BreakpointEditDialog.js",
         "CallStackSidebarPane.js",
         "DebuggerPausedMessage.js",
         "SimpleHistoryManager.js",
         "EditingLocationHistoryManager.js",
-        "EventListenerBreakpointsSidebarPane.js",
         "FilePathScoreFunction.js",
         "FilteredUISourceCodeListProvider.js",
         "GoToLineQuickOpen.js",
         "SourceMapNamesResolver.js",
         "JavaScriptBreakpointsSidebarPane.js",
-        "JavaScriptSourceFrame.js",
-        "CSSSourceFrame.js",
+        "UISourceCodeFrame.js",
+        "Plugin.js",
+        "DebuggerPlugin.js",
+        "CoveragePlugin.js",
+        "CSSPlugin.js",
+        "GutterDiffPlugin.js",
+        "SearchSourcesView.js",
         "NavigatorView.js",
-        "RevisionHistoryView.js",
         "ScopeChainSidebarPane.js",
         "SourcesNavigator.js",
         "OutlineQuickOpen.js",
@@ -644,35 +971,26 @@
         "ThreadsSidebarPane.js",
         "ScriptFormatterEditorAction.js",
         "InplaceFormatterEditorAction.js",
-        "SourceFormatter.js",
         "OpenFileQuickOpen.js",
         "SourcesView.js",
-        "AdvancedSearchView.js",
-        "FileBasedSearchResultsPane.js",
         "SourcesSearchScope.js",
         "SourcesPanel.js",
-        "WorkspaceMappingTip.js",
-        "XHRBreakpointsSidebarPane.js",
-        "JavaScriptCompiler.js",
-        "ObjectEventListenersSidebarPane.js"
+        "JavaScriptCompilerPlugin.js",
+        "SnippetsPlugin.js",
+        "ScriptOriginPlugin.js"
     ],
     "resources": [
+        "breakpointEditDialog.css",
         "callStackSidebarPane.css",
         "debuggerPausedMessage.css",
-        "eventListenerBreakpoints.css",
-        "fileBasedSearchResultsPane.css",
         "javaScriptBreakpointsSidebarPane.css",
         "navigatorTree.css",
         "navigatorView.css",
-        "revisionHistory.css",
         "scopeChainSidebarPane.css",
-        "serviceWorkersSidebar.css",
         "sourcesPanel.css",
-        "sourcesSearch.css",
         "sourcesView.css",
         "threadsSidebarPane.css",
         "watchExpressionsSidebarPane.css",
-        "xhrBreakpointsSidebarPane.css",
         "dialog.css"
     ]
 }

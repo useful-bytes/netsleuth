@@ -1,13 +1,20 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+
+import {CSSModel} from './CSSModel.js';  // eslint-disable-line no-unused-vars
+import {DeferredDOMNode} from './DOMModel.js';
+import {ResourceTreeModel} from './ResourceTreeModel.js';
+
 /**
- * @implements {Common.ContentProvider}
+ * @implements {Common.ContentProvider.ContentProvider}
  * @unrestricted
  */
-SDK.CSSStyleSheetHeader = class {
+export class CSSStyleSheetHeader {
   /**
-   * @param {!SDK.CSSModel} cssModel
+   * @param {!CSSModel} cssModel
    * @param {!Protocol.CSS.CSSStyleSheetHeader} payload
    */
   constructor(cssModel, payload) {
@@ -22,20 +29,30 @@ SDK.CSSStyleSheetHeader = class {
     this.isInline = payload.isInline;
     this.startLine = payload.startLine;
     this.startColumn = payload.startColumn;
+    this.endLine = payload.endLine;
+    this.endColumn = payload.endColumn;
     this.contentLength = payload.length;
-    if (payload.ownerNode)
-      this.ownerNode = new SDK.DeferredDOMNode(cssModel.target(), payload.ownerNode);
+    if (payload.ownerNode) {
+      this.ownerNode = new DeferredDOMNode(cssModel.target(), payload.ownerNode);
+    }
     this.setSourceMapURL(payload.sourceMapURL);
   }
 
   /**
-   * @return {!Common.ContentProvider}
+   * @return {!Common.ContentProvider.ContentProvider}
    */
   originalContentProvider() {
     if (!this._originalContentProvider) {
-      var lazyContent = this._cssModel.originalStyleSheetText.bind(this._cssModel, this);
-      this._originalContentProvider = new Common.StaticContentProvider(
-          this.contentURL(), this.contentType(), /** @type {function():!Promise<?string>} */ (lazyContent));
+      const lazyContent = /** @type {function():!Promise<!Common.ContentProvider.DeferredContent>} */ (async () => {
+        const originalText = await this._cssModel.originalStyleSheetText(this);
+        // originalText might be an empty string which should not trigger the error
+        if (originalText === null) {
+          return {error: ls`Could not find the original style sheet.`, isEncoded: false};
+        }
+        return {content: originalText, isEncoded: false};
+      });
+      this._originalContentProvider =
+          new Common.StaticContentProvider.StaticContentProvider(this.contentURL(), this.contentType(), lazyContent);
     }
     return this._originalContentProvider;
   }
@@ -48,7 +65,7 @@ SDK.CSSStyleSheetHeader = class {
   }
 
   /**
-   * @return {!SDK.CSSModel}
+   * @return {!CSSModel}
    */
   cssModel() {
     return this._cssModel;
@@ -72,12 +89,13 @@ SDK.CSSStyleSheetHeader = class {
    * @return {string}
    */
   _viaInspectorResourceURL() {
-    var frame = this._cssModel.target().model(SDK.ResourceTreeModel).frameForId(this.frameId);
+    const frame = this._cssModel.target().model(ResourceTreeModel).frameForId(this.frameId);
     console.assert(frame);
-    var parsedURL = new Common.ParsedURL(frame.url);
-    var fakeURL = 'inspector://' + parsedURL.host + parsedURL.folderPathComponents;
-    if (!fakeURL.endsWith('/'))
+    const parsedURL = new Common.ParsedURL.ParsedURL(frame.url);
+    let fakeURL = 'inspector://' + parsedURL.host + parsedURL.folderPathComponents;
+    if (!fakeURL.endsWith('/')) {
       fakeURL += '/';
+    }
     fakeURL += 'inspector-stylesheet';
     return fakeURL;
   }
@@ -100,6 +118,20 @@ SDK.CSSStyleSheetHeader = class {
   }
 
   /**
+   * Checks whether the position is in this style sheet. Assumes that the
+   * position's columnNumber is consistent with line endings.
+   * @param {number} lineNumber
+   * @param {number} columnNumber
+   * @return {boolean}
+   */
+  containsLocation(lineNumber, columnNumber) {
+    const afterStart =
+        (lineNumber === this.startLine && columnNumber >= this.startColumn) || lineNumber > this.startLine;
+    const beforeEnd = lineNumber < this.endLine || (lineNumber === this.endLine && columnNumber <= this.endColumn);
+    return afterStart && beforeEnd;
+  }
+
+  /**
    * @override
    * @return {string}
    */
@@ -109,18 +141,34 @@ SDK.CSSStyleSheetHeader = class {
 
   /**
    * @override
-   * @return {!Common.ResourceType}
+   * @return {!Common.ResourceType.ResourceType}
    */
   contentType() {
-    return Common.resourceTypes.Stylesheet;
+    return Common.ResourceType.resourceTypes.Stylesheet;
   }
 
   /**
    * @override
-   * @return {!Promise<?string>}
+   * @return {!Promise<boolean>}
    */
-  requestContent() {
-    return this._cssModel.getStyleSheetText(this.id);
+  contentEncoded() {
+    return Promise.resolve(false);
+  }
+
+  /**
+   * @override
+   * @return {!Promise<!Common.ContentProvider.DeferredContent>}
+   */
+  async requestContent() {
+    try {
+      const cssText = await this._cssModel.getStyleSheetText(this.id);
+      return {content: /** @type{string} */ (cssText), isEncoded: false};
+    } catch (err) {
+      return {
+        error: ls`There was an error retrieving the source styles.`,
+        isEncoded: false,
+      };
+    }
   }
 
   /**
@@ -131,8 +179,8 @@ SDK.CSSStyleSheetHeader = class {
    * @return {!Promise<!Array<!Common.ContentProvider.SearchMatch>>}
    */
   async searchInContent(query, caseSensitive, isRegex) {
-    var content = await this.requestContent();
-    return Common.ContentProvider.performSearchInContent(content, query, caseSensitive, isRegex);
+    const {content} = await this.requestContent();
+    return Common.ContentProvider.performSearchInContent(content || '', query, caseSensitive, isRegex);
   }
 
   /**
@@ -141,4 +189,4 @@ SDK.CSSStyleSheetHeader = class {
   isViaInspector() {
     return this.origin === 'inspector';
   }
-};
+}

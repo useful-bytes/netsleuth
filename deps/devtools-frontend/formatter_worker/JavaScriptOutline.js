@@ -1,23 +1,30 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Platform from '../platform/platform.js';
+import * as TextUtils from '../text_utils/text_utils.js';
+
+import {ESTreeWalker} from './ESTreeWalker.js';
+
 /**
  * @param {string} content
  */
-FormatterWorker.javaScriptOutline = function(content) {
-  var chunkSize = 100000;
-  var outlineChunk = [];
-  var lastReportedOffset = 0;
+export function javaScriptOutline(content) {
+  const chunkSize = 100000;
+  let outlineChunk = [];
+  let lastReportedOffset = 0;
 
-  var ast;
+  let ast;
   try {
-    ast = acorn.parse(content, {ranges: false, ecmaVersion: 8});
+    ast = acorn.parse(content, {ranges: false});
   } catch (e) {
-    ast = acorn.parse_dammit(content, {ranges: false, ecmaVersion: 8});
+    ast = acorn.loose.parse(content, {ranges: false});
   }
 
-  var textCursor = new TextUtils.TextCursor(content.computeLineEndings());
-  var walker = new FormatterWorker.ESTreeWalker(beforeVisit);
+  const contentLineEndings = Platform.StringUtilities.findLineEndingIndexes(content);
+  const textCursor = new TextUtils.TextCursor.TextCursor(contentLineEndings);
+  const walker = new ESTreeWalker(beforeVisit);
   walker.walk(ast);
   postMessage({chunk: outlineChunk, isLastChunk: true});
 
@@ -42,11 +49,13 @@ FormatterWorker.javaScriptOutline = function(content) {
     } else if (
         (node.type === 'MethodDefinition' || node.type === 'Property') && isNameNode(node.key) &&
         isFunctionNode(node.value)) {
-      var namePrefix = [];
-      if (node.kind === 'get' || node.kind === 'set')
+      const namePrefix = [];
+      if (node.kind === 'get' || node.kind === 'set') {
         namePrefix.push(node.kind);
-      if (node.static)
+      }
+      if (node.static) {
         namePrefix.push('static');
+      }
       reportFunction(node.key, node.value, namePrefix.join(' '));
     }
   }
@@ -55,7 +64,7 @@ FormatterWorker.javaScriptOutline = function(content) {
    * @param {!ESTree.Node} nameNode
    */
   function reportClass(nameNode) {
-    var name = 'class ' + stringifyNameNode(nameNode);
+    const name = 'class ' + stringifyNameNode(nameNode);
     textCursor.advance(nameNode.start);
     addOutlineItem({
       name: name,
@@ -70,13 +79,16 @@ FormatterWorker.javaScriptOutline = function(content) {
    * @param {string=} namePrefix
    */
   function reportFunction(nameNode, functionNode, namePrefix) {
-    var name = stringifyNameNode(nameNode);
-    if (functionNode.generator)
+    let name = stringifyNameNode(nameNode);
+    if (functionNode.generator) {
       name = '*' + name;
-    if (namePrefix)
+    }
+    if (namePrefix) {
       name = namePrefix + ' ' + name;
-    if (functionNode.async)
+    }
+    if (functionNode.async) {
       name = 'async ' + name;
+    }
 
     textCursor.advance(nameNode.start);
     addOutlineItem({
@@ -92,10 +104,12 @@ FormatterWorker.javaScriptOutline = function(content) {
    * @return {boolean}
    */
   function isNameNode(node) {
-    if (!node)
+    if (!node) {
       return false;
-    if (node.type === 'MemberExpression')
+    }
+    if (node.type === 'MemberExpression') {
       return !node.computed && node.property.type === 'Identifier';
+    }
     return node.type === 'Identifier';
   }
 
@@ -104,8 +118,9 @@ FormatterWorker.javaScriptOutline = function(content) {
    * @return {boolean}
    */
   function isFunctionNode(node) {
-    if (!node)
+    if (!node) {
       return false;
+    }
     return node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression';
   }
 
@@ -122,8 +137,9 @@ FormatterWorker.javaScriptOutline = function(content) {
    * @return {string}
    */
   function stringifyNameNode(node) {
-    if (node.type === 'MemberExpression')
+    if (node.type === 'MemberExpression') {
       node = /** @type {!ESTree.Node} */ (node.property);
+    }
     console.assert(node.type === 'Identifier', 'Cannot extract identifier from unknown type: ' + node.type);
     return /** @type {string} */ (node.name);
   }
@@ -133,14 +149,15 @@ FormatterWorker.javaScriptOutline = function(content) {
    * @return {string}
    */
   function stringifyArguments(params) {
-    var result = [];
-    for (var param of params) {
-      if (param.type === 'Identifier')
+    const result = [];
+    for (const param of params) {
+      if (param.type === 'Identifier') {
         result.push(param.name);
-      else if (param.type === 'RestElement' && param.argument.type === 'Identifier')
+      } else if (param.type === 'RestElement' && param.argument.type === 'Identifier') {
         result.push('...' + param.argument.name);
-      else
+      } else {
         console.error('Error: unexpected function parameter type: ' + param.type);
+      }
     }
     return '(' + result.join(', ') + ')';
   }
@@ -150,10 +167,11 @@ FormatterWorker.javaScriptOutline = function(content) {
    */
   function addOutlineItem(item) {
     outlineChunk.push(item);
-    if (textCursor.offset() - lastReportedOffset < chunkSize)
+    if (textCursor.offset() - lastReportedOffset < chunkSize) {
       return;
+    }
     postMessage({chunk: outlineChunk, isLastChunk: false});
     outlineChunk = [];
     lastReportedOffset = textCursor.offset();
   }
-};
+}

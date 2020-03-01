@@ -1,18 +1,23 @@
 // Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Platform from '../platform/platform.js';
+import * as TextUtils from '../text_utils/text_utils.js';
+
 /**
  * @unrestricted
  */
-FormatterWorker.AcornTokenizer = class {
+export class AcornTokenizer {
   /**
    * @param {string} content
    */
   constructor(content) {
     this._content = content;
     this._comments = [];
-    this._tokenizer = acorn.tokenizer(this._content, {ecmaVersion: 8, onComment: this._comments});
-    this._textCursor = new TextUtils.TextCursor(this._content.computeLineEndings());
+    this._tokenizer = acorn.tokenizer(this._content, {onComment: this._comments});
+    const contentLineEndings = Platform.StringUtilities.findLineEndingIndexes(this._content);
+    this._textCursor = new TextUtils.TextCursor.TextCursor(contentLineEndings);
     this._tokenLineStart = 0;
     this._tokenLineEnd = 0;
     this._nextTokenInternal();
@@ -35,8 +40,8 @@ FormatterWorker.AcornTokenizer = class {
    * @return {boolean}
    */
   static keyword(token, keyword) {
-    return !!token.type.keyword && token.type !== acorn.tokTypes._true && token.type !== acorn.tokTypes._false &&
-        token.type !== acorn.tokTypes._null && (!keyword || token.type.keyword === keyword);
+    return !!token.type.keyword && token.type !== acorn.tokTypes['_true'] && token.type !== acorn.tokTypes['_false'] &&
+        token.type !== acorn.tokTypes['_null'] && (!keyword || token.type.keyword === keyword);
   }
 
   /**
@@ -68,9 +73,10 @@ FormatterWorker.AcornTokenizer = class {
    * @return {!Acorn.TokenOrComment}
    */
   _nextTokenInternal() {
-    if (this._comments.length)
+    if (this._comments.length) {
       return this._comments.shift();
-    var token = this._bufferedToken;
+    }
+    const token = this._bufferedToken;
 
     this._bufferedToken = this._tokenizer.getToken();
     return token;
@@ -80,9 +86,10 @@ FormatterWorker.AcornTokenizer = class {
    * @return {?Acorn.TokenOrComment}
    */
   nextToken() {
-    var token = this._nextTokenInternal();
-    if (token.type === acorn.tokTypes.eof)
+    const token = this._nextTokenInternal();
+    if (token.type === acorn.tokTypes.eof) {
       return null;
+    }
 
     this._textCursor.advance(token.start);
     this._tokenLineStart = this._textCursor.lineNumber();
@@ -97,8 +104,9 @@ FormatterWorker.AcornTokenizer = class {
    * @return {?Acorn.TokenOrComment}
    */
   peekToken() {
-    if (this._comments.length)
+    if (this._comments.length) {
       return this._comments[0];
+    }
     return this._bufferedToken.type !== acorn.tokTypes.eof ? this._bufferedToken : null;
   }
 
@@ -122,4 +130,4 @@ FormatterWorker.AcornTokenizer = class {
   tokenColumnStart() {
     return this._tokenColumnStart;
   }
-};
+}

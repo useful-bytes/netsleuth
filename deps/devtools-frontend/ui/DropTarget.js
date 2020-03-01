@@ -1,13 +1,16 @@
 // Copyright (c) 2015 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import {createShadowRootWithCoreStyles} from './utils/create-shadow-root-with-core-styles.js';
+
 /**
  * @unrestricted
  */
-UI.DropTarget = class {
+export class DropTarget {
   /**
    * @param {!Element} element
-   * @param {!Array.<string>} transferTypes
+   * @param {!Array<{kind: string, type: !RegExp}>} transferTypes
    * @param {string} messageText
    * @param {function(!DataTransfer)} handleDrop
    */
@@ -32,8 +35,9 @@ UI.DropTarget = class {
    * @param {!Event} event
    */
   _onDragEnter(event) {
-    if (this._enabled && this._hasMatchingType(event))
+    if (this._enabled && this._hasMatchingType(event)) {
       event.consume(true);
+    }
   }
 
   /**
@@ -41,9 +45,13 @@ UI.DropTarget = class {
    * @return {boolean}
    */
   _hasMatchingType(event) {
-    for (var type of this._transferTypes) {
-      if (event.dataTransfer.types.indexOf(type) !== -1)
+    for (const transferType of this._transferTypes) {
+      const found = Array.from(event.dataTransfer.items).find(item => {
+        return transferType.kind === item.kind && !!transferType.type.exec(item.type);
+      });
+      if (found) {
         return true;
+      }
     }
     return false;
   }
@@ -52,14 +60,16 @@ UI.DropTarget = class {
    * @param {!Event} event
    */
   _onDragOver(event) {
-    if (!this._enabled || !this._hasMatchingType(event))
+    if (!this._enabled || !this._hasMatchingType(event)) {
       return;
+    }
     event.dataTransfer.dropEffect = 'copy';
     event.consume(true);
-    if (this._dragMaskElement)
+    if (this._dragMaskElement) {
       return;
+    }
     this._dragMaskElement = this._element.createChild('div', '');
-    var shadowRoot = UI.createShadowRootWithCoreStyles(this._dragMaskElement, 'ui/dropTarget.css');
+    const shadowRoot = createShadowRootWithCoreStyles(this._dragMaskElement, 'ui/dropTarget.css');
     shadowRoot.createChild('div', 'drop-target-message').textContent = this._messageText;
     this._dragMaskElement.addEventListener('drop', this._onDrop.bind(this), true);
     this._dragMaskElement.addEventListener('dragleave', this._onDragLeave.bind(this), true);
@@ -71,8 +81,9 @@ UI.DropTarget = class {
   _onDrop(event) {
     event.consume(true);
     this._removeMask();
-    if (this._enabled)
+    if (this._enabled) {
       this._handleDrop(event.dataTransfer);
+    }
   }
 
   /**
@@ -87,9 +98,12 @@ UI.DropTarget = class {
     this._dragMaskElement.remove();
     delete this._dragMaskElement;
   }
-};
+}
 
-UI.DropTarget.Types = {
-  Files: 'Files',
-  URIList: 'text/uri-list'
+export const Type = {
+  URI: {kind: 'string', type: /text\/uri-list/},
+  Folder: {kind: 'file', type: /$^/},
+  File: {kind: 'file', type: /.*/},
+  WebFile: {kind: 'file', type: /[\w]+/},
+  ImageFile: {kind: 'file', type: /image\/.*/},
 };

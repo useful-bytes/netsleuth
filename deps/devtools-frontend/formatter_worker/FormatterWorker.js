@@ -27,59 +27,84 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import * as Platform from '../platform/platform.js';
+
+import {AcornTokenizer} from './AcornTokenizer.js';
+import {CSSFormatter} from './CSSFormatter.js';
+import {parseCSS} from './CSSRuleParser.js';
+import {ESTreeWalker} from './ESTreeWalker.js';
+import {FormattedContentBuilder} from './FormattedContentBuilder.js';
+import {HTMLFormatter} from './HTMLFormatter.js';
+import {IdentityFormatter} from './IdentityFormatter.js';
+import {JavaScriptFormatter} from './JavaScriptFormatter.js';
+import {javaScriptOutline} from './JavaScriptOutline.js';
+import {RelaxedJSONParser} from './RelaxedJSONParser.js';
+
 /**
  * @param {string} mimeType
  * @return {function(string, function(string, ?string, number, number):(!Object|undefined))}
  */
-FormatterWorker.createTokenizer = function(mimeType) {
-  var mode = CodeMirror.getMode({indentUnit: 2}, mimeType);
-  var state = CodeMirror.startState(mode);
+export function createTokenizer(mimeType) {
+  const mode = CodeMirror.getMode({indentUnit: 2}, mimeType);
+  const state = CodeMirror.startState(mode);
   /**
    * @param {string} line
    * @param {function(string, ?string, number, number):?} callback
    */
   function tokenize(line, callback) {
-    var stream = new CodeMirror.StringStream(line);
+    const stream = new CodeMirror.StringStream(line);
     while (!stream.eol()) {
-      var style = mode.token(stream, state);
-      var value = stream.current();
-      if (callback(value, style, stream.start, stream.start + value.length) === FormatterWorker.AbortTokenization)
+      const style = mode.token(stream, state);
+      const value = stream.current();
+      if (callback(value, style, stream.start, stream.start + value.length) === AbortTokenization) {
         return;
+      }
       stream.start = stream.pos;
     }
   }
   return tokenize;
-};
+}
 
-FormatterWorker.AbortTokenization = {};
+export const AbortTokenization = {};
 
 self.onmessage = function(event) {
-  var method = /** @type {string} */ (event.data.method);
-  var params = /** @type !{indentString: string, content: string, mimeType: string} */ (event.data.params);
-  if (!method)
+  const method = /** @type {string} */ (event.data.method);
+  const params = /** @type !{indentString: string, content: string, mimeType: string} */ (event.data.params);
+  if (!method) {
     return;
+  }
 
   switch (method) {
     case 'format':
-      FormatterWorker.format(params.mimeType, params.content, params.indentString);
+      format(params.mimeType, params.content, params.indentString);
       break;
     case 'parseCSS':
-      FormatterWorker.parseCSS(params.content);
+      parseCSS(params.content);
       break;
     case 'parseSCSS':
-      FormatterWorker.FormatterWorkerContentParser.parse(params.content, 'text/x-scss');
+      FormatterWorkerContentParser.parse(params.content, 'text/x-scss');
       break;
     case 'javaScriptOutline':
-      FormatterWorker.javaScriptOutline(params.content);
+      javaScriptOutline(params.content);
       break;
     case 'javaScriptIdentifiers':
-      FormatterWorker.javaScriptIdentifiers(params.content);
+      javaScriptIdentifiers(params.content);
       break;
     case 'evaluatableJavaScriptSubstring':
-      FormatterWorker.evaluatableJavaScriptSubstring(params.content);
+      evaluatableJavaScriptSubstring(params.content);
       break;
     case 'parseJSONRelaxed':
-      FormatterWorker.parseJSONRelaxed(params.content);
+      parseJSONRelaxed(params.content);
+      break;
+    case 'findLastExpression':
+      postMessage(findLastExpression(params.content));
+      break;
+    case 'findLastFunctionCall':
+      postMessage(findLastFunctionCall(params.content));
+      break;
+    case 'argumentsList':
+      postMessage(argumentsList(params.content));
       break;
     default:
       console.error('Unsupport method name: ' + method);
@@ -89,38 +114,41 @@ self.onmessage = function(event) {
 /**
  * @param {string} content
  */
-FormatterWorker.parseJSONRelaxed = function(content) {
-  postMessage(FormatterWorker.RelaxedJSONParser.parse(content));
-};
+export function parseJSONRelaxed(content) {
+  postMessage(RelaxedJSONParser.parse(content));
+}
 
 /**
  * @param {string} content
  */
-FormatterWorker.evaluatableJavaScriptSubstring = function(content) {
-  var tokenizer = acorn.tokenizer(content, {ecmaVersion: 8});
-  var result = '';
+export function evaluatableJavaScriptSubstring(content) {
+  const tokenizer = acorn.tokenizer(content, {});
+  let result = '';
   try {
-    var token = tokenizer.getToken();
-    while (token.type !== acorn.tokTypes.eof && FormatterWorker.AcornTokenizer.punctuator(token))
+    let token = tokenizer.getToken();
+    while (token.type !== acorn.tokTypes.eof && AcornTokenizer.punctuator(token)) {
       token = tokenizer.getToken();
+    }
 
-    var startIndex = token.start;
-    var endIndex = token.end;
-    var openBracketsCounter = 0;
+    const startIndex = token.start;
+    let endIndex = token.end;
+    let openBracketsCounter = 0;
     while (token.type !== acorn.tokTypes.eof) {
-      var isIdentifier = FormatterWorker.AcornTokenizer.identifier(token);
-      var isThis = FormatterWorker.AcornTokenizer.keyword(token, 'this');
-      var isString = token.type === acorn.tokTypes.string;
-      if (!isThis && !isIdentifier && !isString)
+      const isIdentifier = AcornTokenizer.identifier(token);
+      const isThis = AcornTokenizer.keyword(token, 'this');
+      const isString = token.type === acorn.tokTypes.string;
+      if (!isThis && !isIdentifier && !isString) {
         break;
+      }
 
       endIndex = token.end;
       token = tokenizer.getToken();
-      while (FormatterWorker.AcornTokenizer.punctuator(token, '.[]')) {
-        if (FormatterWorker.AcornTokenizer.punctuator(token, '['))
+      while (AcornTokenizer.punctuator(token, '.[]')) {
+        if (AcornTokenizer.punctuator(token, '[')) {
           openBracketsCounter++;
+        }
 
-        if (FormatterWorker.AcornTokenizer.punctuator(token, ']')) {
+        if (AcornTokenizer.punctuator(token, ']')) {
           endIndex = openBracketsCounter > 0 ? token.end : endIndex;
           openBracketsCounter--;
         }
@@ -133,17 +161,21 @@ FormatterWorker.evaluatableJavaScriptSubstring = function(content) {
     console.error(e);
   }
   postMessage(result);
-};
+}
 
 /**
  * @param {string} content
  */
-FormatterWorker.javaScriptIdentifiers = function(content) {
-  var root = acorn.parse(content, {ranges: false, ecmaVersion: 8});
+export function javaScriptIdentifiers(content) {
+  let root = null;
+  try {
+    root = acorn.parse(content, {ranges: false});
+  } catch (e) {
+  }
 
   /** @type {!Array<!ESTree.Node>} */
-  var identifiers = [];
-  var walker = new FormatterWorker.ESTreeWalker(beforeVisit);
+  const identifiers = [];
+  const walker = new ESTreeWalker(beforeVisit);
 
   /**
    * @param {!ESTree.Node} node
@@ -159,17 +191,20 @@ FormatterWorker.javaScriptIdentifiers = function(content) {
    */
   function beforeVisit(node) {
     if (isFunction(node)) {
-      if (node.id)
+      if (node.id) {
         identifiers.push(node.id);
-      return FormatterWorker.ESTreeWalker.SkipSubtree;
+      }
+      return ESTreeWalker.SkipSubtree;
     }
 
-    if (node.type !== 'Identifier')
+    if (node.type !== 'Identifier') {
       return;
+    }
 
     if (node.parent && node.parent.type === 'MemberExpression' && node.parent.property === node &&
-        !node.parent.computed)
+        !node.parent.computed) {
       return;
+    }
     identifiers.push(node);
   }
 
@@ -178,42 +213,47 @@ FormatterWorker.javaScriptIdentifiers = function(content) {
     return;
   }
 
-  var functionNode = root.body[0];
-  for (var param of functionNode.params)
+  const functionNode = root.body[0];
+  for (const param of functionNode.params) {
     walker.walk(param);
+  }
   walker.walk(functionNode.body);
-  var reduced = identifiers.map(id => ({name: id.name, offset: id.start}));
+  const reduced = identifiers.map(id => ({name: id.name, offset: id.start}));
   postMessage(reduced);
-};
+}
 
 /**
  * @param {string} mimeType
  * @param {string} text
  * @param {string=} indentString
  */
-FormatterWorker.format = function(mimeType, text, indentString) {
+export function format(mimeType, text, indentString) {
   // Default to a 4-space indent.
   indentString = indentString || '    ';
-  var result = {};
-  var builder = new FormatterWorker.FormattedContentBuilder(indentString);
-  var lineEndings = text.computeLineEndings();
+  const result = {};
+  const builder = new FormattedContentBuilder(indentString);
+  const lineEndings = Platform.StringUtilities.findLineEndingIndexes(text);
   try {
     switch (mimeType) {
-      case 'text/html':
-        var formatter = new FormatterWorker.HTMLFormatter(builder);
+      case 'text/html': {
+        const formatter = new HTMLFormatter(builder);
         formatter.format(text, lineEndings);
         break;
-      case 'text/css':
-        var formatter = new FormatterWorker.CSSFormatter(builder);
+      }
+      case 'text/css': {
+        const formatter = new CSSFormatter(builder);
         formatter.format(text, lineEndings, 0, text.length);
         break;
-      case 'text/javascript':
-        var formatter = new FormatterWorker.JavaScriptFormatter(builder);
+      }
+      case 'text/javascript': {
+        const formatter = new JavaScriptFormatter(builder);
         formatter.format(text, lineEndings, 0, text.length);
         break;
-      default:
-        var formatter = new FormatterWorker.IdentityFormatter(builder);
+      }
+      default: {
+        const formatter = new IdentityFormatter(builder);
         formatter.format(text, lineEndings, 0, text.length);
+      }
     }
     result.mapping = builder.mapping();
     result.content = builder.content();
@@ -223,35 +263,252 @@ FormatterWorker.format = function(mimeType, text, indentString) {
     result.content = text;
   }
   postMessage(result);
-};
+}
+
+/**
+ * @param {string} content
+ * @return {?{baseExpression: string, possibleSideEffects:boolean, receiver: string, argumentIndex: number, functionName: string}}
+ */
+export function findLastFunctionCall(content) {
+  if (content.length > 10000) {
+    return null;
+  }
+  try {
+    const tokenizer = acorn.tokenizer(content, {});
+    while (tokenizer.getToken().type !== acorn.tokTypes.eof) {
+    }
+  } catch (e) {
+    return null;
+  }
+
+  const suffix = '000)';
+  const base = _lastCompleteExpression(content, suffix, new Set(['CallExpression', 'NewExpression']));
+  if (!base) {
+    return null;
+  }
+  const callee = base.baseNode['callee'];
+
+  let functionName = '';
+  const functionProperty = callee.type === 'Identifier' ? callee : callee.property;
+  if (functionProperty) {
+    if (functionProperty.type === 'Identifier') {
+      functionName = functionProperty.name;
+    } else if (functionProperty.type === 'Literal') {
+      functionName = functionProperty.value;
+    }
+  }
+
+  const argumentIndex = base.baseNode['arguments'].length - 1;
+  const baseExpression =
+      `(${base.baseExpression.substring(callee.start - base.baseNode.start, callee.end - base.baseNode.start)})`;
+  const possibleSideEffects = _nodeHasPossibleSideEffects(callee);
+  let receiver = '(function(){return this})()';
+  if (callee.type === 'MemberExpression') {
+    const receiverBase = callee['object'];
+    receiver =
+        base.baseExpression.substring(receiverBase.start - base.baseNode.start, receiverBase.end - base.baseNode.start);
+  }
+  return {baseExpression, receiver, possibleSideEffects, argumentIndex, functionName};
+}
+
+/**
+ * @param {string} content
+ * @return {!Array<string>}
+ */
+export function argumentsList(content) {
+  if (content.length > 10000) {
+    return [];
+  }
+  let parsed = null;
+  try {
+    // Try to parse as a function, anonymous function, or arrow function.
+    parsed = acorn.parse(`(${content})`, {});
+  } catch (e) {
+  }
+  if (!parsed) {
+    try {
+      // Try to parse as a method.
+      parsed = acorn.parse(`({${content}})`, {});
+    } catch (e) {
+    }
+  }
+  if (!parsed || !parsed.body || !parsed.body[0] || !parsed.body[0].expression) {
+    return [];
+  }
+  const expression = parsed.body[0].expression;
+  let params = null;
+  switch (expression.type) {
+    case 'ClassExpression':
+      if (!expression.body.body) {
+        break;
+      }
+      const constructor = expression.body.body.find(method => method.kind === 'constructor');
+      if (constructor) {
+        params = constructor.value.params;
+      }
+      break;
+    case 'ObjectExpression':
+      if (!expression.properties[0] || !expression.properties[0].value) {
+        break;
+      }
+      params = expression.properties[0].value.params;
+      break;
+    case 'FunctionExpression':
+    case 'ArrowFunctionExpression':
+      params = expression.params;
+      break;
+  }
+  if (!params) {
+    return [];
+  }
+  return params.map(paramName);
+
+  function paramName(param) {
+    switch (param.type) {
+      case 'Identifier':
+        return param.name;
+      case 'AssignmentPattern':
+        return '?' + paramName(param.left);
+      case 'ObjectPattern':
+        return 'obj';
+      case 'ArrayPattern':
+        return 'arr';
+      case 'RestElement':
+        return '...' + paramName(param.argument);
+    }
+    return '?';
+  }
+}
+
+/**
+ * @param {string} content
+ * @return {?{baseExpression: string, possibleSideEffects:boolean}}
+ */
+export function findLastExpression(content) {
+  if (content.length > 10000) {
+    return null;
+  }
+  try {
+    const tokenizer = acorn.tokenizer(content, {});
+    while (tokenizer.getToken().type !== acorn.tokTypes.eof) {
+    }
+  } catch (e) {
+    return null;
+  }
+
+  const suffix = '.DEVTOOLS';
+  try {
+    acorn.parse(content + suffix, {});
+  } catch (parseError) {
+    // If this is an invalid location for a '.', don't attempt to give autocomplete
+    if (parseError.message.startsWith('Unexpected token') && parseError.pos === content.length) {
+      return null;
+    }
+  }
+  const base = _lastCompleteExpression(content, suffix, new Set(['MemberExpression', 'Identifier']));
+  if (!base) {
+    return null;
+  }
+  const {baseExpression, baseNode} = base;
+  const possibleSideEffects = _nodeHasPossibleSideEffects(baseNode);
+  return {baseExpression, possibleSideEffects};
+}
+
+/**
+ * @param {string} content
+ * @param {string} suffix
+ * @param {!Set<string>} types
+ * @return {?{baseNode: !ESTree.Node, baseExpression: string}}
+ */
+export function _lastCompleteExpression(content, suffix, types) {
+  /** @type {!ESTree.Node} */
+  let ast;
+  let parsedContent = '';
+  for (let i = 0; i < content.length; i++) {
+    try {
+      // Wrap content in paren to successfully parse object literals
+      parsedContent = content[i] === '{' ? `(${content.substring(i)})${suffix}` : `${content.substring(i)}${suffix}`;
+      ast = acorn.parse(parsedContent, {});
+      break;
+    } catch (e) {
+    }
+  }
+  if (!ast) {
+    return null;
+  }
+  let baseNode = null;
+  const walker = new ESTreeWalker(node => {
+    if (baseNode || node.end < ast.end) {
+      return ESTreeWalker.SkipSubtree;
+    }
+    if (types.has(node.type)) {
+      baseNode = node;
+    }
+  });
+  walker.walk(ast);
+  if (!baseNode) {
+    return null;
+  }
+  let baseExpression = parsedContent.substring(baseNode.start, parsedContent.length - suffix.length);
+  if (baseExpression.startsWith('{')) {
+    baseExpression = `(${baseExpression})`;
+  }
+  return {baseNode, baseExpression};
+}
+
+/**
+ * @param {!ESTree.Node} baseNode
+ * @return {boolean}
+ */
+export function _nodeHasPossibleSideEffects(baseNode) {
+  const sideEffectFreeTypes = new Set([
+    'MemberExpression', 'Identifier', 'BinaryExpression', 'Literal', 'TemplateLiteral', 'TemplateElement',
+    'ObjectExpression', 'ArrayExpression', 'Property', 'ThisExpression'
+  ]);
+  let possibleSideEffects = false;
+  const sideEffectwalker = new ESTreeWalker(node => {
+    if (!possibleSideEffects && !sideEffectFreeTypes.has(node.type)) {
+      possibleSideEffects = true;
+    }
+    if (possibleSideEffects) {
+      return ESTreeWalker.SkipSubtree;
+    }
+  });
+  sideEffectwalker.walk(/** @type {!ESTree.Node} */ (baseNode));
+  return possibleSideEffects;
+}
 
 /**
  * @interface
  */
-FormatterWorker.FormatterWorkerContentParser = function() {};
-
-FormatterWorker.FormatterWorkerContentParser.prototype = {
+export class FormatterWorkerContentParser {
   /**
    * @param {string} content
    * @return {!Object}
    */
   parse(content) {}
-};
+}
 
 /**
  * @param {string} content
  * @param {string} mimeType
  */
-FormatterWorker.FormatterWorkerContentParser.parse = function(content, mimeType) {
-  var extension = self.runtime.extensions(FormatterWorker.FormatterWorkerContentParser).find(findExtension);
+FormatterWorkerContentParser.parse = function(content, mimeType) {
+  const extension = self.runtime.extensions(FormatterWorkerContentParser).find(findExtension);
   console.assert(extension);
   extension.instance().then(instance => instance.parse(content)).catchException(null).then(postMessage);
 
   /**
-   * @param {!Runtime.Extension} extension
+   * @param {!Root.Runtime.Extension} extension
    * @return {boolean}
    */
   function findExtension(extension) {
     return extension.descriptor()['mimeType'] === mimeType;
   }
 };
+
+(function disableLoggingForTest() {
+  if (Root.Runtime.queryParam('test')) {
+    console.error = () => undefined;
+  }
+})();

@@ -2,12 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import * as ProtocolModule from '../protocol/protocol.js';
+
+import {OverlayModel} from './OverlayModel.js';
+import {Capability, SDKModel, Target} from './SDKModel.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @implements {Protocol.PageDispatcher}
  */
-SDK.ScreenCaptureModel = class extends SDK.SDKModel {
+export class ScreenCaptureModel extends SDKModel {
   /**
-   * @param {!SDK.Target} target
+   * @param {!Target} target
    */
   constructor(target) {
     super(target);
@@ -46,17 +51,21 @@ SDK.ScreenCaptureModel = class extends SDK.SDKModel {
    * @param {!Protocol.Page.Viewport=} clip
    * @return {!Promise<?string>}
    */
-  captureScreenshot(format, quality, clip) {
-    return this._agent.captureScreenshot(format, quality, clip, true);
+  async captureScreenshot(format, quality, clip) {
+    await OverlayModel.muteHighlight();
+    const result = await this._agent.captureScreenshot(format, quality, clip, true);
+    await OverlayModel.unmuteHighlight();
+    return result;
   }
 
   /**
    * @return {!Promise<?{viewportX: number, viewportY: number, viewportScale: number, contentWidth: number, contentHeight: number}>}
    */
   async fetchLayoutMetrics() {
-    var response = await this._agent.invoke_getLayoutMetrics({});
-    if (response[Protocol.Error])
+    const response = await this._agent.invoke_getLayoutMetrics({});
+    if (response[ProtocolModule.InspectorBackend.ProtocolError]) {
       return null;
+    }
     return {
       viewportX: response.visualViewport.pageX,
       viewportY: response.visualViewport.pageY,
@@ -74,8 +83,9 @@ SDK.ScreenCaptureModel = class extends SDK.SDKModel {
    */
   screencastFrame(data, metadata, sessionId) {
     this._agent.screencastFrameAck(sessionId);
-    if (this._onScreencastFrame)
+    if (this._onScreencastFrame) {
       this._onScreencastFrame.call(null, data, metadata);
+    }
   }
 
   /**
@@ -83,8 +93,9 @@ SDK.ScreenCaptureModel = class extends SDK.SDKModel {
    * @param {boolean} visible
    */
   screencastVisibilityChanged(visible) {
-    if (this._onScreencastVisibilityChanged)
+    if (this._onScreencastVisibilityChanged) {
       this._onScreencastVisibilityChanged.call(null, visible);
+    }
   }
 
   /**
@@ -99,6 +110,24 @@ SDK.ScreenCaptureModel = class extends SDK.SDKModel {
    * @param {number} time
    */
   loadEventFired(time) {
+  }
+
+  /**
+   * @override
+   * @param {!Protocol.Page.FrameId} frameId
+   * @param {!Protocol.Network.LoaderId} loaderId
+   * @param {string} name
+   * @param {number} time
+   */
+  lifecycleEvent(frameId, loaderId, name, time) {
+  }
+
+  /**
+   * @override
+   * @param {!Protocol.Page.FrameId} frameId
+   * @param {string} url
+   */
+  navigatedWithinDocument(frameId, url) {
   }
 
   /**
@@ -140,6 +169,14 @@ SDK.ScreenCaptureModel = class extends SDK.SDKModel {
   /**
    * @override
    * @param {!Protocol.Page.FrameId} frameId
+   */
+  frameRequestedNavigation(frameId) {
+  }
+
+
+  /**
+   * @override
+   * @param {!Protocol.Page.FrameId} frameId
    * @param {number} delay
    */
   frameScheduledNavigation(frameId, delay) {
@@ -163,9 +200,10 @@ SDK.ScreenCaptureModel = class extends SDK.SDKModel {
    * @param {string} url
    * @param {string} message
    * @param {string} dialogType
+   * @param {boolean} hasBrowserHandler
    * @param {string=} prompt
    */
-  javascriptDialogOpening(url, message, dialogType, prompt) {
+  javascriptDialogOpening(url, message, dialogType, hasBrowserHandler, prompt) {
   }
 
   /**
@@ -187,6 +225,39 @@ SDK.ScreenCaptureModel = class extends SDK.SDKModel {
    */
   interstitialHidden() {
   }
-};
 
-SDK.SDKModel.register(SDK.ScreenCaptureModel, SDK.Target.Capability.ScreenCapture, false);
+  /**
+   * @override
+   * @param {string} url
+   * @param {string} windowName
+   * @param {!Array<string>} windowFeatures
+   * @param {boolean} userGesture
+   */
+  windowOpen(url, windowName, windowFeatures, userGesture) {
+  }
+
+  /**
+   * @override
+   * @param {string} mode
+   */
+  fileChooserOpened(mode) {
+  }
+
+  /**
+   * @override
+   * @param {string} url
+   * @param {string} data
+   */
+  compilationCacheProduced(url, data) {
+  }
+
+  /**
+   * @override
+   * @param {!Protocol.Page.FrameId} frameId
+   * @param {string} url
+   */
+  downloadWillBegin(frameId, url) {
+  }
+}
+
+SDKModel.register(ScreenCaptureModel, Capability.ScreenCapture, false);

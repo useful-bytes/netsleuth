@@ -28,54 +28,70 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-Network.RequestResponseView = class extends UI.VBox {
+import * as Common from '../common/common.js';
+import * as SDK from '../sdk/sdk.js';  // eslint-disable-line no-unused-vars
+import * as SourceFrame from '../source_frame/source_frame.js';
+import * as UI from '../ui/ui.js';
+
+export class RequestResponseView extends UI.Widget.VBox {
   /**
-   * @param {!SDK.NetworkRequest} request
+   * @param {!SDK.NetworkRequest.NetworkRequest} request
    */
   constructor(request) {
     super();
     this.element.classList.add('request-view');
     /** @protected */
     this.request = request;
-    /** @type {?Promise<!UI.Widget>} */
+    /** @type {?Promise<!UI.Widget.Widget>} */
     this._contentViewPromise = null;
   }
 
   /**
-   * @param {!SDK.NetworkRequest} request
+   * @param {!SDK.NetworkRequest.NetworkRequest} request
    * @param {!SDK.NetworkRequest.ContentData} contentData
    * @return {boolean}
    */
   static _hasTextContent(request, contentData) {
-    if (request.resourceType().isTextType())
+    const mimeType = request.mimeType || '';
+    let resourceType = Common.ResourceType.ResourceType.fromMimeType(mimeType);
+    if (resourceType === Common.ResourceType.resourceTypes.Other) {
+      resourceType = request.contentType();
+    }
+    if (resourceType === Common.ResourceType.resourceTypes.Image) {
+      return mimeType.startsWith('image/svg');
+    }
+    if (resourceType.isTextType()) {
       return true;
-    if (contentData.error)
+    }
+    if (contentData.error) {
       return false;
-    if (request.resourceType() === Common.resourceTypes.Other)
+    }
+    if (resourceType === Common.ResourceType.resourceTypes.Other) {
       return !!contentData.content && !contentData.encoded;
+    }
     return false;
   }
 
   /**
    * @protected
-   * @param {!SDK.NetworkRequest} request
-   * @return {!Promise<?UI.SearchableView>}
+   * @param {!SDK.NetworkRequest.NetworkRequest} request
+   * @return {!Promise<?UI.Widget.Widget>}
    */
   static async sourceViewForRequest(request) {
-    var sourceView = request[Network.RequestResponseView._sourceViewSymbol];
-    if (sourceView !== undefined)
+    let sourceView = request[_sourceViewSymbol];
+    if (sourceView !== undefined) {
       return sourceView;
+    }
 
-    var contentData = await request.contentData();
-    if (!Network.RequestResponseView._hasTextContent(request, contentData)) {
-      request[Network.RequestResponseView._sourceViewSymbol] = null;
+    const contentData = await request.contentData();
+    if (!RequestResponseView._hasTextContent(request, contentData)) {
+      request[_sourceViewSymbol] = null;
       return null;
     }
 
-    var contentProvider = new Network.DecodingContentProvider(request);
-    var highlighterType = request.resourceType().canonicalMimeType() || request.mimeType;
-    sourceView = SourceFrame.ResourceSourceFrame.createSearchableView(contentProvider, highlighterType);
-    request[Network.RequestResponseView._sourceViewSymbol] = sourceView;
+    const highlighterType = request.resourceType().canonicalMimeType() || request.mimeType;
+    sourceView = SourceFrame.ResourceSourceFrame.ResourceSourceFrame.createSearchableView(request, highlighterType);
+    request[_sourceViewSymbol] = sourceView;
     return sourceView;
   }
 
@@ -84,84 +100,54 @@ Network.RequestResponseView = class extends UI.VBox {
    * @final
    */
   wasShown() {
-    this.showPreview();
+    this._doShowPreview();
+  }
+
+  /**
+   * @return {!Promise<!UI.Widget.Widget>}
+   */
+  _doShowPreview() {
+    if (!this._contentViewPromise) {
+      this._contentViewPromise = this.showPreview();
+    }
+    return this._contentViewPromise;
   }
 
   /**
    * @protected
-   * @return {!Promise<?UI.Widget>}
+   * @return {!Promise<!UI.Widget.Widget>}
    */
   async showPreview() {
-    if (!this._contentViewPromise)
-      this._contentViewPromise = this.createPreview();
-    var responseView = await this._contentViewPromise;
-    if (this.element.contains(responseView.element))
-      return null;
-
+    const responseView = await this.createPreview();
     responseView.show(this.element);
     return responseView;
   }
 
   /**
-   * @return {!Promise<!UI.Widget>}
+   * @protected
+   * @return {!Promise<!UI.Widget.Widget>}
    */
   async createPreview() {
-    var contentData = await this.request.contentData();
-    var sourceView = await Network.RequestResponseView.sourceViewForRequest(this.request);
-    if ((!contentData.content || !sourceView) && !contentData.error)
-      return new UI.EmptyWidget(Common.UIString('This request has no response data available.'));
-    if (contentData.content && sourceView)
+    const contentData = await this.request.contentData();
+    const sourceView = await RequestResponseView.sourceViewForRequest(this.request);
+    if ((!contentData.content || !sourceView) && !contentData.error) {
+      return new UI.EmptyWidget.EmptyWidget(Common.UIString.UIString('This request has no response data available.'));
+    }
+    if (contentData.content && sourceView) {
       return sourceView;
-    return new UI.EmptyWidget(Common.UIString('Failed to load response data'));
-  }
-};
-
-Network.RequestResponseView._sourceViewSymbol = Symbol('RequestResponseSourceView');
-
-/**
- * @implements {Common.ContentProvider}
- */
-Network.DecodingContentProvider = class {
-  /**
-   * @param {!SDK.NetworkRequest} request
-   */
-  constructor(request) {
-    this._request = request;
+    }
+    return new UI.EmptyWidget.EmptyWidget(Common.UIString.UIString('Failed to load response data'));
   }
 
   /**
-   * @override
-   * @return {string}
+   * @param {number} line
    */
-  contentURL() {
-    return this._request.contentURL();
+  async revealLine(line) {
+    const view = await this._doShowPreview();
+    if (view instanceof SourceFrame.ResourceSourceFrame.SearchableContainer) {
+      view.revealPosition(line);
+    }
   }
+}
 
-  /**
-   * @override
-   * @return {!Common.ResourceType}
-   */
-  contentType() {
-    return this._request.resourceType();
-  }
-
-  /**
-   * @override
-   * @return {!Promise<?string>}
-   */
-  async requestContent() {
-    var contentData = await this._request.contentData();
-    return contentData.encoded ? window.atob(contentData.content || '') : contentData.content;
-  }
-
-  /**
-   * @override
-   * @param {string} query
-   * @param {boolean} caseSensitive
-   * @param {boolean} isRegex
-   * @return {!Promise<!Array<!Common.ContentProvider.SearchMatch>>}
-   */
-  searchInContent(query, caseSensitive, isRegex) {
-    return this._request.searchInContent(query, caseSensitive, isRegex);
-  }
-};
+export const _sourceViewSymbol = Symbol('RequestResponseSourceView');

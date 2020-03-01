@@ -29,22 +29,12 @@
 
 .resources-toolbar {
     border-top: 1px solid #ccc;
-    background-color: #f3f3f3;
+    background-color: var(--toolbar-bg-color);
 }
 
 .top-resources-toolbar {
     border-bottom: 1px solid #ccc;
-    background-color: #f3f3f3;
-}
-
-li.selected .base-storage-tree-element-subtitle {
-    color: white;
-}
-
-.base-storage-tree-element-subtitle {
-    padding-left: 2px;
-    color: rgb(80, 80, 80);
-    text-shadow: none;
+    background-color: var(--toolbar-bg-color);
 }
 
 .resources.panel .status {
@@ -87,16 +77,20 @@ li.selected .base-storage-tree-element-subtitle {
 
 .storage-view .filter-bar {
     border-top: none;
-    border-bottom: 1px solid #dadada;
+    border-bottom: var(--divider-border);
+}
+
+.database-query-group-messages {
+    overflow-y: auto;
 }
 
 .database-query-prompt-container {
     position: relative;
     padding: 1px 22px 1px 24px;
+    min-height: 16px;
 }
 
 .database-query-prompt {
-    min-height: 16px;
     white-space: pre-wrap;
 }
 
@@ -106,7 +100,7 @@ li.selected .base-storage-tree-element-subtitle {
     left: 7px;
     top: 9px;
     margin-top: -7px;
-    -webkit-user-select: none;
+    user-select: none;
 }
 
 .database-query-prompt-container .prompt-icon {
@@ -121,47 +115,26 @@ li.selected .base-storage-tree-element-subtitle {
     flex-shrink: 0;
 }
 
+.database-user-query[data-keyboard-focus="true"]:focus {
+    background-color: hsl(214, 48%, 95%);
+}
+
 .database-query-text {
     color: rgb(0, 128, 255);
-    -webkit-user-select: text;
+    user-select: text;
 }
 
 .database-query-result {
     position: relative;
-    padding: 1px 22px 1px 24px;
+    padding: 1px 22px 1px 22px;
     min-height: 16px;
-    margin-left: -24px;
+    margin-left: -22px;
     padding-right: 0;
 }
 
 .database-query-result.error {
     color: red;
-    -webkit-user-select: text;
-}
-
-.resource-sidebar-tree-item .icon {
-    content: url(Images/resourcePlainIconSmall.png);
-}
-
-.resource-sidebar-tree-item.resources-type-image .icon {
-    position: relative;
-    background-image: url(Images/resourcePlainIcon.png);
-    background-repeat: no-repeat;
-    content: "";
-}
-
-.resources-type-image .image-resource-icon-preview {
-    position: absolute;
-    margin: auto;
-    min-width: 1px;
-    min-height: 1px;
-    top: 2px;
-    bottom: 1px;
-    left: 3px;
-    right: 3px;
-    max-width: 8px;
-    max-height: 11px;
-    overflow: hidden;
+    user-select: text;
 }
 
 .resources-sidebar {

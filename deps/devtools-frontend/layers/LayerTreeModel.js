@@ -28,47 +28,56 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Common from '../common/common.js';
+import * as SDK from '../sdk/sdk.js';
+import * as UI from '../ui/ui.js';
+
 /**
  * @unrestricted
  */
-Layers.LayerTreeModel = class extends SDK.SDKModel {
+export class LayerTreeModel extends SDK.SDKModel.SDKModel {
   constructor(target) {
     super(target);
     this._layerTreeAgent = target.layerTreeAgent();
-    target.registerLayerTreeDispatcher(new Layers.LayerTreeDispatcher(this));
-    this._paintProfilerModel = /** @type {!SDK.PaintProfilerModel} */ (target.model(SDK.PaintProfilerModel));
-    var resourceTreeModel = target.model(SDK.ResourceTreeModel);
+    target.registerLayerTreeDispatcher(new LayerTreeDispatcher(this));
+    this._paintProfilerModel =
+        /** @type {!SDK.PaintProfiler.PaintProfilerModel} */ (target.model(SDK.PaintProfiler.PaintProfilerModel));
+    const resourceTreeModel = target.model(SDK.ResourceTreeModel.ResourceTreeModel);
     if (resourceTreeModel) {
       resourceTreeModel.addEventListener(
           SDK.ResourceTreeModel.Events.MainFrameNavigated, this._onMainFrameNavigated, this);
     }
-    /** @type {?SDK.LayerTreeBase} */
+    /** @type {?SDK.LayerTreeBase.LayerTreeBase} */
     this._layerTree = null;
+    this._throttler = new Common.Throttler.Throttler(20);
   }
 
   disable() {
-    if (!this._enabled)
+    if (!this._enabled) {
       return;
+    }
     this._enabled = false;
     this._layerTreeAgent.disable();
   }
 
   enable() {
-    if (this._enabled)
+    if (this._enabled) {
       return;
+    }
     this._enabled = true;
     this._forceEnable();
   }
 
   _forceEnable() {
     this._lastPaintRectByLayerId = {};
-    if (!this._layerTree)
-      this._layerTree = new Layers.AgentLayerTree(this);
+    if (!this._layerTree) {
+      this._layerTree = new AgentLayerTree(this);
+    }
     this._layerTreeAgent.enable();
   }
 
   /**
-   * @return {?SDK.LayerTreeBase}
+   * @return {?SDK.LayerTreeBase.LayerTreeBase}
    */
   layerTree() {
     return this._layerTree;
@@ -78,21 +87,30 @@ Layers.LayerTreeModel = class extends SDK.SDKModel {
    * @param {?Array.<!Protocol.LayerTree.Layer>} layers
    */
   async _layerTreeChanged(layers) {
-    if (!this._enabled)
+    if (!this._enabled) {
       return;
-    var layerTree = /** @type {!Layers.AgentLayerTree} */ (this._layerTree);
+    }
+    this._throttler.schedule(this._innerSetLayers.bind(this, layers));
+  }
+
+  /**
+   * @param {?Array.<!Protocol.LayerTree.Layer>} layers
+   */
+  async _innerSetLayers(layers) {
+    const layerTree = /** @type {!AgentLayerTree} */ (this._layerTree);
 
     await layerTree.setLayers(layers);
 
-    for (var layerId in this._lastPaintRectByLayerId) {
-      var lastPaintRect = this._lastPaintRectByLayerId[layerId];
-      var layer = layerTree.layerById(layerId);
-      if (layer)
-        layer._lastPaintRect = lastPaintRect;
+    for (const layerId in this._lastPaintRectByLayerId) {
+      const lastPaintRect = this._lastPaintRectByLayerId[layerId];
+      const layer = layerTree.layerById(layerId);
+      if (layer) {
+        /** @type {!AgentLayer} */ (layer)._lastPaintRect = lastPaintRect;
+      }
     }
     this._lastPaintRectByLayerId = {};
 
-    this.dispatchEventToListeners(Layers.LayerTreeModel.Events.LayerTreeChanged);
+    this.dispatchEventToListeners(Events.LayerTreeChanged);
   }
 
   /**
@@ -100,29 +118,31 @@ Layers.LayerTreeModel = class extends SDK.SDKModel {
    * @param {!Protocol.DOM.Rect} clipRect
    */
   _layerPainted(layerId, clipRect) {
-    if (!this._enabled)
+    if (!this._enabled) {
       return;
-    var layerTree = /** @type {!Layers.AgentLayerTree} */ (this._layerTree);
-    var layer = layerTree.layerById(layerId);
+    }
+    const layerTree = /** @type {!AgentLayerTree} */ (this._layerTree);
+    const layer = /** @type {!AgentLayer} */ (layerTree.layerById(layerId));
     if (!layer) {
       this._lastPaintRectByLayerId[layerId] = clipRect;
       return;
     }
     layer._didPaint(clipRect);
-    this.dispatchEventToListeners(Layers.LayerTreeModel.Events.LayerPainted, layer);
+    this.dispatchEventToListeners(Events.LayerPainted, layer);
   }
 
   _onMainFrameNavigated() {
     this._layerTree = null;
-    if (this._enabled)
+    if (this._enabled) {
       this._forceEnable();
+    }
   }
-};
+}
 
-SDK.SDKModel.register(Layers.LayerTreeModel, SDK.Target.Capability.DOM, false);
+SDK.SDKModel.SDKModel.register(LayerTreeModel, SDK.SDKModel.Capability.DOM, false);
 
 /** @enum {symbol} */
-Layers.LayerTreeModel.Events = {
+export const Events = {
   LayerTreeChanged: Symbol('LayerTreeChanged'),
   LayerPainted: Symbol('LayerPainted'),
 };
@@ -130,9 +150,9 @@ Layers.LayerTreeModel.Events = {
 /**
  * @unrestricted
  */
-Layers.AgentLayerTree = class extends SDK.LayerTreeBase {
+export class AgentLayerTree extends SDK.LayerTreeBase.LayerTreeBase {
   /**
-   * @param {!Layers.LayerTreeModel} layerTreeModel
+   * @param {!LayerTreeModel} layerTreeModel
    */
   constructor(layerTreeModel) {
     super(layerTreeModel.target());
@@ -148,11 +168,12 @@ Layers.AgentLayerTree = class extends SDK.LayerTreeBase {
       this._innerSetLayers(payload);
       return;
     }
-    var idsToResolve = new Set();
-    for (var i = 0; i < payload.length; ++i) {
-      var backendNodeId = payload[i].backendNodeId;
-      if (!backendNodeId || this.backendNodeIdToNode().has(backendNodeId))
+    const idsToResolve = new Set();
+    for (let i = 0; i < payload.length; ++i) {
+      const backendNodeId = payload[i].backendNodeId;
+      if (!backendNodeId || this.backendNodeIdToNode().has(backendNodeId)) {
         continue;
+      }
       idsToResolve.add(backendNodeId);
     }
     await this.resolveBackendNodeIds(idsToResolve);
@@ -166,33 +187,39 @@ Layers.AgentLayerTree = class extends SDK.LayerTreeBase {
     this.setRoot(null);
     this.setContentRoot(null);
     // Payload will be null when not in the composited mode.
-    if (!layers)
+    if (!layers) {
       return;
-    var root;
-    var oldLayersById = this._layersById;
+    }
+    let root;
+    const oldLayersById = this._layersById;
     this._layersById = {};
-    for (var i = 0; i < layers.length; ++i) {
-      var layerId = layers[i].layerId;
-      var layer = oldLayersById[layerId];
-      if (layer)
+    for (let i = 0; i < layers.length; ++i) {
+      const layerId = layers[i].layerId;
+      let layer = oldLayersById[layerId];
+      if (layer) {
         layer._reset(layers[i]);
-      else
-        layer = new Layers.AgentLayer(this._layerTreeModel, layers[i]);
+      } else {
+        layer = new AgentLayer(this._layerTreeModel, layers[i]);
+      }
       this._layersById[layerId] = layer;
-      var backendNodeId = layers[i].backendNodeId;
-      if (backendNodeId)
+      const backendNodeId = layers[i].backendNodeId;
+      if (backendNodeId) {
         layer._setNode(this.backendNodeIdToNode().get(backendNodeId));
-      if (!this.contentRoot() && layer.drawsContent())
+      }
+      if (!this.contentRoot() && layer.drawsContent()) {
         this.setContentRoot(layer);
-      var parentId = layer.parentId();
+      }
+      const parentId = layer.parentId();
       if (parentId) {
-        var parent = this._layersById[parentId];
-        if (!parent)
+        const parent = this._layersById[parentId];
+        if (!parent) {
           console.assert(parent, 'missing parent ' + parentId + ' for layer ' + layerId);
+        }
         parent.addChild(layer);
       } else {
-        if (root)
+        if (root) {
           console.assert(false, 'Multiple root layers');
+        }
         root = layer;
       }
     }
@@ -201,15 +228,15 @@ Layers.AgentLayerTree = class extends SDK.LayerTreeBase {
       root._calculateQuad(new WebKitCSSMatrix());
     }
   }
-};
+}
 
 /**
- * @implements {SDK.Layer}
+ * @implements {SDK.LayerTreeBase.Layer}
  * @unrestricted
  */
-Layers.AgentLayer = class {
+export class AgentLayer {
   /**
-   * @param {!Layers.LayerTreeModel} layerTreeModel
+   * @param {!LayerTreeModel} layerTreeModel
    * @param {!Protocol.LayerTree.Layer} layerPayload
    */
   constructor(layerTreeModel, layerPayload) {
@@ -235,7 +262,7 @@ Layers.AgentLayer = class {
 
   /**
    * @override
-   * @return {?SDK.Layer}
+   * @return {?SDK.LayerTreeBase.Layer}
    */
   parent() {
     return this._parent;
@@ -251,7 +278,7 @@ Layers.AgentLayer = class {
 
   /**
    * @override
-   * @return {!Array.<!SDK.Layer>}
+   * @return {!Array.<!SDK.LayerTreeBase.Layer>}
    */
   children() {
     return this._children;
@@ -259,17 +286,19 @@ Layers.AgentLayer = class {
 
   /**
    * @override
-   * @param {!SDK.Layer} child
+   * @param {!SDK.LayerTreeBase.Layer} childParam
    */
-  addChild(child) {
-    if (child._parent)
+  addChild(childParam) {
+    const child = /** @type {!AgentLayer} */ (childParam);
+    if (child._parent) {
       console.assert(false, 'Child already has a parent');
+    }
     this._children.push(child);
     child._parent = this;
   }
 
   /**
-   * @param {?SDK.DOMNode} node
+   * @param {?SDK.DOMModel.DOMNode} node
    */
   _setNode(node) {
     this._node = node;
@@ -277,7 +306,7 @@ Layers.AgentLayer = class {
 
   /**
    * @override
-   * @return {?SDK.DOMNode}
+   * @return {?SDK.DOMModel.DOMNode}
    */
   node() {
     return this._node;
@@ -285,12 +314,13 @@ Layers.AgentLayer = class {
 
   /**
    * @override
-   * @return {?SDK.DOMNode}
+   * @return {?SDK.DOMModel.DOMNode}
    */
   nodeForSelfOrAncestor() {
-    for (var layer = this; layer; layer = layer._parent) {
-      if (layer._node)
+    for (let layer = this; layer; layer = layer._parent) {
+      if (layer._node) {
         return layer._node;
+      }
     }
     return null;
   }
@@ -389,7 +419,7 @@ Layers.AgentLayer = class {
 
   /**
    * @override
-   * @return {?SDK.Layer.StickyPositionConstraint}
+   * @return {?SDK.LayerTreeBase.StickyPositionConstraint}
    */
   stickyPositionConstraint() {
     return this._stickyPositionConstraint;
@@ -399,9 +429,9 @@ Layers.AgentLayer = class {
    * @override
    * @return {!Promise<!Array<string>>}
    */
-  async requestCompositingReasons() {
-    var reasons = await this._layerTreeModel._layerTreeAgent.compositingReasons(this.id());
-    return reasons || [];
+  async requestCompositingReasonIds() {
+    const reasons = await this._layerTreeModel._layerTreeAgent.invoke_compositingReasons({layerId: this.id()});
+    return reasons.compositingReasonIds || [];
   }
 
   /**
@@ -420,18 +450,19 @@ Layers.AgentLayer = class {
     /**
      * @const
      */
-    var bytesPerPixel = 4;
+    const bytesPerPixel = 4;
     return this.drawsContent() ? this.width() * this.height() * bytesPerPixel : 0;
   }
 
   /**
    * @override
-   * @return {!Array<!Promise<?SDK.SnapshotWithRect>>}
+   * @return {!Array<!Promise<?SDK.PaintProfiler.SnapshotWithRect>>}
    */
   snapshots() {
-    var promise = this._layerTreeModel._paintProfilerModel.makeSnapshot(this.id()).then(snapshot => {
-      if (!snapshot)
+    const promise = this._layerTreeModel._paintProfilerModel.makeSnapshot(this.id()).then(snapshot => {
+      if (!snapshot) {
         return null;
+      }
       return {rect: {x: 0, y: 0, width: this.width(), height: this.height()}, snapshot: snapshot};
     });
     return [promise];
@@ -450,7 +481,7 @@ Layers.AgentLayer = class {
    * @param {!Protocol.LayerTree.Layer} layerPayload
    */
   _reset(layerPayload) {
-    /** @type {?SDK.DOMNode} */
+    /** @type {?SDK.DOMModel.DOMNode} */
     this._node = null;
     this._children = [];
     this._parent = null;
@@ -459,7 +490,7 @@ Layers.AgentLayer = class {
     this._image = null;
     this._scrollRects = this._layerPayload.scrollRects || [];
     this._stickyPositionConstraint = this._layerPayload.stickyPositionConstraint ?
-        new SDK.Layer.StickyPositionConstraint(
+        new SDK.LayerTreeBase.StickyPositionConstraint(
             this._layerTreeModel.layerTree(), this._layerPayload.stickyPositionConstraint) :
         null;
   }
@@ -480,16 +511,16 @@ Layers.AgentLayer = class {
    * @return {!CSSMatrix}
    */
   _calculateTransformToViewport(parentTransform) {
-    var offsetMatrix = new WebKitCSSMatrix().translate(this._layerPayload.offsetX, this._layerPayload.offsetY);
-    var matrix = offsetMatrix;
+    const offsetMatrix = new WebKitCSSMatrix().translate(this._layerPayload.offsetX, this._layerPayload.offsetY);
+    let matrix = offsetMatrix;
 
     if (this._layerPayload.transform) {
-      var transformMatrix = this._matrixFromArray(this._layerPayload.transform);
-      var anchorVector = new UI.Geometry.Vector(
+      const transformMatrix = this._matrixFromArray(this._layerPayload.transform);
+      const anchorVector = new UI.Geometry.Vector(
           this._layerPayload.width * this.anchorPoint()[0], this._layerPayload.height * this.anchorPoint()[1],
           this.anchorPoint()[2]);
-      var anchorPoint = UI.Geometry.multiplyVectorByMatrixAndNormalize(anchorVector, matrix);
-      var anchorMatrix = new WebKitCSSMatrix().translate(-anchorPoint.x, -anchorPoint.y, -anchorPoint.z);
+      const anchorPoint = UI.Geometry.multiplyVectorByMatrixAndNormalize(anchorVector, matrix);
+      const anchorMatrix = new WebKitCSSMatrix().translate(-anchorPoint.x, -anchorPoint.y, -anchorPoint.z);
       matrix = anchorMatrix.inverse().multiply(transformMatrix.multiply(anchorMatrix.multiply(matrix)));
     }
 
@@ -510,11 +541,11 @@ Layers.AgentLayer = class {
    * @param {!CSSMatrix} parentTransform
    */
   _calculateQuad(parentTransform) {
-    var matrix = this._calculateTransformToViewport(parentTransform);
+    const matrix = this._calculateTransformToViewport(parentTransform);
     this._quad = [];
-    var vertices = this._createVertexArrayForRect(this._layerPayload.width, this._layerPayload.height);
-    for (var i = 0; i < 4; ++i) {
-      var point = UI.Geometry.multiplyVectorByMatrixAndNormalize(
+    const vertices = this._createVertexArrayForRect(this._layerPayload.width, this._layerPayload.height);
+    for (let i = 0; i < 4; ++i) {
+      const point = UI.Geometry.multiplyVectorByMatrixAndNormalize(
           new UI.Geometry.Vector(vertices[i * 3], vertices[i * 3 + 1], vertices[i * 3 + 2]), matrix);
       this._quad.push(point.x, point.y);
     }
@@ -525,15 +556,15 @@ Layers.AgentLayer = class {
 
     this._children.forEach(calculateQuadForLayer);
   }
-};
+}
 
 /**
  * @implements {Protocol.LayerTreeDispatcher}
  * @unrestricted
  */
-Layers.LayerTreeDispatcher = class {
+class LayerTreeDispatcher {
   /**
-   * @param {!Layers.LayerTreeModel} layerTreeModel
+   * @param {!LayerTreeModel} layerTreeModel
    */
   constructor(layerTreeModel) {
     this._layerTreeModel = layerTreeModel;
@@ -555,4 +586,4 @@ Layers.LayerTreeDispatcher = class {
   layerPainted(layerId, clipRect) {
     this._layerTreeModel._layerPainted(layerId, clipRect);
   }
-};
+}

@@ -1,31 +1,38 @@
 // Copyright (c) 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as ARIAUtils from './ARIAUtils.js';
+import {Toolbar} from './Toolbar.js';
+import {VBox} from './Widget.js';
+
 /**
  * @unrestricted
  */
-UI.ReportView = class extends UI.VBox {
+export class ReportView extends VBox {
   /**
-   * @param {string} title
+   * @param {string=} title
    */
   constructor(title) {
     super(true);
     this.registerRequiredCSS('ui/reportView.css');
 
-    var contentBox = this.contentElement.createChild('div', 'report-content-box');
-    this._headerElement = contentBox.createChild('div', 'report-header vbox');
+    this._contentBox = this.contentElement.createChild('div', 'report-content-box');
+    this._headerElement = this._contentBox.createChild('div', 'report-header vbox');
     this._titleElement = this._headerElement.createChild('div', 'report-title');
     this._titleElement.textContent = title;
+    ARIAUtils.markAsHeading(this._titleElement, 1);
 
-    this._sectionList = contentBox.createChild('div', 'vbox');
+    this._sectionList = this._contentBox.createChild('div', 'vbox');
   }
 
   /**
    * @param {string} title
    */
   setTitle(title) {
-    if (this._titleElement && this._titleElement.textContent === title)
+    if (this._titleElement.textContent === title) {
       return;
+    }
     this._titleElement.textContent = title;
   }
 
@@ -33,10 +40,12 @@ UI.ReportView = class extends UI.VBox {
    * @param {string} subtitle
    */
   setSubtitle(subtitle) {
-    if (this._subtitleElement && this._subtitleElement.textContent === subtitle)
+    if (this._subtitleElement && this._subtitleElement.textContent === subtitle) {
       return;
-    if (!this._subtitleElement)
+    }
+    if (!this._subtitleElement) {
       this._subtitleElement = this._headerElement.createChild('div', 'report-subtitle');
+    }
     this._subtitleElement.textContent = subtitle;
   }
 
@@ -44,18 +53,20 @@ UI.ReportView = class extends UI.VBox {
    * @param {?Element} link
    */
   setURL(link) {
-    if (!this._urlElement)
+    if (!this._urlElement) {
       this._urlElement = this._headerElement.createChild('div', 'report-url link');
+    }
     this._urlElement.removeChildren();
-    if (link)
+    if (link) {
       this._urlElement.appendChild(link);
+    }
   }
 
   /**
-   * @return {!UI.Toolbar}
+   * @return {!Toolbar}
    */
   createToolbar() {
-    var toolbar = new UI.Toolbar('');
+    const toolbar = new Toolbar('');
     this._headerElement.appendChild(toolbar.element);
     return toolbar;
   }
@@ -63,23 +74,50 @@ UI.ReportView = class extends UI.VBox {
   /**
    * @param {string} title
    * @param {string=} className
-   * @return {!UI.ReportView.Section}
+   * @return {!Section}
    */
   appendSection(title, className) {
-    var section = new UI.ReportView.Section(title, className);
+    const section = new Section(title, className);
     section.show(this._sectionList);
     return section;
   }
 
-  removeAllSection() {
-    this._sectionList.removeChildren();
+  /**
+   * @param {function(!Section, !Section): number} comparator
+   */
+  sortSections(comparator) {
+    const sections = /** @type {!Array<!Section>} */ (this.children().slice());
+    const sorted = sections.every((e, i, a) => !i || comparator(a[i - 1], a[i]) <= 0);
+    if (sorted) {
+      return;
+    }
+
+    this.detachChildWidgets();
+    sections.sort(comparator);
+    for (const section of sections) {
+      section.show(this._sectionList);
+    }
   }
-};
+
+  /**
+   * @param {boolean} visible
+   */
+  setHeaderVisible(visible) {
+    this._headerElement.classList.toggle('hidden', !visible);
+  }
+
+  /**
+   * @param {boolean} scrollable
+   */
+  setBodyScrollable(scrollable) {
+    this._contentBox.classList.toggle('no-scroll', !scrollable);
+  }
+}
 
 /**
  * @unrestricted
  */
-UI.ReportView.Section = class extends UI.VBox {
+export class Section extends VBox {
   /**
    * @param {string} title
    * @param {string=} className
@@ -87,29 +125,49 @@ UI.ReportView.Section = class extends UI.VBox {
   constructor(title, className) {
     super();
     this.element.classList.add('report-section');
-    if (className)
+    if (className) {
       this.element.classList.add(className);
+    }
     this._headerElement = this.element.createChild('div', 'report-section-header');
     this._titleElement = this._headerElement.createChild('div', 'report-section-title');
-    this._titleElement.textContent = title;
+    this.setTitle(title);
+    ARIAUtils.markAsHeading(this._titleElement, 2);
     this._fieldList = this.element.createChild('div', 'vbox');
     /** @type {!Map.<string, !Element>} */
     this._fieldMap = new Map();
   }
 
   /**
-   * @param {string} title
+   * @return {string}
    */
-  setTitle(title) {
-    if (this._titleElement.textContent !== title)
-      this._titleElement.textContent = title;
+  title() {
+    return this._titleElement.textContent;
   }
 
   /**
-   * @return {!UI.Toolbar}
+   * @param {string} title
+   */
+  setTitle(title) {
+    if (this._titleElement.textContent !== title) {
+      this._titleElement.textContent = title;
+    }
+    this._titleElement.classList.toggle('hidden', !this._titleElement.textContent);
+  }
+
+  /**
+   * Declares the overall container to be a group and assigns a title.
+   * @param {string} groupTitle
+   */
+  setUiGroupTitle(groupTitle) {
+    ARIAUtils.markAsGroup(this.element);
+    ARIAUtils.setAccessibleName(this.element, groupTitle);
+  }
+
+  /**
+   * @return {!Toolbar}
    */
   createToolbar() {
-    var toolbar = new UI.Toolbar('');
+    const toolbar = new Toolbar('');
     this._headerElement.appendChild(toolbar.element);
     return toolbar;
   }
@@ -120,29 +178,38 @@ UI.ReportView.Section = class extends UI.VBox {
    * @return {!Element}
    */
   appendField(title, textValue) {
-    var row = this._fieldMap.get(title);
+    let row = this._fieldMap.get(title);
     if (!row) {
       row = this._fieldList.createChild('div', 'report-field');
       row.createChild('div', 'report-field-name').textContent = title;
       this._fieldMap.set(title, row);
       row.createChild('div', 'report-field-value');
     }
-    if (textValue)
+    if (textValue) {
       row.lastElementChild.textContent = textValue;
+    }
     return /** @type {!Element} */ (row.lastElementChild);
   }
 
-  remove() {
-    this.element.remove();
+  /**
+  * @param {string} title
+  * @param {string=} textValue
+  * @return {!Element}
+  */
+  appendFlexedField(title, textValue) {
+    const field = this.appendField(title, textValue);
+    field.classList.add('report-field-value-is-flexed');
+    return field;
   }
 
   /**
    * @param {string} title
    */
   removeField(title) {
-    var row = this._fieldMap.get(title);
-    if (row)
+    const row = this._fieldMap.get(title);
+    if (row) {
       row.remove();
+    }
     this._fieldMap.delete(title);
   }
 
@@ -151,9 +218,10 @@ UI.ReportView.Section = class extends UI.VBox {
    * @param {boolean} visible
    */
   setFieldVisible(title, visible) {
-    var row = this._fieldMap.get(title);
-    if (row)
+    const row = this._fieldMap.get(title);
+    if (row) {
       row.classList.toggle('hidden', !visible);
+    }
   }
 
   /**
@@ -161,7 +229,7 @@ UI.ReportView.Section = class extends UI.VBox {
    * @return {?Element}
    */
   fieldValue(title) {
-    var row = this._fieldMap.get(title);
+    const row = this._fieldMap.get(title);
     return row ? row.lastElementChild : null;
   }
 
@@ -172,8 +240,27 @@ UI.ReportView.Section = class extends UI.VBox {
     return this._fieldList.createChild('div', 'report-row');
   }
 
+  /**
+   * @return {!Element}
+   */
+  appendSelectableRow() {
+    return this._fieldList.createChild('div', 'report-row report-row-selectable');
+  }
+
   clearContent() {
     this._fieldList.removeChildren();
     this._fieldMap.clear();
   }
-};
+
+  markFieldListAsGroup() {
+    ARIAUtils.markAsGroup(this._fieldList);
+    ARIAUtils.setAccessibleName(this._fieldList, this.title());
+  }
+
+  /**
+   * @param {boolean} masked
+   */
+  setIconMasked(masked) {
+    this.element.classList.toggle('show-mask', masked);
+  }
+}

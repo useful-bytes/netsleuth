@@ -1,56 +1,62 @@
-/*
- * Copyright (c) 2012 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file.
- */
+// Copyright 2012 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as QuickOpen from '../quick_open/quick_open.js';
+import * as UI from '../ui/ui.js';
+import * as Workspace from '../workspace/workspace.js';
+
+import {FilePathScoreFunction} from './FilePathScoreFunction.js';
 
 /**
  * @unrestricted
  */
-Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListWidget.Provider {
+export class FilteredUISourceCodeListProvider extends QuickOpen.FilteredListWidget.Provider {
   constructor() {
     super();
 
     this._queryLineNumberAndColumnNumber = '';
     this._defaultScores = null;
-    this._scorer = new Sources.FilePathScoreFunction('');
+    this._scorer = new FilePathScoreFunction('');
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _projectRemoved(event) {
-    var project = /** @type {!Workspace.Project} */ (event.data);
+    const project = /** @type {!Workspace.Workspace.Project} */ (event.data);
     this._populate(project);
     this.refresh();
   }
 
   /**
-   * @param {!Workspace.Project=} skipProject
+   * @param {!Workspace.Workspace.Project=} skipProject
    */
   _populate(skipProject) {
-    /** @type {!Array.<!Workspace.UISourceCode>} */
+    /** @type {!Array.<!Workspace.UISourceCode.UISourceCode>} */
     this._uiSourceCodes = [];
-    var projects = Workspace.workspace.projects().filter(this.filterProject.bind(this));
-    for (var i = 0; i < projects.length; ++i) {
-      if (skipProject && projects[i] === skipProject)
+    const projects = self.Workspace.workspace.projects().filter(this.filterProject.bind(this));
+    for (let i = 0; i < projects.length; ++i) {
+      if (skipProject && projects[i] === skipProject) {
         continue;
-      var uiSourceCodes = projects[i].uiSourceCodes().filter(this._filterUISourceCode.bind(this));
+      }
+      const uiSourceCodes = projects[i].uiSourceCodes().filter(this._filterUISourceCode.bind(this));
       this._uiSourceCodes = this._uiSourceCodes.concat(uiSourceCodes);
     }
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @return {boolean}
    */
   _filterUISourceCode(uiSourceCode) {
-    var binding = Persistence.persistence.binding(uiSourceCode);
+    const binding = self.Persistence.persistence.binding(uiSourceCode);
     return !binding || binding.fileSystem === uiSourceCode;
   }
 
   /**
-   * @param {?Workspace.UISourceCode} uiSourceCode
+   * @param {?Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @param {number=} lineNumber
    * @param {number=} columnNumber
    */
@@ -59,7 +65,7 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
   }
 
   /**
-   * @param {!Workspace.Project} project
+   * @param {!Workspace.Workspace.Project} project
    * @return {boolean}
    */
   filterProject(project) {
@@ -86,7 +92,7 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
 
   /**
    * @protected
-   * @param {?Map.<!Workspace.UISourceCode, number>} defaultScores
+   * @param {?Map.<!Workspace.UISourceCode.UISourceCode, number>} defaultScores
    */
   setDefaultScores(defaultScores) {
     this._defaultScores = defaultScores;
@@ -99,18 +105,25 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
    * @return {number}
    */
   itemScoreAt(itemIndex, query) {
-    var uiSourceCode = this._uiSourceCodes[itemIndex];
-    var score = this._defaultScores ? (this._defaultScores.get(uiSourceCode) || 0) : 0;
-    if (!query || query.length < 2)
+    const uiSourceCode = this._uiSourceCodes[itemIndex];
+    const score = this._defaultScores ? (this._defaultScores.get(uiSourceCode) || 0) : 0;
+    if (!query || query.length < 2) {
       return score;
+    }
 
     if (this._query !== query) {
       this._query = query;
-      this._scorer = new Sources.FilePathScoreFunction(query);
+      this._scorer = new FilePathScoreFunction(query);
     }
 
-    var fullDisplayName = uiSourceCode.fullDisplayName();
-    return score + 10 * this._scorer.score(fullDisplayName, null);
+    let multiplier = 10;
+    if (uiSourceCode.project().type() === Workspace.Workspace.projectTypes.FileSystem &&
+        !self.Persistence.persistence.binding(uiSourceCode)) {
+      multiplier = 5;
+    }
+
+    const fullDisplayName = uiSourceCode.fullDisplayName();
+    return score + multiplier * this._scorer.score(fullDisplayName, null);
   }
 
   /**
@@ -122,27 +135,29 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
    */
   renderItem(itemIndex, query, titleElement, subtitleElement) {
     query = this.rewriteQuery(query);
-    var uiSourceCode = this._uiSourceCodes[itemIndex];
-    var fullDisplayName = uiSourceCode.fullDisplayName();
-    var indexes = [];
-    new Sources.FilePathScoreFunction(query).score(fullDisplayName, indexes);
-    var fileNameIndex = fullDisplayName.lastIndexOf('/');
+    const uiSourceCode = this._uiSourceCodes[itemIndex];
+    const fullDisplayName = uiSourceCode.fullDisplayName();
+    const indexes = [];
+    new FilePathScoreFunction(query).score(fullDisplayName, indexes);
+    const fileNameIndex = fullDisplayName.lastIndexOf('/');
 
     titleElement.classList.add('monospace');
     subtitleElement.classList.add('monospace');
     titleElement.textContent = uiSourceCode.displayName() + (this._queryLineNumberAndColumnNumber || '');
     this._renderSubtitleElement(subtitleElement, fullDisplayName);
     subtitleElement.title = fullDisplayName;
-    var ranges = [];
-    for (var i = 0; i < indexes.length; ++i)
+    const ranges = [];
+    for (let i = 0; i < indexes.length; ++i) {
       ranges.push({offset: indexes[i], length: 1});
+    }
 
     if (indexes[0] > fileNameIndex) {
-      for (var i = 0; i < ranges.length; ++i)
+      for (let i = 0; i < ranges.length; ++i) {
         ranges[i].offset -= fileNameIndex + 1;
-      UI.highlightRangesWithStyleClass(titleElement, ranges, 'highlight');
+      }
+      UI.UIUtils.highlightRangesWithStyleClass(titleElement, ranges, 'highlight');
     } else {
-      UI.highlightRangesWithStyleClass(subtitleElement, ranges, 'highlight');
+      UI.UIUtils.highlightRangesWithStyleClass(subtitleElement, ranges, 'highlight');
     }
   }
 
@@ -152,12 +167,13 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
    */
   _renderSubtitleElement(element, text) {
     element.removeChildren();
-    var splitPosition = text.lastIndexOf('/');
-    if (text.length > 55)
+    let splitPosition = text.lastIndexOf('/');
+    if (text.length > 55) {
       splitPosition = text.length - 55;
-    var first = element.createChild('div', 'first-part');
+    }
+    const first = element.createChild('div', 'first-part');
     first.textContent = text.substring(0, splitPosition);
-    var second = element.createChild('div', 'second-part');
+    const second = element.createChild('div', 'second-part');
     second.textContent = text.substring(splitPosition);
     element.title = text;
   }
@@ -168,17 +184,20 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
    * @param {string} promptValue
    */
   selectItem(itemIndex, promptValue) {
-    var parsedExpression = promptValue.trim().match(/^([^:]*)(:\d+)?(:\d+)?$/);
-    if (!parsedExpression)
+    const parsedExpression = promptValue.trim().match(/^([^:]*)(:\d+)?(:\d+)?$/);
+    if (!parsedExpression) {
       return;
+    }
 
-    var lineNumber;
-    var columnNumber;
-    if (parsedExpression[2])
+    let lineNumber;
+    let columnNumber;
+    if (parsedExpression[2]) {
       lineNumber = parseInt(parsedExpression[2].substr(1), 10) - 1;
-    if (parsedExpression[3])
+    }
+    if (parsedExpression[3]) {
       columnNumber = parseInt(parsedExpression[3].substr(1), 10) - 1;
-    var uiSourceCode = itemIndex !== null ? this._uiSourceCodes[itemIndex] : null;
+    }
+    const uiSourceCode = itemIndex !== null ? this._uiSourceCodes[itemIndex] : null;
     this.uiSourceCodeSelected(uiSourceCode, lineNumber, columnNumber);
   }
 
@@ -189,20 +208,22 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
    */
   rewriteQuery(query) {
     query = query ? query.trim() : '';
-    if (!query || query === ':')
+    if (!query || query === ':') {
       return '';
-    var lineNumberMatch = query.match(/^([^:]+)((?::[^:]*){0,2})$/);
+    }
+    const lineNumberMatch = query.match(/^([^:]+)((?::[^:]*){0,2})$/);
     this._queryLineNumberAndColumnNumber = lineNumberMatch ? lineNumberMatch[2] : '';
     return lineNumberMatch ? lineNumberMatch[1] : query;
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _uiSourceCodeAdded(event) {
-    var uiSourceCode = /** @type {!Workspace.UISourceCode} */ (event.data);
-    if (!this._filterUISourceCode(uiSourceCode) || !this.filterProject(uiSourceCode.project()))
+    const uiSourceCode = /** @type {!Workspace.UISourceCode.UISourceCode} */ (event.data);
+    if (!this._filterUISourceCode(uiSourceCode) || !this.filterProject(uiSourceCode.project())) {
       return;
+    }
     this._uiSourceCodes.push(uiSourceCode);
     this.refresh();
   }
@@ -212,15 +233,16 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
    * @return {string}
    */
   notFoundText() {
-    return Common.UIString('No files found');
+    return Common.UIString.UIString('No files found');
   }
 
   /**
    * @override
    */
   attach() {
-    Workspace.workspace.addEventListener(Workspace.Workspace.Events.UISourceCodeAdded, this._uiSourceCodeAdded, this);
-    Workspace.workspace.addEventListener(Workspace.Workspace.Events.ProjectRemoved, this._projectRemoved, this);
+    self.Workspace.workspace.addEventListener(
+        Workspace.Workspace.Events.UISourceCodeAdded, this._uiSourceCodeAdded, this);
+    self.Workspace.workspace.addEventListener(Workspace.Workspace.Events.ProjectRemoved, this._projectRemoved, this);
     this._populate();
   }
 
@@ -228,10 +250,10 @@ Sources.FilteredUISourceCodeListProvider = class extends QuickOpen.FilteredListW
    * @override
    */
   detach() {
-    Workspace.workspace.removeEventListener(
+    self.Workspace.workspace.removeEventListener(
         Workspace.Workspace.Events.UISourceCodeAdded, this._uiSourceCodeAdded, this);
-    Workspace.workspace.removeEventListener(Workspace.Workspace.Events.ProjectRemoved, this._projectRemoved, this);
+    self.Workspace.workspace.removeEventListener(Workspace.Workspace.Events.ProjectRemoved, this._projectRemoved, this);
     this._queryLineNumberAndColumnNumber = '';
     this._defaultScores = null;
   }
-};
+}

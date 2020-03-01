@@ -1,12 +1,20 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as HostModule from '../host/host.js';
+import * as Platform from '../platform/platform.js';
+
+import {cssMetadata, GridAreaRowRegex} from './CSSMetadata.js';
+import {Edit} from './CSSModel.js';                            // eslint-disable-line no-unused-vars
+import {CSSStyleDeclaration} from './CSSStyleDeclaration.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @unrestricted
  */
-SDK.CSSProperty = class {
+export class CSSProperty {
   /**
-   * @param {!SDK.CSSStyleDeclaration} ownerStyle
+   * @param {!CSSStyleDeclaration} ownerStyle
    * @param {number} index
    * @param {string} name
    * @param {string} value
@@ -34,10 +42,10 @@ SDK.CSSProperty = class {
   }
 
   /**
-   * @param {!SDK.CSSStyleDeclaration} ownerStyle
+   * @param {!CSSStyleDeclaration} ownerStyle
    * @param {number} index
    * @param {!Protocol.CSS.CSSProperty} payload
-   * @return {!SDK.CSSProperty}
+   * @return {!CSSProperty}
    */
   static parsePayload(ownerStyle, index, payload) {
     // The following default field values are used in the payload:
@@ -45,27 +53,30 @@ SDK.CSSProperty = class {
     // parsedOk: true
     // implicit: false
     // disabled: false
-    var result = new SDK.CSSProperty(
+    const result = new CSSProperty(
         ownerStyle, index, payload.name, payload.value, payload.important || false, payload.disabled || false,
         ('parsedOk' in payload) ? !!payload.parsedOk : true, !!payload.implicit, payload.text, payload.range);
     return result;
   }
 
   _ensureRanges() {
-    if (this._nameRange && this._valueRange)
+    if (this._nameRange && this._valueRange) {
       return;
-    var range = this.range;
-    var text = this.text ? new TextUtils.Text(this.text) : null;
-    if (!range || !text)
+    }
+    const range = this.range;
+    const text = this.text ? new TextUtils.Text(this.text) : null;
+    if (!range || !text) {
       return;
+    }
 
-    var nameIndex = text.value().indexOf(this.name);
-    var valueIndex = text.value().lastIndexOf(this.value);
-    if (nameIndex === -1 || valueIndex === -1 || nameIndex > valueIndex)
+    const nameIndex = text.value().indexOf(this.name);
+    const valueIndex = text.value().lastIndexOf(this.value);
+    if (nameIndex === -1 || valueIndex === -1 || nameIndex > valueIndex) {
       return;
+    }
 
-    var nameSourceRange = new TextUtils.SourceRange(nameIndex, this.name.length);
-    var valueSourceRange = new TextUtils.SourceRange(valueIndex, this.value.length);
+    const nameSourceRange = new TextUtils.SourceRange(nameIndex, this.name.length);
+    const valueSourceRange = new TextUtils.SourceRange(valueIndex, this.value.length);
 
     this._nameRange = rebase(text.toTextRange(nameSourceRange), range.startLine, range.startColumn);
     this._valueRange = rebase(text.toTextRange(valueSourceRange), range.startLine, range.startColumn);
@@ -104,13 +115,15 @@ SDK.CSSProperty = class {
   }
 
   /**
-   * @param {!SDK.CSSModel.Edit} edit
+   * @param {!Edit} edit
    */
   rebase(edit) {
-    if (this.ownerStyle.styleSheetId !== edit.styleSheetId)
+    if (this.ownerStyle.styleSheetId !== edit.styleSheetId) {
       return;
-    if (this.range)
+    }
+    if (this.range) {
       this.range = this.range.rebaseAfterTextEdit(edit.oldRange, edit.newRange);
+    }
   }
 
   /**
@@ -121,11 +134,13 @@ SDK.CSSProperty = class {
   }
 
   get propertyText() {
-    if (this.text !== undefined)
+    if (this.text !== undefined) {
       return this.text;
+    }
 
-    if (this.name === '')
+    if (this.name === '') {
       return '';
+    }
     return this.name + ': ' + this.value + (this.important ? ' !important' : '') + ';';
   }
 
@@ -142,45 +157,38 @@ SDK.CSSProperty = class {
    * @param {boolean=} overwrite
    * @return {!Promise.<boolean>}
    */
-  setText(propertyText, majorChange, overwrite) {
-    if (!this.ownerStyle)
+  async setText(propertyText, majorChange, overwrite) {
+    if (!this.ownerStyle) {
       return Promise.reject(new Error('No ownerStyle for property'));
+    }
 
-    if (!this.ownerStyle.styleSheetId)
+    if (!this.ownerStyle.styleSheetId) {
       return Promise.reject(new Error('No owner style id'));
+    }
 
-    if (!this.range || !this.ownerStyle.range)
+    if (!this.range || !this.ownerStyle.range) {
       return Promise.reject(new Error('Style not editable'));
+    }
 
-    if (majorChange)
-      Host.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
+    if (majorChange) {
+      HostModule.userMetrics.actionTaken(Host.UserMetrics.Action.StyleRuleEdited);
+    }
 
     if (overwrite && propertyText === this.propertyText) {
-      if (majorChange)
-        this.ownerStyle.cssModel().domModel().markUndoableState();
+      this.ownerStyle.cssModel().domModel().markUndoableState(!majorChange);
       return Promise.resolve(true);
     }
 
-    var range = this.range.relativeTo(this.ownerStyle.range.startLine, this.ownerStyle.range.startColumn);
-    var indentation = this.ownerStyle.cssText ? this._detectIndentation(this.ownerStyle.cssText) :
-                                                Common.moduleSetting('textEditorIndent').get();
-    var endIndentation = this.ownerStyle.cssText ? indentation.substring(0, this.ownerStyle.range.endColumn) : '';
-    var text = new TextUtils.Text(this.ownerStyle.cssText || '');
-    var newStyleText = text.replaceRange(range, String.sprintf(';%s;', propertyText));
+    const range = this.range.relativeTo(this.ownerStyle.range.startLine, this.ownerStyle.range.startColumn);
+    const indentation = this.ownerStyle.cssText ? this._detectIndentation(this.ownerStyle.cssText) :
+                                                  self.Common.settings.moduleSetting('textEditorIndent').get();
+    const endIndentation = this.ownerStyle.cssText ? indentation.substring(0, this.ownerStyle.range.endColumn) : '';
+    const text = new TextUtils.Text(this.ownerStyle.cssText || '');
+    const newStyleText = text.replaceRange(range, Platform.StringUtilities.sprintf(';%s;', propertyText));
 
-    return self.runtime.extension(TextUtils.TokenizerFactory)
-        .instance()
-        .then(this._formatStyle.bind(this, newStyleText, indentation, endIndentation))
-        .then(setStyleText.bind(this));
-
-    /**
-     * @param {string} styleText
-     * @this {SDK.CSSProperty}
-     * @return {!Promise.<boolean>}
-     */
-    function setStyleText(styleText) {
-      return this.ownerStyle.setText(styleText, majorChange);
-    }
+    const tokenizerFactory = await self.runtime.extension(TextUtils.TokenizerFactory).instance();
+    const styleText = CSSProperty._formatStyle(newStyleText, indentation, endIndentation, tokenizerFactory);
+    return this.ownerStyle.setText(styleText, majorChange);
   }
 
   /**
@@ -190,17 +198,22 @@ SDK.CSSProperty = class {
    * @param {!TextUtils.TokenizerFactory} tokenizerFactory
    * @return {string}
    */
-  _formatStyle(styleText, indentation, endIndentation, tokenizerFactory) {
-    if (indentation)
+  static _formatStyle(styleText, indentation, endIndentation, tokenizerFactory) {
+    const doubleIndent = indentation.substring(endIndentation.length) + indentation;
+    if (indentation) {
       indentation = '\n' + indentation;
-    var result = '';
-    var propertyText;
-    var insideProperty = false;
-    var tokenize = tokenizerFactory.createTokenizer('text/css');
+    }
+    let result = '';
+    let propertyName = '';
+    let propertyText;
+    let insideProperty = false;
+    let needsSemi = false;
+    const tokenize = tokenizerFactory.createTokenizer('text/css');
 
     tokenize('*{' + styleText + '}', processToken);
-    if (insideProperty)
+    if (insideProperty) {
       result += propertyText;
+    }
     result = result.substring(2, result.length - 1).trimRight();
     return result + (indentation ? '\n' + endIndentation : '');
 
@@ -212,26 +225,45 @@ SDK.CSSProperty = class {
      */
     function processToken(token, tokenType, column, newColumn) {
       if (!insideProperty) {
-        var disabledProperty = tokenType && tokenType.includes('css-comment') && isDisabledProperty(token);
-        var isPropertyStart = tokenType && (tokenType.includes('css-string') || tokenType.includes('css-meta') ||
-                                            tokenType.includes('css-property') || tokenType.includes('css-variable-2'));
+        const disabledProperty = tokenType && tokenType.includes('css-comment') && isDisabledProperty(token);
+        const isPropertyStart = tokenType &&
+            (tokenType.includes('css-string') || tokenType.includes('css-meta') || tokenType.includes('css-property') ||
+             tokenType.includes('css-variable-2'));
         if (disabledProperty) {
           result = result.trimRight() + indentation + token;
         } else if (isPropertyStart) {
           insideProperty = true;
           propertyText = token;
-        } else if (token !== ';') {
+        } else if (token !== ';' || needsSemi) {
           result += token;
+          if (token.trim() && !(tokenType && tokenType.includes('css-comment'))) {
+            needsSemi = token !== ';';
+          }
+        }
+        if (token === '{' && !tokenType) {
+          needsSemi = false;
         }
         return;
       }
 
       if (token === '}' || token === ';') {
         result = result.trimRight() + indentation + propertyText.trim() + ';';
+        needsSemi = false;
         insideProperty = false;
-        if (token === '}')
+        propertyName = '';
+        if (token === '}') {
           result += '}';
+        }
       } else {
+        if (cssMetadata().isGridAreaDefiningProperty(propertyName)) {
+          const rowResult = GridAreaRowRegex.exec(token);
+          if (rowResult && rowResult.index === 0 && !propertyText.trimRight().endsWith(']')) {
+            propertyText = propertyText.trimRight() + '\n' + doubleIndent;
+          }
+        }
+        if (!propertyName && token === ':') {
+          propertyName = propertyText;
+        }
         propertyText += token;
       }
     }
@@ -241,11 +273,12 @@ SDK.CSSProperty = class {
      * @return {boolean}
      */
     function isDisabledProperty(text) {
-      var colon = text.indexOf(':');
-      if (colon === -1)
+      const colon = text.indexOf(':');
+      if (colon === -1) {
         return false;
-      var propertyName = text.substring(2, colon).trim();
-      return SDK.cssMetadata().isCSSPropertyName(propertyName);
+      }
+      const propertyName = text.substring(2, colon).trim();
+      return cssMetadata().isCSSPropertyName(propertyName);
     }
   }
 
@@ -254,9 +287,10 @@ SDK.CSSProperty = class {
    * @return {string}
    */
   _detectIndentation(text) {
-    var lines = text.split('\n');
-    if (lines.length < 2)
+    const lines = text.split('\n');
+    if (lines.length < 2) {
       return '';
+    }
     return TextUtils.TextUtils.lineIndent(lines[1]);
   }
 
@@ -267,7 +301,7 @@ SDK.CSSProperty = class {
    * @param {function(boolean)=} userCallback
    */
   setValue(newValue, majorChange, overwrite, userCallback) {
-    var text = this.name + ': ' + newValue + (this.important ? ' !important' : '') + ';';
+    const text = this.name + ': ' + newValue + (this.important ? ' !important' : '') + ';';
     this.setText(text, majorChange, overwrite).then(userCallback);
   }
 
@@ -276,12 +310,14 @@ SDK.CSSProperty = class {
    * @return {!Promise.<boolean>}
    */
   setDisabled(disabled) {
-    if (!this.ownerStyle)
+    if (!this.ownerStyle) {
       return Promise.resolve(false);
-    if (disabled === this.disabled)
+    }
+    if (disabled === this.disabled) {
       return Promise.resolve(true);
-    var propertyText = this.text.trim();
-    var text = disabled ? '/* ' + propertyText + ' */' : this.text.substring(2, propertyText.length - 2).trim();
+    }
+    const propertyText = this.text.trim();
+    const text = disabled ? '/* ' + propertyText + ' */' : this.text.substring(2, propertyText.length - 2).trim();
     return this.setText(text, true, true);
   }
-};
+}

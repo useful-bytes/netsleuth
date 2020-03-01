@@ -1,6 +1,6 @@
 .data-grid {
     position: relative;
-    border: 1px solid #aaa;
+    border: 1px solid rgb(204, 204, 204) !important;
     line-height: 120%;
 }
 
@@ -30,6 +30,12 @@
     bottom: 0;
     overflow-y: overlay;
     transform: translateZ(0);
+}
+
+.data-grid .aria-live-label {
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
 }
 
 .data-grid.inline .header-container,
@@ -75,6 +81,7 @@
 
 .data-grid table.data tr {
     display: none;
+    height: 20px;
 }
 
 .data-grid table.data tr.revealed {
@@ -104,12 +111,12 @@
 
 .data-grid td {
     vertical-align: top;
-    -webkit-user-select: text;
+    user-select: text;
 }
 
 .data-grid th {
     text-align: left;
-    background-color: #f3f3f3;
+    background-color: var(--toolbar-bg-color);
     border-bottom: 1px solid #aaa;
     font-weight: normal;
     vertical-align: middle;
@@ -172,14 +179,19 @@
     background-color: hsla(0, 0%, 90%, 1);
 }
 
+.data-grid .top-filler-td {
+    border-bottom: 0 none transparent;
+    line-height: 0;
+}
+
 .data-grid button {
     line-height: 18px;
     color: inherit;
 }
 
 .data-grid td.disclosure::before {
-    -webkit-user-select: none;
-    -webkit-mask-image: url(Images/treeoutlineTriangles.png);
+    user-select: none;
+    -webkit-mask-image: url(Images/treeoutlineTriangles.svg);
     -webkit-mask-position: 0 0;
     -webkit-mask-size: 32px 24px;
     float: left;
@@ -196,11 +208,6 @@
     background-color: transparent;
 }
 
-@media (-webkit-min-device-pixel-ratio: 1.1) {
-.data-grid tr.parent td.disclosure::before {
-    -webkit-mask-image: url(Images/treeoutlineTriangles_2x.png);
-}
-} /* media */
 
 .data-grid tr.expanded td.disclosure::before {
     -webkit-mask-position: -16px 0;
@@ -211,22 +218,26 @@
     color: inherit;
 }
 
+.data-grid.no-selection[data-keyboard-focus="true"]:focus {
+    border: 1px solid var(--accent-color) !important;
+}
+
 .data-grid:focus table.data tr.selected {
-    background-color: rgb(56, 121, 217);
-    color: white;
+    background-color: var(--selection-bg-color);
+    color: var(--selection-fg-color);
 }
 
 .data-grid:focus tr.selected .devtools-link {
-    color: white;
+    color: var(--selection-fg-color);
 }
 
 .data-grid:focus tr.parent.selected td.disclosure::before {
-    background-color: white;
+    background-color: var(--selection-fg-color);
     -webkit-mask-position: 0 0;
 }
 
 .data-grid:focus tr.expanded.selected td.disclosure::before {
-    background-color: white;
+    background-color: var(--selection-fg-color);
     -webkit-mask-position: -16px 0;
 }
 
@@ -245,10 +256,66 @@
     background-color: hsl(0, 100%, 70%);
 }
 
+.data-grid td.show-more {
+    white-space: normal;
+}
+
+.data-grid td.show-more::before {
+    display: none;
+}
+
 .data-grid-resizer {
     position: absolute;
     top: 0;
     bottom: 0;
     width: 5px;
     z-index: 500;
+}
+
+@media (forced-colors: active) {
+    .sort-order-icon-container [is=ui-icon].icon-mask,
+    .data-grid td.disclosure::before {
+        forced-color-adjust: none;
+        background-color: ButtonText;
+    }
+    .data-grid th.sortable:hover .sort-order-icon-container [is=ui-icon].icon-mask,
+    .data-grid table.data tr.parent.revealed:hover td.disclosure::before,
+    .data-grid:focus tr.parent.selected td.disclosure::before,
+    .data-grid tr.parent.selected td.disclosure::before {
+        background-color: HighlightText;
+    }
+    .data-grid th.sortable:hover,
+    .data-grid table.data tr.revealed:hover,
+    .data-grid table.data tr.revealed.selected,
+    .striped-data-grid .revealed:hover.data-grid-data-grid-node:nth-child(odd),
+    .striped-data-grid-starts-with-odd .revealed:hover.data-grid-data-grid-node:nth-child(even),
+    .request-cookies-view tr.revealed:hover.data-grid-data-grid-node.flagged-cookie-attribute-row:not(.selected):nth-child(2n),
+    .cookies-table tr.revealed:hover.data-grid-data-grid-node.flagged-cookie-attribute-row:not(.selected):nth-child(odd) {
+        forced-color-adjust: none;
+        background-color: Highlight;
+    }
+    .data-grid th.sortable:hover *,
+    .data-grid table.data tr.revealed:hover *,
+    .data-grid table.data tr.revealed.selected *,
+    .data-grid table.data tr.revealed:focus *,
+    .data-grid table.data tr.revealed:hover .heap-object-tag {
+        color: HighlightText;
+    }
+    .data-grid.no-selection[data-keyboard-focus="true"]:focus {
+        forced-color-adjust: none;
+        border-color: Highlight;
+    }
+    .data-grid.no-selection[data-keyboard-focus="true"]:focus * {
+        color: ButtonText;
+    }
+    .data-grid th {
+        background-color: Canvas;
+        border-color: Highlight;
+    }
+    .striped-data-grid .revealed.data-grid-data-grid-node:nth-child(odd),
+    .striped-data-grid-starts-with-odd .revealed.data-grid-data-grid-node:nth-child(even),
+    .request-cookies-view tr.revealed.data-grid-data-grid-node.flagged-cookie-attribute-row:not(.selected):nth-child(2n),
+    .cookies-table tr.revealed.data-grid-data-grid-node.flagged-cookie-attribute-row:not(.selected):nth-child(odd) {
+        background-color: Canvas;
+    }
 }

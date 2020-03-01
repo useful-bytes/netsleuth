@@ -46,8 +46,8 @@
     background: linear-gradient(45deg, hsl(0, 0%, 50%), hsl(0, 0%, 70%));
 }
 
-.navigator-fs-tree-item:not(.has-mapped-files),
-.navigator-fs-folder-tree-item:not(.has-mapped-files) {
+.navigator-fs-tree-item:not(.has-mapped-files):not(.selected) > :not(.selection),
+.navigator-fs-folder-tree-item:not(.has-mapped-files):not(.selected) > :not(.selection) {
     filter: grayscale(50%);
     opacity: 0.5;
 }
@@ -58,7 +58,7 @@
 
 .tree-outline li:hover:not(.selected) .selection {
     display: block;
-    background-color: rgba(56, 121, 217, 0.1);
+    background-color: var(--item-hover-color);
 }
 
 .navigator-folder-tree-item .icon {
@@ -99,4 +99,22 @@
 
 :host{
     overflow-y: auto;
+}
+
+@media (forced-colors: active) {
+    .tree-outline li .leading-icons [is=ui-icon].icon-mask {
+        background: ButtonText;
+    }
+    .tree-outline li:hover:not(.selected) .selection {
+        forced-color-adjust: none;
+        background-color: Highlight;
+    }
+    .tree-outline:not(.hide-selection-when-blurred) li.parent:hover:not(.selected)::before,
+    .tree-outline:not(.hide-selection-when-blurred) li:hover:not(.selected) [is=ui-icon].icon-mask {
+        background-color: HighlightText;
+    }
+    .tree-outline li:not(.selected):hover .tree-element-title {
+        forced-color-adjust: none;
+        color: HighlightText;
+    }
 }

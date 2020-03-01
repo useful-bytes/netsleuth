@@ -1,37 +1,41 @@
 // Copyright (c) 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import {config} from './ARIAProperties.js';
+
 /**
  * @unrestricted
  */
-Accessibility.ARIAMetadata = class {
+export class ARIAMetadata {
   /**
    * @param {?Object} config
    */
   constructor(config) {
-    /** @type {!Map<string, !Accessibility.ARIAMetadata.Attribute>} */
+    /** @type {!Map<string, !Attribute>} */
     this._attributes = new Map();
 
-    if (config)
+    if (config) {
       this._initialize(config);
+    }
   }
 
   /**
    * @param {!Object} config
    */
   _initialize(config) {
-    var attributes = config['attributes'];
+    const attributes = config['attributes'];
 
-    var booleanEnum = ['true', 'false'];
-    for (var name in attributes) {
-      var attributeConfig = attributes[name];
-      if (attributeConfig.type === 'boolean')
+    const booleanEnum = ['true', 'false'];
+    for (const attributeConfig of attributes) {
+      if (attributeConfig.type === 'boolean') {
         attributeConfig.enum = booleanEnum;
-      this._attributes.set(name, new Accessibility.ARIAMetadata.Attribute(attributeConfig));
+      }
+      this._attributes.set(attributeConfig.name, new Attribute(attributeConfig));
     }
 
     /** @type {!Array<string>} */
-    this._roleNames = Object.keys(config['roles']);
+    this._roleNames = config['roles'].map(roleConfig => roleConfig.name);
   }
 
   /**
@@ -39,29 +43,32 @@ Accessibility.ARIAMetadata = class {
    * @return {!Array<string>}
    */
   valuesForProperty(property) {
-    if (this._attributes.has(property))
+    if (this._attributes.has(property)) {
       return this._attributes.get(property).getEnum();
+    }
 
-    if (property === 'role')
+    if (property === 'role') {
       return this._roleNames;
+    }
 
     return [];
   }
-};
+}
 
 /**
- * @return {!Accessibility.ARIAMetadata}
+ * @return {!ARIAMetadata}
  */
-Accessibility.ariaMetadata = function() {
-  if (!Accessibility.ARIAMetadata._instance)
-    Accessibility.ARIAMetadata._instance = new Accessibility.ARIAMetadata(Accessibility.ARIAMetadata._config || null);
-  return Accessibility.ARIAMetadata._instance;
-};
+export function ariaMetadata() {
+  if (!ARIAMetadata._instance) {
+    ARIAMetadata._instance = new ARIAMetadata(config || null);
+  }
+  return ARIAMetadata._instance;
+}
 
 /**
  * @unrestricted
  */
-Accessibility.ARIAMetadata.Attribute = class {
+export class Attribute {
   /**
    * @param {!Object} config
    */
@@ -69,8 +76,9 @@ Accessibility.ARIAMetadata.Attribute = class {
     /** @type {!Array<string>} */
     this._enum = [];
 
-    if ('enum' in config)
+    if ('enum' in config) {
       this._enum = config.enum;
+    }
   }
 
   /**
@@ -79,4 +87,4 @@ Accessibility.ARIAMetadata.Attribute = class {
   getEnum() {
     return this._enum;
   }
-};
+}

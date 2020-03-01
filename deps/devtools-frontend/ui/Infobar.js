@@ -1,18 +1,24 @@
 // Copyright 2015 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+import {createTextButton} from './UIUtils.js';
+import {createShadowRootWithCoreStyles} from './utils/create-shadow-root-with-core-styles.js';
+import {Widget} from './Widget.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @unrestricted
  */
-UI.Infobar = class {
+export class Infobar {
   /**
-   * @param {!UI.Infobar.Type} type
+   * @param {!Type} type
    * @param {string} text
-   * @param {!Common.Setting=} disableSetting
+   * @param {!Common.Settings.Setting=} disableSetting
    */
   constructor(type, text, disableSetting) {
     this.element = createElementWithClass('div', 'flex-none');
-    this._shadowRoot = UI.createShadowRootWithCoreStyles(this.element, 'ui/infobar.css');
+    this._shadowRoot = createShadowRootWithCoreStyles(this.element, 'ui/infobar.css');
     this._contentElement = this._shadowRoot.createChild('div', 'infobar infobar-' + type);
 
     this._mainRow = this._contentElement.createChild('div', 'infobar-main-row');
@@ -21,42 +27,44 @@ UI.Infobar = class {
     this._mainRowText.textContent = text;
     this._detailsRows = this._contentElement.createChild('div', 'infobar-details-rows hidden');
 
-    this._toggleElement = this._mainRow.createChild('div', 'infobar-toggle hidden');
-    this._toggleElement.addEventListener('click', this._onToggleDetails.bind(this), false);
-    this._toggleElement.textContent = Common.UIString('more');
+    this._toggleElement =
+        createTextButton(ls`more`, this._onToggleDetails.bind(this), 'infobar-toggle link-style hidden');
+    this._mainRow.appendChild(this._toggleElement);
 
-    /** @type {?Common.Setting} */
+    /** @type {?Common.Settings.Setting} */
     this._disableSetting = disableSetting || null;
     if (disableSetting) {
-      var disableButton = this._mainRow.createChild('div', 'infobar-toggle');
-      disableButton.textContent = Common.UIString('never show');
-      disableButton.addEventListener('click', this._onDisable.bind(this), false);
+      const disableButton = createTextButton(ls`never show`, this._onDisable.bind(this), 'infobar-toggle link-style');
+      this._mainRow.appendChild(disableButton);
     }
 
     this._closeButton = this._contentElement.createChild('div', 'close-button', 'dt-close-button');
-    this._closeButton.addEventListener('click', this.dispose.bind(this), false);
+    this._closeButton.setTabbable(true);
+    self.onInvokeElement(this._closeButton, this.dispose.bind(this));
 
     /** @type {?function()} */
     this._closeCallback = null;
   }
 
   /**
-   * @param {!UI.Infobar.Type} type
+   * @param {!Type} type
    * @param {string} text
-   * @param {!Common.Setting=} disableSetting
-   * @return {?UI.Infobar}
+   * @param {!Common.Settings.Setting=} disableSetting
+   * @return {?Infobar}
    */
   static create(type, text, disableSetting) {
-    if (disableSetting && disableSetting.get())
+    if (disableSetting && disableSetting.get()) {
       return null;
-    return new UI.Infobar(type, text, disableSetting);
+    }
+    return new Infobar(type, text, disableSetting);
   }
 
   dispose() {
     this.element.remove();
     this._onResize();
-    if (this._closeCallback)
+    if (this._closeCallback) {
       this._closeCallback.call(null);
+    }
   }
 
   /**
@@ -75,15 +83,16 @@ UI.Infobar = class {
   }
 
   /**
-   * @param {!UI.Widget} parentView
+   * @param {!Widget} parentView
    */
   setParentView(parentView) {
     this._parentView = parentView;
   }
 
   _onResize() {
-    if (this._parentView)
+    if (this._parentView) {
       this._parentView.doResize();
+    }
   }
 
   _onDisable() {
@@ -103,16 +112,15 @@ UI.Infobar = class {
    */
   createDetailsRowMessage(message) {
     this._toggleElement.classList.remove('hidden');
-    var infobarDetailsRow = this._detailsRows.createChild('div', 'infobar-details-row');
-    var detailsRowMessage = infobarDetailsRow.createChild('span', 'infobar-row-message');
+    const infobarDetailsRow = this._detailsRows.createChild('div', 'infobar-details-row');
+    const detailsRowMessage = infobarDetailsRow.createChild('span', 'infobar-row-message');
     detailsRowMessage.textContent = message || '';
     return detailsRowMessage;
   }
-};
-
+}
 
 /** @enum {string} */
-UI.Infobar.Type = {
+export const Type = {
   Warning: 'warning',
   Info: 'info'
 };

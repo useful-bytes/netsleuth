@@ -1,51 +1,56 @@
 // Copyright (c) 2015 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as SDK from '../sdk/sdk.js';
+
 /**
  * @unrestricted
  */
-Elements.ComputedStyleModel = class extends Common.Object {
+export class ComputedStyleModel extends Common.ObjectWrapper.ObjectWrapper {
   constructor() {
     super();
-    this._node = UI.context.flavor(SDK.DOMNode);
+    this._node = self.UI.context.flavor(SDK.DOMModel.DOMNode);
     this._cssModel = null;
     this._eventListeners = [];
-    UI.context.addFlavorChangeListener(SDK.DOMNode, this._onNodeChanged, this);
+    self.UI.context.addFlavorChangeListener(SDK.DOMModel.DOMNode, this._onNodeChanged, this);
   }
 
   /**
-   * @return {?SDK.DOMNode}
+   * @return {?SDK.DOMModel.DOMNode}
    */
   node() {
     return this._node;
   }
 
   /**
-   * @return {?SDK.CSSModel}
+   * @return {?SDK.CSSModel.CSSModel}
    */
   cssModel() {
     return this._cssModel && this._cssModel.isEnabled() ? this._cssModel : null;
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _onNodeChanged(event) {
-    this._node = /** @type {?SDK.DOMNode} */ (event.data);
+    this._node = /** @type {?SDK.DOMModel.DOMNode} */ (event.data);
     this._updateModel(this._node ? this._node.domModel().cssModel() : null);
     this._onComputedStyleChanged(null);
   }
 
   /**
-   * @param {?SDK.CSSModel} cssModel
+   * @param {?SDK.CSSModel.CSSModel} cssModel
    */
   _updateModel(cssModel) {
-    if (this._cssModel === cssModel)
+    if (this._cssModel === cssModel) {
       return;
-    Common.EventTarget.removeEventListeners(this._eventListeners);
+    }
+    Common.EventTarget.EventTarget.removeEventListeners(this._eventListeners);
     this._cssModel = cssModel;
-    var domModel = cssModel ? cssModel.domModel() : null;
-    var resourceTreeModel = cssModel ? cssModel.target().model(SDK.ResourceTreeModel) : null;
+    const domModel = cssModel ? cssModel.domModel() : null;
+    const resourceTreeModel = cssModel ? cssModel.target().model(SDK.ResourceTreeModel.ResourceTreeModel) : null;
     if (cssModel && domModel && resourceTreeModel) {
       this._eventListeners = [
         cssModel.addEventListener(SDK.CSSModel.Events.StyleSheetAdded, this._onComputedStyleChanged, this),
@@ -62,57 +67,61 @@ Elements.ComputedStyleModel = class extends Common.Object {
   }
 
   /**
-   * @param {?Common.Event} event
+   * @param {?Common.EventTarget.EventTargetEvent} event
    */
   _onComputedStyleChanged(event) {
     delete this._computedStylePromise;
-    this.dispatchEventToListeners(Elements.ComputedStyleModel.Events.ComputedStyleChanged, event ? event.data : null);
+    this.dispatchEventToListeners(Events.ComputedStyleChanged, event ? event.data : null);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _onDOMModelChanged(event) {
     // Any attribute removal or modification can affect the styles of "related" nodes.
-    var node = /** @type {!SDK.DOMNode} */ (event.data);
-    if (!this._node || this._node !== node && node.parentNode !== this._node.parentNode && !node.isAncestor(this._node))
+    const node = /** @type {!SDK.DOMModel.DOMNode} */ (event.data);
+    if (!this._node ||
+        this._node !== node && node.parentNode !== this._node.parentNode && !node.isAncestor(this._node)) {
       return;
+    }
     this._onComputedStyleChanged(null);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _onFrameResized(event) {
     /**
-     * @this {Elements.ComputedStyleModel}
+     * @this {ComputedStyleModel}
      */
     function refreshContents() {
       this._onComputedStyleChanged(null);
       delete this._frameResizedTimer;
     }
 
-    if (this._frameResizedTimer)
+    if (this._frameResizedTimer) {
       clearTimeout(this._frameResizedTimer);
+    }
 
     this._frameResizedTimer = setTimeout(refreshContents.bind(this), 100);
   }
 
   /**
-   * @return {?SDK.DOMNode}
+   * @return {?SDK.DOMModel.DOMNode}
    */
   _elementNode() {
     return this.node() ? this.node().enclosingElementOrSelf() : null;
   }
 
   /**
-   * @return {!Promise.<?Elements.ComputedStyleModel.ComputedStyle>}
+   * @return {!Promise.<?ComputedStyle>}
    */
   fetchComputedStyle() {
-    var elementNode = this._elementNode();
-    var cssModel = this.cssModel();
-    if (!elementNode || !cssModel)
-      return Promise.resolve(/** @type {?Elements.ComputedStyleModel.ComputedStyle} */ (null));
+    const elementNode = this._elementNode();
+    const cssModel = this.cssModel();
+    if (!elementNode || !cssModel) {
+      return Promise.resolve(/** @type {?ComputedStyle} */ (null));
+    }
 
     if (!this._computedStylePromise) {
       this._computedStylePromise =
@@ -122,34 +131,33 @@ Elements.ComputedStyleModel = class extends Common.Object {
     return this._computedStylePromise;
 
     /**
-     * @param {!SDK.DOMNode} elementNode
+     * @param {!SDK.DOMModel.DOMNode} elementNode
      * @param {?Map.<string, string>} style
-     * @return {?Elements.ComputedStyleModel.ComputedStyle}
-     * @this {Elements.ComputedStyleModel}
+     * @return {?ComputedStyle}
+     * @this {ComputedStyleModel}
      */
     function verifyOutdated(elementNode, style) {
-      return elementNode === this._elementNode() && style ?
-          new Elements.ComputedStyleModel.ComputedStyle(elementNode, style) :
-          /** @type {?Elements.ComputedStyleModel.ComputedStyle} */ (null);
+      return elementNode === this._elementNode() && style ? new ComputedStyle(elementNode, style) :
+                                                            /** @type {?ComputedStyle} */ (null);
     }
   }
-};
+}
 
 /** @enum {symbol} */
-Elements.ComputedStyleModel.Events = {
+export const Events = {
   ComputedStyleChanged: Symbol('ComputedStyleChanged')
 };
 
 /**
  * @unrestricted
  */
-Elements.ComputedStyleModel.ComputedStyle = class {
+export class ComputedStyle {
   /**
-   * @param {!SDK.DOMNode} node
+   * @param {!SDK.DOMModel.DOMNode} node
    * @param {!Map.<string, string>} computedStyle
    */
   constructor(node, computedStyle) {
     this.node = node;
     this.computedStyle = computedStyle;
   }
-};
+}

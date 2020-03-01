@@ -1,27 +1,38 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+/** @typedef {function(!Error=):void} */
+// @ts-ignore Typedef.
+export let FinishCallback;
+
 /**
  * @unrestricted
  */
-Common.Throttler = class {
+export class Throttler {
   /**
    * @param {number} timeout
    */
   constructor(timeout) {
     this._timeout = timeout;
     this._isRunningProcess = false;
+    /** @type {boolean} */
     this._asSoonAsPossible = false;
-    /** @type {?function():(!Promise.<?>)} */
+    /** @type {?function():(!Promise<void>)} */
     this._process = null;
     this._lastCompleteTime = 0;
+
+    this._schedulePromise = new Promise(fulfill => {
+      this._scheduleResolve = fulfill;
+    });
   }
 
   _processCompleted() {
-    this._lastCompleteTime = window.performance.now();
+    this._lastCompleteTime = this._getTime();
     this._isRunningProcess = false;
-    if (this._process)
+    if (this._process) {
       this._innerSchedule(false);
+    }
     this._processCompletedForTests();
   }
 
@@ -34,41 +45,54 @@ Common.Throttler = class {
     this._asSoonAsPossible = false;
     this._isRunningProcess = true;
 
-    Promise.resolve().then(this._process).catch(console.error.bind(console)).then(this._processCompleted.bind(this));
+    Promise.resolve()
+        .then(this._process)
+        .catch(console.error.bind(console))
+        .then(this._processCompleted.bind(this))
+        .then(this._scheduleResolve);
+    this._schedulePromise = new Promise(fulfill => {
+      this._scheduleResolve = fulfill;
+    });
     this._process = null;
   }
 
   /**
-   * @param {function():(!Promise.<?>)} process
+   * @param {function():(!Promise<?>)} process
    * @param {boolean=} asSoonAsPossible
+   * @return {!Promise<void>}
    */
   schedule(process, asSoonAsPossible) {
     // Deliberately skip previous process.
     this._process = process;
 
     // Run the first scheduled task instantly.
-    var hasScheduledTasks = !!this._processTimeout || this._isRunningProcess;
-    var okToFire = window.performance.now() - this._lastCompleteTime > this._timeout;
+    const hasScheduledTasks = !!this._processTimeout || this._isRunningProcess;
+    const okToFire = this._getTime() - this._lastCompleteTime > this._timeout;
     asSoonAsPossible = !!asSoonAsPossible || (!hasScheduledTasks && okToFire);
 
-    var forceTimerUpdate = asSoonAsPossible && !this._asSoonAsPossible;
+    const forceTimerUpdate = asSoonAsPossible && !this._asSoonAsPossible;
     this._asSoonAsPossible = this._asSoonAsPossible || asSoonAsPossible;
 
     this._innerSchedule(forceTimerUpdate);
+
+    return this._schedulePromise;
   }
 
   /**
    * @param {boolean} forceTimerUpdate
    */
   _innerSchedule(forceTimerUpdate) {
-    if (this._isRunningProcess)
+    if (this._isRunningProcess) {
       return;
-    if (this._processTimeout && !forceTimerUpdate)
+    }
+    if (this._processTimeout && !forceTimerUpdate) {
       return;
-    if (this._processTimeout)
+    }
+    if (this._processTimeout) {
       this._clearTimeout(this._processTimeout);
+    }
 
-    var timeout = this._asSoonAsPossible ? 0 : this._timeout;
+    const timeout = this._asSoonAsPossible ? 0 : this._timeout;
     this._processTimeout = this._setTimeout(this._onTimeout.bind(this), timeout);
   }
 
@@ -80,14 +104,18 @@ Common.Throttler = class {
   }
 
   /**
-   * @param {function()} operation
+   * @param {function():void} operation
    * @param {number} timeout
    * @return {number}
    */
   _setTimeout(operation, timeout) {
-    return setTimeout(operation, timeout);
+    return window.setTimeout(operation, timeout);
   }
-};
 
-/** @typedef {function(!Error=)} */
-Common.Throttler.FinishCallback;
+  /**
+   * @return {number}
+   */
+  _getTime() {
+    return window.performance.now();
+  }
+}

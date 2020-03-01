@@ -29,11 +29,11 @@
  */
 
 .filter-bar {
-    background-color: #f3f3f3;
+    background-color: var(--toolbar-bg-color);
     flex: none;
     flex-wrap: wrap;
     align-items: center;
-    border-bottom: 1px solid #dadada;
+    border-bottom: var(--divider-border);
 }
 
 .filter-text-filter {
@@ -46,19 +46,16 @@
     align-items: center;
 }
 
-.filter-text-filter label {
-    margin: auto 0;
-}
-
 .filter-bitset-filter {
     padding: 2px;
     display: inline-flex;
     overflow: hidden;
     height: 24px;
     position: relative;
+    margin: 0;
 }
 
-.filter-bitset-filter li {
+.filter-bitset-filter span {
     display: inline-block;
     flex: none;
     margin: auto 2px;
@@ -69,6 +66,10 @@
     overflow: hidden;
 }
 
+.filter-bitset-filter span[data-keyboard-focus="true"] {
+    outline: -webkit-focus-ring-color auto 5px;
+}
+
 .filter-bitset-filter-divider {
     background-color: #ccc;
     height: 16px;
@@ -77,30 +78,23 @@
     display: inline-block;
 }
 
-.filter-bitset-filter li.selected,
-.filter-bitset-filter li:hover,
-.filter-bitset-filter li:active {
+.filter-bitset-filter span.selected,
+.filter-bitset-filter span:hover,
+.filter-bitset-filter span:active {
     color: white;
     text-shadow: rgba(0, 0, 0, 0.4) 0 1px 0;
 }
 
-.filter-bitset-filter li:hover {
+.filter-bitset-filter span:hover {
     background: rgba(0, 0, 0, 0.2);
 }
 
-.filter-bitset-filter li.selected {
+.filter-bitset-filter span.selected {
     background: rgba(0, 0, 0, 0.3);
 }
 
-.filter-bitset-filter li:active {
+.filter-bitset-filter span:active {
     background: rgba(0, 0, 0, 0.5);
-}
-
-.filter-combobox-filter {
-    margin-left: 5px;
-    margin-right: 2px;
-    flex: 0 0 auto;
-    display: inline-block;
 }
 
 .filter-checkbox-filter {
@@ -115,39 +109,49 @@
     position: relative;
 }
 
-.filter-checkbox-filter > label {
+.filter-checkbox-filter > [is=dt-checkbox] {
     display: flex;
     margin: auto 0;
 }
 
-.filter-text-invalid {
-    background-color: rgb(255, 200, 200);
-}
-
-.filter-checkbox-filter .checkbox-filter-checkbox {
-    width: 10px;
-    height: 10px;
-    margin: auto 3px;
-    padding: 0;
-    border-radius: 2px;
-    border: solid 1px;
-    display: inline-block;
-    overflow: visible;
-    opacity: 0.8;
-    flex-shrink: 0;
-}
-
 .filter-input-field {
-    border: 1px solid rgb(163, 163, 163);
-    border-radius: 2px;
-    padding: 1px 3px 0;
-    margin: 0 0 0 3px;
-    width: 143px;
-    height: 20px;
-    line-height: 17px;
+    margin: 0 3px;
+    padding-left: 3px;
+    width: 163px;
+    height: 18px;
+    line-height: 20px;
     display: inline-block;
     background: #FFF;
     overflow: hidden;
     white-space: nowrap;
     cursor: auto;
+}
+
+.filter-input-field:hover {
+    box-shadow: var(--focus-ring-inactive-shadow);
+}
+
+.filter-input-field:focus,
+.filter-input-field:not(:empty) {
+    box-shadow: var(--focus-ring-active-shadow);
+}
+
+@media (forced-colors: active) {
+    .filter-bitset-filter span:hover,
+    .filter-bitset-filter span.selected,
+    .filter-bitset-filter span:active {
+        forced-color-adjust: none;
+        background: Highlight;
+        color: HighlightText;
+    }
+    .filter-input-field {
+        forced-color-adjust: none;
+        background: ButtonFace;
+        box-shadow: var(--focus-ring-inactive-shadow);
+    }
+    .filter-input-field:hover,
+    .filter-input-field:focus,
+    .filter-input-field:not(:empty) {
+        box-shadow: var(--focus-ring-active-shadow);
+    }
 }

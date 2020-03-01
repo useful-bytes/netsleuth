@@ -1,67 +1,82 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+import * as SDK from '../sdk/sdk.js';
+import * as UI from '../ui/ui.js';
+
 /**
- * @implements {SDK.SDKModelObserver<!SDK.DebuggerModel>}
- * @implements {UI.ListDelegate<!SDK.DebuggerModel>}
+ * @implements {SDK.SDKModel.SDKModelObserver<!SDK.DebuggerModel.DebuggerModel>}
+ * @implements {UI.ListControl.ListDelegate<!SDK.DebuggerModel.DebuggerModel>}
  */
-Sources.ThreadsSidebarPane = class extends UI.VBox {
+export class ThreadsSidebarPane extends UI.Widget.VBox {
   constructor() {
     super(true);
     this.registerRequiredCSS('sources/threadsSidebarPane.css');
 
-    /** @type {!UI.ListModel<!SDK.DebuggerModel>} */
-    this._items = new UI.ListModel();
-    /** @type {!UI.ListControl<!SDK.DebuggerModel>} */
-    this._list = new UI.ListControl(this._items, this, UI.ListMode.NonViewport);
+    /** @type {!UI.ListModel.ListModel<!SDK.DebuggerModel.DebuggerModel>} */
+    this._items = new UI.ListModel.ListModel();
+    /** @type {!UI.ListControl.ListControl<!SDK.DebuggerModel.DebuggerModel>} */
+    this._list = new UI.ListControl.ListControl(this._items, this, UI.ListControl.ListMode.NonViewport);
+    const currentTarget = self.UI.context.flavor(SDK.SDKModel.Target);
+    this._selectedModel = !!currentTarget ? currentTarget.model(SDK.DebuggerModel.DebuggerModel) : null;
     this.contentElement.appendChild(this._list.element);
 
-    UI.context.addFlavorChangeListener(SDK.Target, this._targetFlavorChanged, this);
-    SDK.targetManager.observeModels(SDK.DebuggerModel, this);
+    self.UI.context.addFlavorChangeListener(SDK.SDKModel.Target, this._targetFlavorChanged, this);
+    self.SDK.targetManager.observeModels(SDK.DebuggerModel.DebuggerModel, this);
   }
 
   /**
    * @return {boolean}
    */
   static shouldBeShown() {
-    var minJSTargets = Runtime.queryParam('nodeFrontend') ? 1 : 2;
-    return SDK.targetManager.models(SDK.DebuggerModel).length >= minJSTargets;
+    return self.SDK.targetManager.models(SDK.DebuggerModel.DebuggerModel).length >= 2;
   }
 
   /**
    * @override
-   * @param {!SDK.DebuggerModel} debuggerModel
+   * @param {!SDK.DebuggerModel.DebuggerModel} debuggerModel
    * @return {!Element}
    */
   createElementForItem(debuggerModel) {
-    var element = createElementWithClass('div', 'thread-item');
-    var title = element.createChild('div', 'thread-item-title');
-    var pausedState = element.createChild('div', 'thread-item-paused-state');
-    element.appendChild(UI.Icon.create('smallicon-thick-right-arrow', 'selected-thread-icon'));
+    const element = createElementWithClass('div', 'thread-item');
+    const title = element.createChild('div', 'thread-item-title');
+    const pausedState = element.createChild('div', 'thread-item-paused-state');
+    element.appendChild(UI.Icon.Icon.create('smallicon-thick-right-arrow', 'selected-thread-icon'));
+    element.tabIndex = -1;
+    self.onInvokeElement(element, event => {
+      self.UI.context.setFlavor(SDK.SDKModel.Target, debuggerModel.target());
+      event.consume(true);
+    });
+    const isSelected = self.UI.context.flavor(SDK.SDKModel.Target) === debuggerModel.target();
+    element.classList.toggle('selected', isSelected);
+    UI.ARIAUtils.setSelected(element, isSelected);
 
     function updateTitle() {
-      var executionContext = debuggerModel.runtimeModel().defaultExecutionContext();
+      const executionContext = debuggerModel.runtimeModel().defaultExecutionContext();
       title.textContent =
           executionContext && executionContext.label() ? executionContext.label() : debuggerModel.target().name();
     }
 
     function updatePausedState() {
-      pausedState.textContent = Common.UIString(debuggerModel.isPaused() ? 'paused' : '');
+      pausedState.textContent = debuggerModel.isPaused() ? ls`paused` : '';
     }
 
     /**
-     * @param {!Common.Event} event
+     * @param {!Common.EventTarget.EventTargetEvent} event
      */
     function targetNameChanged(event) {
-      var target = /** @type {!SDK.Target} */ (event.data);
-      if (target === debuggerModel.target())
+      const target = /** @type {!SDK.SDKModel.Target} */ (event.data);
+      if (target === debuggerModel.target()) {
         updateTitle();
+      }
     }
 
     debuggerModel.addEventListener(SDK.DebuggerModel.Events.DebuggerPaused, updatePausedState);
     debuggerModel.addEventListener(SDK.DebuggerModel.Events.DebuggerResumed, updatePausedState);
     debuggerModel.runtimeModel().addEventListener(SDK.RuntimeModel.Events.ExecutionContextChanged, updateTitle);
-    SDK.targetManager.addEventListener(SDK.TargetManager.Events.NameChanged, targetNameChanged);
+    self.SDK.targetManager.addEventListener(SDK.SDKModel.Events.NameChanged, targetNameChanged);
 
     updatePausedState();
     updateTitle();
@@ -70,7 +85,7 @@ Sources.ThreadsSidebarPane = class extends UI.VBox {
 
   /**
    * @override
-   * @param {!SDK.DebuggerModel} debuggerModel
+   * @param {!SDK.DebuggerModel.DebuggerModel} debuggerModel
    * @return {number}
    */
   heightForItem(debuggerModel) {
@@ -80,7 +95,7 @@ Sources.ThreadsSidebarPane = class extends UI.VBox {
 
   /**
    * @override
-   * @param {!SDK.DebuggerModel} debuggerModel
+   * @param {!SDK.DebuggerModel.DebuggerModel} debuggerModel
    * @return {boolean}
    */
   isItemSelectable(debuggerModel) {
@@ -89,46 +104,70 @@ Sources.ThreadsSidebarPane = class extends UI.VBox {
 
   /**
    * @override
-   * @param {?SDK.DebuggerModel} from
-   * @param {?SDK.DebuggerModel} to
+   * @param {?SDK.DebuggerModel.DebuggerModel} from
+   * @param {?SDK.DebuggerModel.DebuggerModel} to
    * @param {?Element} fromElement
    * @param {?Element} toElement
    */
   selectedItemChanged(from, to, fromElement, toElement) {
-    if (fromElement)
-      fromElement.classList.remove('selected');
-    if (toElement)
-      toElement.classList.add('selected');
-    if (to)
-      UI.context.setFlavor(SDK.Target, to.target());
+    if (fromElement) {
+      fromElement.tabIndex = -1;
+    }
+    if (toElement) {
+      this.setDefaultFocusedElement(toElement);
+      toElement.tabIndex = 0;
+      if (this.hasFocus()) {
+        toElement.focus();
+      }
+    }
   }
 
   /**
    * @override
-   * @param {!SDK.DebuggerModel} debuggerModel
+   * @param {?Element} fromElement
+   * @param {?Element} toElement
+   * @return {boolean}
+   */
+  updateSelectedItemARIA(fromElement, toElement) {
+    return false;
+  }
+
+  /**
+   * @override
+   * @param {!SDK.DebuggerModel.DebuggerModel} debuggerModel
    */
   modelAdded(debuggerModel) {
     this._items.insert(this._items.length, debuggerModel);
-    var currentTarget = UI.context.flavor(SDK.Target);
-    if (currentTarget === debuggerModel.target())
+    const currentTarget = self.UI.context.flavor(SDK.SDKModel.Target);
+    if (currentTarget === debuggerModel.target()) {
       this._list.selectItem(debuggerModel);
+    }
   }
 
   /**
    * @override
-   * @param {!SDK.DebuggerModel} debuggerModel
+   * @param {!SDK.DebuggerModel.DebuggerModel} debuggerModel
    */
   modelRemoved(debuggerModel) {
     this._items.remove(this._items.indexOf(debuggerModel));
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _targetFlavorChanged(event) {
-    var target = /** @type {!SDK.Target} */ (event.data);
-    var debuggerModel = target.model(SDK.DebuggerModel);
-    if (debuggerModel)
-      this._list.selectItem(debuggerModel);
+    const hadFocus = this.hasFocus();
+    const target = /** @type {!SDK.SDKModel.Target} */ (event.data);
+    const debuggerModel = target.model(SDK.DebuggerModel.DebuggerModel);
+    if (debuggerModel) {
+      this._list.refreshItem(debuggerModel);
+    }
+    if (!!this._selectedModel) {
+      this._list.refreshItem(this._selectedModel);
+    }
+    this._selectedModel = debuggerModel;
+    if (hadFocus) {
+      this.focus();
+    }
   }
-};
+}

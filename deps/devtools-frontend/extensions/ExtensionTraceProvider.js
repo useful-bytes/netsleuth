@@ -5,7 +5,7 @@
 /**
  * @unrestricted
  */
-Extensions.ExtensionTraceProvider = class {
+export class ExtensionTraceProvider {
   /**
    * @param {string} extensionOrigin
    * @param {string} id
@@ -20,15 +20,15 @@ Extensions.ExtensionTraceProvider = class {
   }
 
   /**
-   * @param {!Extensions.TracingSession} session
+   * @param {!TracingSession} session
    */
   start(session) {
-    var sessionId = String(++Extensions.ExtensionTraceProvider._lastSessionId);
-    Extensions.extensionServer.startTraceRecording(this._id, sessionId, session);
+    const sessionId = String(++_lastSessionId);
+    self.Extensions.extensionServer.startTraceRecording(this._id, sessionId, session);
   }
 
   stop() {
-    Extensions.extensionServer.stopTraceRecording(this._id);
+    self.Extensions.extensionServer.stopTraceRecording(this._id);
   }
 
   /**
@@ -51,19 +51,18 @@ Extensions.ExtensionTraceProvider = class {
   persistentIdentifier() {
     return `${this._extensionOrigin}/${this._categoryName}`;
   }
-};
+}
 
-Extensions.ExtensionTraceProvider._lastSessionId = 0;
+let _lastSessionId = 0;
 
 /**
  * @interface
  */
-Extensions.TracingSession = function() {};
-
-Extensions.TracingSession.prototype = {
+export class TracingSession {
   /**
    * @param {string} url
    * @param {number} timeOffsetMicroseconds
    */
-  complete: function(url, timeOffsetMicroseconds) {}
-};
+  complete(url, timeOffsetMicroseconds) {
+  }
+}

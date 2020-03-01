@@ -1,110 +1,148 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as TextUtils from '../text_utils/text_utils.js';  // eslint-disable-line no-unused-vars
+
+import {AnchorBehavior} from './GlassPane.js';  // eslint-disable-line no-unused-vars
+import {Suggestions} from './SuggestBox.js';    // eslint-disable-line no-unused-vars
+import {Widget} from './Widget.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @interface
  */
-UI.TextEditorFactory = function() {};
-
-UI.TextEditorFactory.prototype = {
+export class TextEditorFactory {
   /**
-   * @param {!UI.TextEditor.Options} options
-   * @return {!UI.TextEditor}
+   * @param {!Options} options
+   * @return {!TextEditor}
    */
   createEditor(options) {}
-};
+}
 
 /**
  * @interface
- * @extends {Common.EventTarget}
  */
-UI.TextEditor = function() {};
-
-UI.TextEditor.prototype = {
-
+export class TextEditor extends Common.EventTarget.EventTarget {
   /**
-   * @return {!UI.Widget}
+   * @return {!Widget}
    */
-  widget() {},
+  widget() {
+  }
 
   /**
-   * @return {!TextUtils.TextRange}
+   * @return {!TextUtils.TextRange.TextRange}
    */
-  fullRange() {},
+  fullRange() {
+  }
 
   /**
-   * @return {!TextUtils.TextRange}
+   * @return {!TextUtils.TextRange.TextRange}
    */
-  selection() {},
+  selection() {
+  }
 
   /**
-   * @param {!TextUtils.TextRange} selection
+   * @param {!TextUtils.TextRange.TextRange} selection
    */
-  setSelection(selection) {},
+  setSelection(selection) {
+  }
 
   /**
-   * @param {!TextUtils.TextRange=} textRange
+   * @param {!TextUtils.TextRange.TextRange=} textRange
    * @return {string}
    */
-  text(textRange) {},
+  text(textRange) {
+  }
+
+  /**
+   * @return {string}
+   */
+  textWithCurrentSuggestion() {
+  }
 
   /**
    * @param {string} text
    */
-  setText(text) {},
+  setText(text) {
+  }
 
   /**
    * @param {number} lineNumber
    * @return {string}
    */
-  line(lineNumber) {},
+  line(lineNumber) {
+  }
 
-  newlineAndIndent() {},
+  newlineAndIndent() {
+  }
 
   /**
    * @param {function(!KeyboardEvent)} handler
    */
-  addKeyDownHandler(handler) {},
+  addKeyDownHandler(handler) {
+  }
 
   /**
-   * @param {?UI.AutocompleteConfig} config
+   * @param {?AutocompleteConfig} config
    */
-  configureAutocomplete(config) {},
+  configureAutocomplete(config) {
+  }
 
-  clearAutocomplete() {},
+  clearAutocomplete() {
+  }
+
+  /**
+   * @param {number} lineNumber
+   * @param {number} columnNumber
+   * @return {!{x: number, y: number}}
+   */
+  visualCoordinates(lineNumber, columnNumber) {
+  }
 
   /**
    * @param {number} lineNumber
    * @param {number} columnNumber
    * @return {?{startColumn: number, endColumn: number, type: string}}
    */
-  tokenAtTextPosition(lineNumber, columnNumber) {}
-};
+  tokenAtTextPosition(lineNumber, columnNumber) {
+  }
+
+  /**
+   * @param {string} placeholder
+   */
+  setPlaceholder(placeholder) {}
+}
 
 /** @enum {symbol} */
-UI.TextEditor.Events = {
-  TextChanged: Symbol('TextChanged')
+export const Events = {
+  CursorChanged: Symbol('CursorChanged'),
+  TextChanged: Symbol('TextChanged'),
+  SuggestionChanged: Symbol('SuggestionChanged')
 };
 
 /**
  * @typedef {{
- *  bracketMatchingSetting: (!Common.Setting|undefined),
- *  lineNumbers: boolean,
- *  lineWrapping: boolean,
- *  mimeType: (string|undefined),
- *  autoHeight: (boolean|undefined),
- *  padBottom: (boolean|undefined),
- *  maxHighlightLength: (number|undefined)
- * }}
- */
-UI.TextEditor.Options;
+  *  bracketMatchingSetting: (!Common.Settings.Setting|undefined),
+  *  devtoolsAccessibleName: (string|undefined),
+  *  lineNumbers: boolean,
+  *  lineWrapping: boolean,
+  *  mimeType: (string|undefined),
+  *  autoHeight: (boolean|undefined),
+  *  padBottom: (boolean|undefined),
+  *  maxHighlightLength: (number|undefined),
+  *  placeholder: (string|undefined)
+  * }}
+  */
+export let Options;
 
 /**
- * @typedef {{
- *     substituteRangeCallback: ((function(number, number):?TextUtils.TextRange)|undefined),
- *     suggestionsCallback: ((function(!TextUtils.TextRange, !TextUtils.TextRange, boolean=):?Promise.<!UI.SuggestBox.Suggestions>)|undefined),
- *     isWordChar: ((function(string):boolean)|undefined),
- *     captureEnter: (boolean|undefined)
- * }}
- */
-UI.AutocompleteConfig;
+  * @typedef {{
+  *     substituteRangeCallback: ((function(number, number):?TextUtils.TextRange.TextRange)|undefined),
+  *     tooltipCallback: ((function(number, number):!Promise<?Element>)|undefined),
+  *     suggestionsCallback: ((function(!TextUtils.TextRange.TextRange, !TextUtils.TextRange.TextRange, boolean=):?Promise.<!Suggestions>)|undefined),
+  *     isWordChar: ((function(string):boolean)|undefined),
+  *     anchorBehavior: (AnchorBehavior|undefined)
+  * }}
+  */
+export let AutocompleteConfig;

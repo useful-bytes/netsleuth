@@ -5,7 +5,7 @@
  */
 
 .computed-properties {
-    -webkit-user-select: text;
+    user-select: text;
     flex-shrink: 0;
 }
 
@@ -23,14 +23,22 @@
     outline: none !important;
     border: none;
     width: 100%;
-    background: transparent;
-    margin-left: 4px;
+    background: white;
+    padding-left: 4px;
+    margin: 3px;
 }
 
-.styles-filter-engaged {
-    background-color: rgba(255, 255, 0, 0.5);
+.styles-sidebar-pane-filter-box > input:focus,
+.styles-sidebar-pane-filter-box > input:not(:placeholder-shown) {
+    box-shadow: var(--focus-ring-active-shadow);
 }
 
-:host-context(.-theme-with-dark-background) .styles-filter-engaged {
-    background-color: hsla(133, 100%, 30%, 0.5);
+.styles-sidebar-pane-filter-box > input::placeholder {
+    color: rgba(0, 0, 0, 0.54);
+}
+
+@media (forced-colors: active) {
+    .styles-sidebar-pane-filter-box > input {
+        border: 1px solid ButtonText;
+    }
 }

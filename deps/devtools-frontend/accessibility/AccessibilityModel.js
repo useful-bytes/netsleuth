@@ -1,12 +1,15 @@
 // Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as SDK from '../sdk/sdk.js';
+
 /**
  * @unrestricted
  */
-Accessibility.AccessibilityNode = class {
+export class AccessibilityNode {
   /**
-   * @param {!Accessibility.AccessibilityModel} accessibilityModel
+   * @param {!AccessibilityModel} accessibilityModel
    * @param {!Protocol.Accessibility.AXNode} payload
    */
   constructor(accessibilityModel, payload) {
@@ -18,14 +21,15 @@ Accessibility.AccessibilityNode = class {
     if (payload.backendDOMNodeId) {
       accessibilityModel._setAXNodeForBackendDOMNodeId(payload.backendDOMNodeId, this);
       this._backendDOMNodeId = payload.backendDOMNodeId;
-      this._deferredDOMNode = new SDK.DeferredDOMNode(accessibilityModel.target(), payload.backendDOMNodeId);
+      this._deferredDOMNode = new SDK.DOMModel.DeferredDOMNode(accessibilityModel.target(), payload.backendDOMNodeId);
     } else {
       this._backendDOMNodeId = null;
       this._deferredDOMNode = null;
     }
     this._ignored = payload.ignored;
-    if (this._ignored && 'ignoredReasons' in payload)
+    if (this._ignored && 'ignoredReasons' in payload) {
       this._ignoredReasons = payload.ignoredReasons;
+    }
 
     this._role = payload.role || null;
     this._name = payload.name || null;
@@ -37,7 +41,7 @@ Accessibility.AccessibilityNode = class {
   }
 
   /**
-   * @return {!Accessibility.AccessibilityModel}
+   * @return {!AccessibilityModel}
    */
   accessibilityModel() {
     return this._accessibilityModel;
@@ -68,16 +72,18 @@ Accessibility.AccessibilityNode = class {
    * @return {!Array<!Protocol.Accessibility.AXProperty>}
    */
   coreProperties() {
-    var properties = [];
+    const properties = [];
 
-    if (this._name)
+    if (this._name) {
       properties.push(/** @type {!Protocol.Accessibility.AXProperty} */ ({name: 'name', value: this._name}));
+    }
     if (this._description) {
       properties.push(
           /** @type {!Protocol.Accessibility.AXProperty} */ ({name: 'description', value: this._description}));
     }
-    if (this._value)
+    if (this._value) {
       properties.push(/** @type {!Protocol.Accessibility.AXProperty} */ ({name: 'value', value: this._value}));
+    }
 
     return properties;
   }
@@ -111,14 +117,14 @@ Accessibility.AccessibilityNode = class {
   }
 
   /**
-   * @return {?Accessibility.AccessibilityNode}
+   * @return {?AccessibilityNode}
    */
   parentNode() {
     return this._parentNode;
   }
 
   /**
-   * @param {?Accessibility.AccessibilityNode} parentNode
+   * @param {?AccessibilityNode} parentNode
    */
   _setParentNode(parentNode) {
     this._parentNode = parentNode;
@@ -139,39 +145,35 @@ Accessibility.AccessibilityNode = class {
   }
 
   /**
-   * @return {?SDK.DeferredDOMNode}
+   * @return {?SDK.DOMModel.DeferredDOMNode}
    */
   deferredDOMNode() {
     return this._deferredDOMNode;
   }
 
   highlightDOMNode() {
-    if (!this.deferredDOMNode())
+    if (!this.deferredDOMNode()) {
       return;
+    }
 
     // Highlight node in page.
     this.deferredDOMNode().highlight();
-
-    // Highlight node in Elements tree.
-    this.deferredDOMNode().resolvePromise().then(node => {
-      if (!node)
-        return;
-      node.domModel().overlayModel().nodeHighlightRequested(node.id);
-    });
   }
 
   /**
-   * @return {!Array<!Accessibility.AccessibilityNode>}
+   * @return {!Array<!AccessibilityNode>}
    */
   children() {
-    var children = [];
-    if (!this._childIds)
+    const children = [];
+    if (!this._childIds) {
       return children;
+    }
 
-    for (var childId of this._childIds) {
-      var child = this._accessibilityModel.axNodeForId(childId);
-      if (child)
+    for (const childId of this._childIds) {
+      const child = this._accessibilityModel.axNodeForId(childId);
+      if (child) {
         children.push(child);
+      }
     }
 
     return children;
@@ -181,8 +183,9 @@ Accessibility.AccessibilityNode = class {
    * @return {number}
    */
   numChildren() {
-    if (!this._childIds)
+    if (!this._childIds) {
       return 0;
+    }
     return this._childIds.length;
   }
 
@@ -190,48 +193,53 @@ Accessibility.AccessibilityNode = class {
    * @return {boolean}
    */
   hasOnlyUnloadedChildren() {
-    if (!this._childIds || !this._childIds.length)
+    if (!this._childIds || !this._childIds.length) {
       return false;
+    }
 
     return !this._childIds.some(id => this._accessibilityModel.axNodeForId(id) !== undefined);
   }
 
   /**
    * TODO(aboxhall): Remove once protocol is stable.
-   * @param {!Accessibility.AccessibilityNode} inspectedNode
+   * @param {!AccessibilityNode} inspectedNode
    * @param {string=} leadingSpace
    * @return {string}
    */
   printSelfAndChildren(inspectedNode, leadingSpace) {
-    var string = leadingSpace || '';
-    if (this._role)
+    let string = leadingSpace || '';
+    if (this._role) {
       string += this._role.value;
-    else
+    } else {
       string += '<no role>';
+    }
     string += (this._name ? ' ' + this._name.value : '');
     string += ' ' + this._id;
-    if (this._domNode)
+    if (this._domNode) {
       string += ' (' + this._domNode.nodeName() + ')';
-    if (this === inspectedNode)
+    }
+    if (this === inspectedNode) {
       string += ' *';
-    for (var child of this.children())
+    }
+    for (const child of this.children()) {
       string += '\n' + child.printSelfAndChildren(inspectedNode, (leadingSpace || '') + '  ');
+    }
     return string;
   }
-};
+}
 
 /**
  * @unrestricted
  */
-Accessibility.AccessibilityModel = class extends SDK.SDKModel {
+export class AccessibilityModel extends SDK.SDKModel.SDKModel {
   /**
-   * @param {!SDK.Target} target
+   * @param {!SDK.SDKModel.Target} target
    */
   constructor(target) {
     super(target);
     this._agent = target.accessibilityAgent();
 
-    /** @type {!Map<string, !Accessibility.AccessibilityNode>} */
+    /** @type {!Map<string, !AccessibilityNode>} */
     this._axIdToAXNode = new Map();
     this._backendDOMNodeIdToAXNode = new Map();
   }
@@ -241,26 +249,29 @@ Accessibility.AccessibilityModel = class extends SDK.SDKModel {
   }
 
   /**
-   * @param {!SDK.DOMNode} node
+   * @param {!SDK.DOMModel.DOMNode} node
    * @return {!Promise}
    */
   async requestPartialAXTree(node) {
-    var payloads = await this._agent.getPartialAXTree(node.id, true);
-    if (!payloads)
+    const payloads = await this._agent.getPartialAXTree(node.id, undefined, undefined, true);
+    if (!payloads) {
       return;
+    }
 
-    for (var payload of payloads)
-      new Accessibility.AccessibilityNode(this, payload);
+    for (const payload of payloads) {
+      new AccessibilityNode(this, payload);
+    }
 
-    for (var axNode of this._axIdToAXNode.values()) {
-      for (var axChild of axNode.children())
+    for (const axNode of this._axIdToAXNode.values()) {
+      for (const axChild of axNode.children()) {
         axChild._setParentNode(axNode);
+      }
     }
   }
 
   /**
    * @param {string} axId
-   * @return {?Accessibility.AccessibilityNode}
+   * @return {?AccessibilityNode}
    */
   axNodeForId(axId) {
     return this._axIdToAXNode.get(axId);
@@ -268,25 +279,26 @@ Accessibility.AccessibilityModel = class extends SDK.SDKModel {
 
   /**
    * @param {string} axId
-   * @param {!Accessibility.AccessibilityNode} axNode
+   * @param {!AccessibilityNode} axNode
    */
   _setAXNodeForAXId(axId, axNode) {
     this._axIdToAXNode.set(axId, axNode);
   }
 
   /**
-   * @param {?SDK.DOMNode} domNode
-   * @return {?Accessibility.AccessibilityNode}
+   * @param {?SDK.DOMModel.DOMNode} domNode
+   * @return {?AccessibilityNode}
    */
   axNodeForDOMNode(domNode) {
-    if (!domNode)
+    if (!domNode) {
       return null;
+    }
     return this._backendDOMNodeIdToAXNode.get(domNode.backendNodeId());
   }
 
   /**
    * @param {number} backendDOMNodeId
-   * @param {!Accessibility.AccessibilityNode} axNode
+   * @param {!AccessibilityNode} axNode
    */
   _setAXNodeForBackendDOMNodeId(backendDOMNodeId, axNode) {
     this._backendDOMNodeIdToAXNode.set(backendDOMNodeId, axNode);
@@ -294,14 +306,15 @@ Accessibility.AccessibilityModel = class extends SDK.SDKModel {
 
   // TODO(aboxhall): Remove once protocol is stable.
   /**
-   * @param {!SDK.DOMNode} inspectedNode
+   * @param {!SDK.DOMModel.DOMNode} inspectedNode
    */
   logTree(inspectedNode) {
-    var rootNode = inspectedNode;
-    while (rootNode.parentNode())
+    let rootNode = inspectedNode;
+    while (rootNode.parentNode()) {
       rootNode = rootNode.parentNode();
+    }
     console.log(rootNode.printSelfAndChildren(inspectedNode));  // eslint-disable-line no-console
   }
-};
+}
 
-SDK.SDKModel.register(Accessibility.AccessibilityModel, SDK.Target.Capability.DOM, false);
+SDK.SDKModel.SDKModel.register(AccessibilityModel, SDK.SDKModel.Capability.DOM, false);

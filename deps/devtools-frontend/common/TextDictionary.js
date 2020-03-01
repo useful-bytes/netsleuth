@@ -28,21 +28,23 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import {Trie} from './Trie.js';
+
 /**
  * @unrestricted
  */
-Common.TextDictionary = class {
+export class TextDictionary {
   constructor() {
     /** @type {!Map<string, number>} */
     this._words = new Map();
-    this._index = new Common.Trie();
+    this._index = new Trie();
   }
 
   /**
    * @param {string} word
    */
   addWord(word) {
-    var count = this._words.get(word) || 0;
+    let count = this._words.get(word) || 0;
     ++count;
     this._words.set(word, count);
     this._index.add(word);
@@ -52,9 +54,10 @@ Common.TextDictionary = class {
    * @param {string} word
    */
   removeWord(word) {
-    var count = this._words.get(word) || 0;
-    if (!count)
+    let count = this._words.get(word) || 0;
+    if (!count) {
       return;
+    }
     if (count === 1) {
       this._words.delete(word);
       this._index.remove(word);
@@ -92,4 +95,4 @@ Common.TextDictionary = class {
     this._words.clear();
     this._index.clear();
   }
-};
+}

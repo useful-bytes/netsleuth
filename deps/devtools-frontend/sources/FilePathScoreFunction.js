@@ -31,7 +31,7 @@
 /**
  * @unrestricted
  */
-Sources.FilePathScoreFunction = class {
+export class FilePathScoreFunction {
   /**
    * @param {string} query
    */
@@ -50,24 +50,25 @@ Sources.FilePathScoreFunction = class {
    * @return {number}
    */
   score(data, matchIndexes) {
-    if (!data || !this._query)
+    if (!data || !this._query) {
       return 0;
-    var n = this._query.length;
-    var m = data.length;
+    }
+    const n = this._query.length;
+    const m = data.length;
     if (!this._score || this._score.length < n * m) {
       this._score = new Int32Array(n * m * 2);
       this._sequence = new Int32Array(n * m * 2);
     }
-    var score = this._score;
-    var sequence = /** @type {!Int32Array} */ (this._sequence);
+    const score = this._score;
+    const sequence = /** @type {!Int32Array} */ (this._sequence);
     this._dataUpperCase = data.toUpperCase();
     this._fileNameIndex = data.lastIndexOf('/');
-    for (var i = 0; i < n; ++i) {
-      for (var j = 0; j < m; ++j) {
-        var skipCharScore = j === 0 ? 0 : score[i * m + j - 1];
-        var prevCharScore = i === 0 || j === 0 ? 0 : score[(i - 1) * m + j - 1];
-        var consecutiveMatch = i === 0 || j === 0 ? 0 : sequence[(i - 1) * m + j - 1];
-        var pickCharScore = this._match(this._query, data, i, j, consecutiveMatch);
+    for (let i = 0; i < n; ++i) {
+      for (let j = 0; j < m; ++j) {
+        const skipCharScore = j === 0 ? 0 : score[i * m + j - 1];
+        const prevCharScore = i === 0 || j === 0 ? 0 : score[(i - 1) * m + j - 1];
+        const consecutiveMatch = i === 0 || j === 0 ? 0 : sequence[(i - 1) * m + j - 1];
+        const pickCharScore = this._match(this._query, data, i, j, consecutiveMatch);
         if (pickCharScore && prevCharScore + pickCharScore >= skipCharScore) {
           sequence[i * m + j] = consecutiveMatch + 1;
           score[i * m + j] = (prevCharScore + pickCharScore);
@@ -77,9 +78,10 @@ Sources.FilePathScoreFunction = class {
         }
       }
     }
-    if (matchIndexes)
+    if (matchIndexes) {
       this._restoreMatchIndexes(sequence, n, m, matchIndexes);
-    var maxDataLength = 256;
+    }
+    const maxDataLength = 256;
     return score[n * m - 1] * maxDataLength + (maxDataLength - data.length);
   }
 
@@ -89,10 +91,11 @@ Sources.FilePathScoreFunction = class {
    * @return {boolean}
    */
   _testWordStart(data, j) {
-    if (j === 0)
+    if (j === 0) {
       return true;
+    }
 
-    var prevChar = data.charAt(j - 1);
+    const prevChar = data.charAt(j - 1);
     return prevChar === '_' || prevChar === '-' || prevChar === '/' ||
         (data[j - 1] !== this._dataUpperCase[j - 1] && data[j] === this._dataUpperCase[j]);
   }
@@ -104,7 +107,7 @@ Sources.FilePathScoreFunction = class {
    * @param {!Array<number>} out
    */
   _restoreMatchIndexes(sequence, n, m, out) {
-    var i = n - 1, j = m - 1;
+    let i = n - 1, j = m - 1;
     while (i >= 0 && j >= 0) {
       switch (sequence[i * m + j]) {
         case 0:
@@ -128,24 +131,30 @@ Sources.FilePathScoreFunction = class {
    * @return {number}
    */
   _singleCharScore(query, data, i, j) {
-    var isWordStart = this._testWordStart(data, j);
-    var isFileName = j > this._fileNameIndex;
-    var isPathTokenStart = j === 0 || data[j - 1] === '/';
-    var isCapsMatch = query[i] === data[j] && query[i] === this._queryUpperCase[i];
-    var score = 10;
-    if (isPathTokenStart)
+    const isWordStart = this._testWordStart(data, j);
+    const isFileName = j > this._fileNameIndex;
+    const isPathTokenStart = j === 0 || data[j - 1] === '/';
+    const isCapsMatch = query[i] === data[j] && query[i] === this._queryUpperCase[i];
+    let score = 10;
+    if (isPathTokenStart) {
       score += 4;
-    if (isWordStart)
+    }
+    if (isWordStart) {
       score += 2;
-    if (isCapsMatch)
+    }
+    if (isCapsMatch) {
       score += 6;
-    if (isFileName)
+    }
+    if (isFileName) {
       score += 4;
+    }
     // promote the case of making the whole match in the filename
-    if (j === this._fileNameIndex + 1 && i === 0)
+    if (j === this._fileNameIndex + 1 && i === 0) {
       score += 5;
-    if (isFileName && isWordStart)
+    }
+    if (isFileName && isWordStart) {
       score += 3;
+    }
     return score;
   }
 
@@ -158,13 +167,15 @@ Sources.FilePathScoreFunction = class {
    * @return {number}
    */
   _sequenceCharScore(query, data, i, j, sequenceLength) {
-    var isFileName = j > this._fileNameIndex;
-    var isPathTokenStart = j === 0 || data[j - 1] === '/';
-    var score = 10;
-    if (isFileName)
+    const isFileName = j > this._fileNameIndex;
+    const isPathTokenStart = j === 0 || data[j - 1] === '/';
+    let score = 10;
+    if (isFileName) {
       score += 4;
-    if (isPathTokenStart)
+    }
+    if (isPathTokenStart) {
       score += 5;
+    }
     score += sequenceLength * 4;
     return score;
   }
@@ -178,12 +189,13 @@ Sources.FilePathScoreFunction = class {
    * @return {number}
    */
   _match(query, data, i, j, consecutiveMatch) {
-    if (this._queryUpperCase[i] !== this._dataUpperCase[j])
+    if (this._queryUpperCase[i] !== this._dataUpperCase[j]) {
       return 0;
+    }
 
-    if (!consecutiveMatch)
+    if (!consecutiveMatch) {
       return this._singleCharScore(query, data, i, j);
-    else
-      return this._sequenceCharScore(query, data, i, j - consecutiveMatch, consecutiveMatch);
+    }
+    return this._sequenceCharScore(query, data, i, j - consecutiveMatch, consecutiveMatch);
   }
-};
+}

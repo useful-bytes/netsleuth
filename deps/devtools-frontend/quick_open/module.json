@@ -12,8 +12,9 @@
             "className": "QuickOpen.HelpQuickOpen"
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "action",
             "actionId": "commandMenu.show",
+            "title": "Run command",
             "className": "QuickOpen.CommandMenu.ShowActionDelegate",
             "bindings": [
                 {
@@ -27,7 +28,12 @@
             ]
         },
         {
-            "type": "@UI.ActionDelegate",
+            "type": "context-menu-item",
+            "location": "mainMenu/default",
+            "actionId": "commandMenu.show"
+        },
+        {
+            "type": "action",
             "actionId": "quickOpen.show",
             "title": "Open file",
             "className": "QuickOpen.QuickOpen.ShowActionDelegate",
@@ -45,7 +51,7 @@
         },
         {
             "type": "context-menu-item",
-            "location": "mainMenu/navigate",
+            "location": "mainMenu/default",
             "actionId": "quickOpen.show"
         }
     ],
@@ -53,7 +59,10 @@
         "ui",
         "diff"
     ],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "quick_open.js",
+        "quick_open-legacy.js",
         "FilteredListWidget.js",
         "QuickOpen.js",
         "CommandMenu.js",

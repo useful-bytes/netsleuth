@@ -7,17 +7,13 @@
 :host {
     width: 270px;
     height: 350px;
-    -webkit-user-select: none;
+    user-select: none;
     padding: 16px;
     overflow: hidden;
 }
 
 .bezier-preset-selected > svg {
-    background-color: rgb(56, 121, 217);
-}
-
-.bezier-preset-label {
-    font-size: 10px;
+    background-color: var(--selection-bg-color);
 }
 
 .bezier-preset {
@@ -56,10 +52,14 @@
 }
 
 .bezier-curve line.linear-line {
-    stroke: #eee;
+    stroke: rgb(238, 238, 238);
     stroke-width: 2;
     stroke-linecap: round;
     fill: none;
+}
+
+:host-context(.-theme-with-dark-background) .bezier-curve line.linear-line {
+    stroke: rgb(138, 138, 138);
 }
 
 .bezier-curve line.bezier-control-line {
@@ -127,7 +127,7 @@ svg.bezier-preset-modify:hover, .bezier-preset:hover {
 }
 
 .bezier-preset-selected .bezier-preset:hover {
-    background-color: rgb(56, 121, 217);
+    background-color: var(--selection-bg-color);
 }
 
 .bezier-preset-modify path {
@@ -149,7 +149,7 @@ svg.bezier-preset-modify:hover, .bezier-preset:hover {
 
 span.bezier-display-value {
     width: 100%;
-    -webkit-user-select: text;
+    user-select: text;
     display: block;
     text-align: center;
     line-height: 20px;
@@ -176,10 +176,9 @@ svg.bezier-preset-modify.bezier-preset-plus {
     margin-top: 16px;
 }
 
-svg.bezier-preset-modify:active,
-.-theme-selection-color {
+svg.bezier-preset-modify:active {
     transform: scale(1.1);
-    background-color: rgb(56, 121, 217);
+    background-color: var(--selection-bg-color);
 }
 
 .bezier-preset-category:active {

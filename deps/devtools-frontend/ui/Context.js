@@ -1,10 +1,14 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import {ContextFlavorListener} from './ContextFlavorListener.js';
+
 /**
  * @unrestricted
  */
-UI.Context = class {
+export class Context {
   constructor() {
     this._flavors = new Map();
     this._eventDispatchers = new Map();
@@ -16,13 +20,15 @@ UI.Context = class {
    * @template T
    */
   setFlavor(flavorType, flavorValue) {
-    var value = this._flavors.get(flavorType) || null;
-    if (value === flavorValue)
+    const value = this._flavors.get(flavorType) || null;
+    if (value === flavorValue) {
       return;
-    if (flavorValue)
+    }
+    if (flavorValue) {
       this._flavors.set(flavorType, flavorValue);
-    else
+    } else {
       this._flavors.remove(flavorType);
+    }
 
     this._dispatchFlavorChange(flavorType, flavorValue);
   }
@@ -33,44 +39,47 @@ UI.Context = class {
    * @template T
    */
   _dispatchFlavorChange(flavorType, flavorValue) {
-    for (var extension of self.runtime.extensions(UI.ContextFlavorListener)) {
+    for (const extension of self.runtime.extensions(ContextFlavorListener)) {
       if (extension.hasContextType(flavorType)) {
         extension.instance().then(
-            instance => /** @type {!UI.ContextFlavorListener} */ (instance).flavorChanged(flavorValue));
+            instance => /** @type {!ContextFlavorListener} */ (instance).flavorChanged(flavorValue));
       }
     }
-    var dispatcher = this._eventDispatchers.get(flavorType);
-    if (!dispatcher)
+    const dispatcher = this._eventDispatchers.get(flavorType);
+    if (!dispatcher) {
       return;
-    dispatcher.dispatchEventToListeners(UI.Context.Events.FlavorChanged, flavorValue);
+    }
+    dispatcher.dispatchEventToListeners(Events.FlavorChanged, flavorValue);
   }
 
   /**
    * @param {function(new:Object, ...)} flavorType
-   * @param {function(!Common.Event)} listener
+   * @param {function(!Common.EventTarget.EventTargetEvent)} listener
    * @param {!Object=} thisObject
    */
   addFlavorChangeListener(flavorType, listener, thisObject) {
-    var dispatcher = this._eventDispatchers.get(flavorType);
+    let dispatcher = this._eventDispatchers.get(flavorType);
     if (!dispatcher) {
-      dispatcher = new Common.Object();
+      dispatcher = new Common.ObjectWrapper.ObjectWrapper();
       this._eventDispatchers.set(flavorType, dispatcher);
     }
-    dispatcher.addEventListener(UI.Context.Events.FlavorChanged, listener, thisObject);
+    dispatcher.addEventListener(Events.FlavorChanged, listener, thisObject);
   }
 
   /**
    * @param {function(new:Object, ...)} flavorType
-   * @param {function(!Common.Event)} listener
+   * @param {function(!Common.EventTarget.EventTargetEvent)} listener
    * @param {!Object=} thisObject
    */
   removeFlavorChangeListener(flavorType, listener, thisObject) {
-    var dispatcher = this._eventDispatchers.get(flavorType);
-    if (!dispatcher)
+    const dispatcher = this._eventDispatchers.get(flavorType);
+    if (!dispatcher) {
       return;
-    dispatcher.removeEventListener(UI.Context.Events.FlavorChanged, listener, thisObject);
-    if (!dispatcher.hasEventListeners(UI.Context.Events.FlavorChanged))
+    }
+    dispatcher.removeEventListener(Events.FlavorChanged, listener, thisObject);
+    if (!dispatcher.hasEventListeners(Events.FlavorChanged)) {
       this._eventDispatchers.remove(flavorType);
+    }
   }
 
   /**
@@ -90,37 +99,24 @@ UI.Context = class {
   }
 
   /**
-   * @param {!Array.<!Runtime.Extension>} extensions
-   * @return {!Set.<!Runtime.Extension>}
+   * @param {!Array.<!Root.Runtime.Extension>} extensions
+   * @return {!Set.<!Root.Runtime.Extension>}
    */
   applicableExtensions(extensions) {
-    var targetExtensionSet = new Set();
+    const targetExtensionSet = new Set();
 
-    var availableFlavors = this.flavors();
+    const availableFlavors = this.flavors();
     extensions.forEach(function(extension) {
-      if (self.runtime.isExtensionApplicableToContextTypes(extension, availableFlavors))
+      if (self.runtime.isExtensionApplicableToContextTypes(extension, availableFlavors)) {
         targetExtensionSet.add(extension);
+      }
     });
 
     return targetExtensionSet;
   }
-};
+}
 
 /** @enum {symbol} */
-UI.Context.Events = {
+const Events = {
   FlavorChanged: Symbol('FlavorChanged')
 };
-
-/**
- * @interface
- */
-UI.ContextFlavorListener = function() {};
-
-UI.ContextFlavorListener.prototype = {
-  /**
-   * @param {?Object} object
-   */
-  flavorChanged(object) {}
-};
-
-UI.context = new UI.Context();

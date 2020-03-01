@@ -1,38 +1,20 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-/**
- * @unrestricted
- */
-SourceFrame.SourceCodeDiff = class {
+
+import * as Diff from '../diff/diff.js';
+import * as TextEditor from '../text_editor/text_editor.js';  // eslint-disable-line no-unused-vars
+
+export class SourceCodeDiff {
   /**
-   * @param {!WorkspaceDiff.WorkspaceDiff} workspaceDiff
-   * @param {!TextEditor.CodeMirrorTextEditor} textEditor
+   * @param {!TextEditor.CodeMirrorTextEditor.CodeMirrorTextEditor} textEditor
    */
-  constructor(workspaceDiff, textEditor) {
+  constructor(textEditor) {
     this._textEditor = textEditor;
-    this._decorations = [];
-    this._textEditor.installGutter(SourceFrame.SourceCodeDiff.DiffGutterType, true);
-    this._uiSourceCode = null;
-    this._workspaceDiff = workspaceDiff;
-    /** @type {!Array<!TextEditor.TextEditorPositionHandle>}*/
+    /** @type {!Array<!TextEditor.CodeMirrorTextEditor.TextEditorPositionHandle>}*/
     this._animatedLines = [];
-
-    this._update();
-  }
-
-  /**
-   * @param {?Workspace.UISourceCode} uiSourceCode
-   */
-  setUISourceCode(uiSourceCode) {
-    if (uiSourceCode === this._uiSourceCode)
-      return;
-    if (this._uiSourceCode)
-      this._workspaceDiff.unsubscribeFromDiffChange(this._uiSourceCode, this._update, this);
-    if (uiSourceCode)
-      this._workspaceDiff.subscribeToDiffChange(uiSourceCode, this._update, this);
-    this._uiSourceCode = uiSourceCode;
-    this._update();
+    /** @type {?number} */
+    this._animationTimeout = null;
   }
 
   /**
@@ -40,19 +22,23 @@ SourceFrame.SourceCodeDiff = class {
    * @param {?string} newContent
    */
   highlightModifiedLines(oldContent, newContent) {
-    if (typeof oldContent !== 'string' || typeof newContent !== 'string')
+    if (typeof oldContent !== 'string' || typeof newContent !== 'string') {
       return;
+    }
 
-    var diff = this._computeDiff(Diff.Diff.lineDiff(oldContent.split('\n'), newContent.split('\n')));
-    var changedLines = [];
-    for (var i = 0; i < diff.length; ++i) {
-      var diffEntry = diff[i];
-      if (diffEntry.type === SourceFrame.SourceCodeDiff.GutterDecorationType.Delete)
+    const diff =
+        SourceCodeDiff.computeDiff(Diff.Diff.DiffWrapper.lineDiff(oldContent.split('\n'), newContent.split('\n')));
+    const changedLines = [];
+    for (let i = 0; i < diff.length; ++i) {
+      const diffEntry = diff[i];
+      if (diffEntry.type === EditType.Delete) {
         continue;
-      for (var lineNumber = diffEntry.from; lineNumber < diffEntry.to; ++lineNumber) {
-        var position = this._textEditor.textEditorPositionHandle(lineNumber, 0);
-        if (position)
+      }
+      for (let lineNumber = diffEntry.from; lineNumber < diffEntry.to; ++lineNumber) {
+        const position = this._textEditor.textEditorPositionHandle(lineNumber, 0);
+        if (position) {
           changedLines.push(position);
+        }
       }
     }
     this._updateHighlightedLines(changedLines);
@@ -61,16 +47,17 @@ SourceFrame.SourceCodeDiff = class {
   }
 
   /**
-   * @param {!Array<!TextEditor.TextEditorPositionHandle>} newLines
+   * @param {!Array<!TextEditor.CodeMirrorTextEditor.TextEditorPositionHandle>} newLines
    */
   _updateHighlightedLines(newLines) {
-    if (this._animationTimeout)
+    if (this._animationTimeout) {
       clearTimeout(this._animationTimeout);
+    }
     this._animationTimeout = null;
     this._textEditor.operation(operation.bind(this));
 
     /**
-     * @this {SourceFrame.SourceCodeDiff}
+     * @this {SourceCodeDiff}
      */
     function operation() {
       toggleLines.call(this, false);
@@ -80,48 +67,35 @@ SourceFrame.SourceCodeDiff = class {
 
     /**
      * @param {boolean} value
-     * @this {SourceFrame.SourceCodeDiff}
+     * @this {SourceCodeDiff}
      */
     function toggleLines(value) {
-      for (var i = 0; i < this._animatedLines.length; ++i) {
-        var location = this._animatedLines[i].resolve();
-        if (location)
+      for (let i = 0; i < this._animatedLines.length; ++i) {
+        const location = this._animatedLines[i].resolve();
+        if (location) {
           this._textEditor.toggleLineClass(location.lineNumber, 'highlight-line-modification', value);
+        }
       }
     }
   }
 
   /**
-   * @param {!Array<!SourceFrame.SourceCodeDiff.GutterDecoration>} removed
-   * @param {!Array<!SourceFrame.SourceCodeDiff.GutterDecoration>} added
-   */
-  _updateDecorations(removed, added) {
-    this._textEditor.operation(operation);
-
-    function operation() {
-      for (var decoration of removed)
-        decoration.remove();
-      for (var decoration of added)
-        decoration.install();
-    }
-  }
-
-  /**
    * @param {!Diff.Diff.DiffArray} diff
-   * @return {!Array<!{type: !SourceFrame.SourceCodeDiff.GutterDecorationType, from: number, to: number}>}
+   * @return {!Array<!{type: !EditType, from: number, to: number}>}
    */
-  _computeDiff(diff) {
-    var result = [];
-    var hasAdded = false;
-    var hasRemoved = false;
-    var blockStartLineNumber = 0;
-    var currentLineNumber = 0;
-    var isInsideBlock = false;
-    for (var i = 0; i < diff.length; ++i) {
-      var token = diff[i];
+  static computeDiff(diff) {
+    const result = [];
+    let hasAdded = false;
+    let hasRemoved = false;
+    let blockStartLineNumber = 0;
+    let currentLineNumber = 0;
+    let isInsideBlock = false;
+    for (let i = 0; i < diff.length; ++i) {
+      const token = diff[i];
       if (token[0] === Diff.Diff.Operation.Equal) {
-        if (isInsideBlock)
+        if (isInsideBlock) {
           flush();
+        }
         currentLineNumber += token[1].length;
         continue;
       }
@@ -138,25 +112,26 @@ SourceFrame.SourceCodeDiff = class {
         hasAdded = true;
       }
     }
-    if (isInsideBlock)
+    if (isInsideBlock) {
       flush();
+    }
     if (result.length > 1 && result[0].from === 0 && result[1].from === 0) {
-      var merged = {type: SourceFrame.SourceCodeDiff.GutterDecorationType.Modify, from: 0, to: result[1].to};
+      const merged = {type: EditType.Modify, from: 0, to: result[1].to};
       result.splice(0, 2, merged);
     }
     return result;
 
     function flush() {
-      var type = SourceFrame.SourceCodeDiff.GutterDecorationType.Insert;
-      var from = blockStartLineNumber;
-      var to = currentLineNumber;
+      let type = EditType.Insert;
+      let from = blockStartLineNumber;
+      let to = currentLineNumber;
       if (hasAdded && hasRemoved) {
-        type = SourceFrame.SourceCodeDiff.GutterDecorationType.Modify;
+        type = EditType.Modify;
       } else if (!hasAdded && hasRemoved && from === 0 && to === 0) {
-        type = SourceFrame.SourceCodeDiff.GutterDecorationType.Modify;
+        type = EditType.Modify;
         to = 1;
       } else if (!hasAdded && hasRemoved) {
-        type = SourceFrame.SourceCodeDiff.GutterDecorationType.Delete;
+        type = EditType.Delete;
         from -= 1;
       }
       result.push({type: type, from: from, to: to});
@@ -165,122 +140,11 @@ SourceFrame.SourceCodeDiff = class {
       hasRemoved = false;
     }
   }
-
-  _update() {
-    if (this._uiSourceCode)
-      this._workspaceDiff.requestDiff(this._uiSourceCode).then(this._innerUpdate.bind(this));
-    else
-      this._innerUpdate(null);
-  }
-
-  /**
-   * @param {?Diff.Diff.DiffArray} lineDiff
-   */
-  _innerUpdate(lineDiff) {
-    if (!lineDiff) {
-      this._updateDecorations(this._decorations, []);
-      this._decorations = [];
-      return;
-    }
-
-    /** @type {!Map<number, !SourceFrame.SourceCodeDiff.GutterDecoration>} */
-    var oldDecorations = new Map();
-    for (var i = 0; i < this._decorations.length; ++i) {
-      var decoration = this._decorations[i];
-      var lineNumber = decoration.lineNumber();
-      if (lineNumber === -1)
-        continue;
-      oldDecorations.set(lineNumber, decoration);
-    }
-
-    var diff = this._computeDiff(lineDiff);
-
-    /** @type {!Map<number, !{lineNumber: number, type: !SourceFrame.SourceCodeDiff.GutterDecorationType}>} */
-    var newDecorations = new Map();
-    for (var i = 0; i < diff.length; ++i) {
-      var diffEntry = diff[i];
-      for (var lineNumber = diffEntry.from; lineNumber < diffEntry.to; ++lineNumber)
-        newDecorations.set(lineNumber, {lineNumber: lineNumber, type: diffEntry.type});
-    }
-
-    var decorationDiff = oldDecorations.diff(newDecorations, (e1, e2) => e1.type === e2.type);
-    var addedDecorations = decorationDiff.added.map(
-        entry => new SourceFrame.SourceCodeDiff.GutterDecoration(this._textEditor, entry.lineNumber, entry.type));
-
-    this._decorations = decorationDiff.equal.concat(addedDecorations);
-    this._updateDecorations(decorationDiff.removed, addedDecorations);
-    this._decorationsSetForTest(newDecorations);
-  }
-
-  /**
-   * @param {!Map<number, !{lineNumber: number, type: !SourceFrame.SourceCodeDiff.GutterDecorationType}>} decorations
-   */
-  _decorationsSetForTest(decorations) {
-  }
-
-  dispose() {
-    if (this._uiSourceCode)
-      WorkspaceDiff.workspaceDiff().unsubscribeFromDiffChange(this._uiSourceCode, this._update, this);
-  }
-};
-
-/** @type {string} */
-SourceFrame.SourceCodeDiff.DiffGutterType = 'CodeMirror-gutter-diff';
+}
 
 /** @enum {symbol} */
-SourceFrame.SourceCodeDiff.GutterDecorationType = {
+export const EditType = {
   Insert: Symbol('Insert'),
   Delete: Symbol('Delete'),
   Modify: Symbol('Modify'),
-};
-
-/**
- * @unrestricted
- */
-SourceFrame.SourceCodeDiff.GutterDecoration = class {
-  /**
-   * @param {!TextEditor.CodeMirrorTextEditor} textEditor
-   * @param {number} lineNumber
-   * @param {!SourceFrame.SourceCodeDiff.GutterDecorationType} type
-   */
-  constructor(textEditor, lineNumber, type) {
-    this._textEditor = textEditor;
-    this._position = this._textEditor.textEditorPositionHandle(lineNumber, 0);
-    this._className = '';
-    if (type === SourceFrame.SourceCodeDiff.GutterDecorationType.Insert)
-      this._className = 'diff-entry-insert';
-    else if (type === SourceFrame.SourceCodeDiff.GutterDecorationType.Delete)
-      this._className = 'diff-entry-delete';
-    else if (type === SourceFrame.SourceCodeDiff.GutterDecorationType.Modify)
-      this._className = 'diff-entry-modify';
-    this.type = type;
-  }
-
-  /**
-   * @return {number}
-   */
-  lineNumber() {
-    var location = this._position.resolve();
-    if (!location)
-      return -1;
-    return location.lineNumber;
-  }
-
-  install() {
-    var location = this._position.resolve();
-    if (!location)
-      return;
-    var element = createElementWithClass('div', 'diff-marker');
-    element.textContent = '\u00A0';
-    this._textEditor.setGutterDecoration(location.lineNumber, SourceFrame.SourceCodeDiff.DiffGutterType, element);
-    this._textEditor.toggleLineClass(location.lineNumber, this._className, true);
-  }
-
-  remove() {
-    var location = this._position.resolve();
-    if (!location)
-      return;
-    this._textEditor.setGutterDecoration(location.lineNumber, SourceFrame.SourceCodeDiff.DiffGutterType, null);
-    this._textEditor.toggleLineClass(location.lineNumber, this._className, false);
-  }
 };

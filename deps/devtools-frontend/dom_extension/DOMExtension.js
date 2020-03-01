@@ -37,26 +37,28 @@
  * @return {!Range}
  */
 Node.prototype.rangeOfWord = function(offset, stopCharacters, stayWithinNode, direction) {
-  var startNode;
-  var startOffset = 0;
-  var endNode;
-  var endOffset = 0;
+  let startNode;
+  let startOffset = 0;
+  let endNode;
+  let endOffset = 0;
 
-  if (!stayWithinNode)
+  if (!stayWithinNode) {
     stayWithinNode = this;
+  }
 
   if (!direction || direction === 'backward' || direction === 'both') {
-    var node = this;
+    let node = this;
     while (node) {
       if (node === stayWithinNode) {
-        if (!startNode)
+        if (!startNode) {
           startNode = stayWithinNode;
+        }
         break;
       }
 
       if (node.nodeType === Node.TEXT_NODE) {
-        var start = (node === this ? (offset - 1) : (node.nodeValue.length - 1));
-        for (var i = start; i >= 0; --i) {
+        const start = (node === this ? (offset - 1) : (node.nodeValue.length - 1));
+        for (let i = start; i >= 0; --i) {
           if (stopCharacters.indexOf(node.nodeValue[i]) !== -1) {
             startNode = node;
             startOffset = i + 1;
@@ -65,8 +67,9 @@ Node.prototype.rangeOfWord = function(offset, stopCharacters, stayWithinNode, di
         }
       }
 
-      if (startNode)
+      if (startNode) {
         break;
+      }
 
       node = node.traversePreviousNode(stayWithinNode);
     }
@@ -81,17 +84,18 @@ Node.prototype.rangeOfWord = function(offset, stopCharacters, stayWithinNode, di
   }
 
   if (!direction || direction === 'forward' || direction === 'both') {
-    node = this;
+    let node = this;
     while (node) {
       if (node === stayWithinNode) {
-        if (!endNode)
+        if (!endNode) {
           endNode = stayWithinNode;
+        }
         break;
       }
 
       if (node.nodeType === Node.TEXT_NODE) {
-        var start = (node === this ? offset : 0);
-        for (var i = start; i < node.nodeValue.length; ++i) {
+        const start = (node === this ? offset : 0);
+        for (let i = start; i < node.nodeValue.length; ++i) {
           if (stopCharacters.indexOf(node.nodeValue[i]) !== -1) {
             endNode = node;
             endOffset = i;
@@ -100,8 +104,9 @@ Node.prototype.rangeOfWord = function(offset, stopCharacters, stayWithinNode, di
         }
       }
 
-      if (endNode)
+      if (endNode) {
         break;
+      }
 
       node = node.traverseNextNode(stayWithinNode);
     }
@@ -116,7 +121,7 @@ Node.prototype.rangeOfWord = function(offset, stopCharacters, stayWithinNode, di
     endOffset = offset;
   }
 
-  var result = this.ownerDocument.createRange();
+  const result = this.ownerDocument.createRange();
   result.setStart(startNode, startOffset);
   result.setEnd(endNode, endOffset);
 
@@ -128,12 +133,14 @@ Node.prototype.rangeOfWord = function(offset, stopCharacters, stayWithinNode, di
  * @return {?Node}
  */
 Node.prototype.traverseNextTextNode = function(stayWithin) {
-  var node = this.traverseNextNode(stayWithin);
-  if (!node)
+  let node = this.traverseNextNode(stayWithin);
+  if (!node) {
     return null;
-  var nonTextTags = {'STYLE': 1, 'SCRIPT': 1};
-  while (node && (node.nodeType !== Node.TEXT_NODE || nonTextTags[node.parentElement.nodeName]))
+  }
+  const nonTextTags = {'STYLE': 1, 'SCRIPT': 1};
+  while (node && (node.nodeType !== Node.TEXT_NODE || nonTextTags[node.parentElement.nodeName])) {
     node = node.traverseNextNode(stayWithin);
+  }
 
   return node;
 };
@@ -144,24 +151,28 @@ Node.prototype.traverseNextTextNode = function(stayWithin) {
  * @param {!Element=} relativeTo
  */
 Element.prototype.positionAt = function(x, y, relativeTo) {
-  var shift = {x: 0, y: 0};
-  if (relativeTo)
+  let shift = {x: 0, y: 0};
+  if (relativeTo) {
     shift = relativeTo.boxInWindow(this.ownerDocument.defaultView);
+  }
 
-  if (typeof x === 'number')
+  if (typeof x === 'number') {
     this.style.setProperty('left', (shift.x + x) + 'px');
-  else
+  } else {
     this.style.removeProperty('left');
+  }
 
-  if (typeof y === 'number')
+  if (typeof y === 'number') {
     this.style.setProperty('top', (shift.y + y) + 'px');
-  else
+  } else {
     this.style.removeProperty('top');
+  }
 
-  if (typeof x === 'number' || typeof y === 'number')
+  if (typeof x === 'number' || typeof y === 'number') {
     this.style.setProperty('position', 'absolute');
-  else
+  } else {
     this.style.removeProperty('position');
+  }
 };
 
 /**
@@ -181,10 +192,11 @@ Element.prototype.isScrolledToBottom = function() {
  * @return {?Node}
  */
 Node.prototype.enclosingNodeOrSelfWithNodeNameInArray = function(nameArray) {
-  for (var node = this; node && node !== this.ownerDocument; node = node.parentNodeOrShadowHost()) {
-    for (var i = 0; i < nameArray.length; ++i) {
-      if (node.nodeName.toLowerCase() === nameArray[i].toLowerCase())
+  for (let node = this; node && node !== this.ownerDocument; node = node.parentNodeOrShadowHost()) {
+    for (let i = 0; i < nameArray.length; ++i) {
+      if (node.nodeName.toLowerCase() === nameArray[i].toLowerCase()) {
         return node;
+      }
     }
   }
   return null;
@@ -213,32 +225,62 @@ Node.prototype.enclosingNodeOrSelfWithClass = function(className, stayWithin) {
  * @return {?Element}
  */
 Node.prototype.enclosingNodeOrSelfWithClassList = function(classNames, stayWithin) {
-  for (var node = this; node && node !== stayWithin && node !== this.ownerDocument;
+  for (let node = this; node && node !== stayWithin && node !== this.ownerDocument;
        node = node.parentNodeOrShadowHost()) {
     if (node.nodeType === Node.ELEMENT_NODE) {
-      var containsAll = true;
-      for (var i = 0; i < classNames.length && containsAll; ++i) {
-        if (!node.classList.contains(classNames[i]))
+      let containsAll = true;
+      for (let i = 0; i < classNames.length && containsAll; ++i) {
+        if (!node.classList.contains(classNames[i])) {
           containsAll = false;
+        }
       }
-      if (containsAll)
+      if (containsAll) {
         return /** @type {!Element} */ (node);
+      }
     }
   }
   return null;
 };
 
 /**
+ * @return {?Node}
+ */
+Node.prototype.enclosingShadowRoot = function() {
+  let parentNode = this.parentNodeOrShadowHost();
+  while (parentNode) {
+    if (parentNode instanceof ShadowRoot) {
+      return parentNode;
+    }
+    parentNode = parentNode.parentNodeOrShadowHost();
+  }
+  return null;
+};
+
+/**
+ * @param {!Node} node
+ * @return {boolean}
+ */
+Node.prototype.hasSameShadowRoot = function(node) {
+  return this.enclosingShadowRoot() === node.enclosingShadowRoot();
+};
+
+/**
  * @return {?Element}
  */
 Node.prototype.parentElementOrShadowHost = function() {
-  var node = this.parentNode;
-  if (!node)
+  if (this.nodeType === Node.DOCUMENT_FRAGMENT_NODE && this.host) {
+    return /** @type {!Element} */ (this.host);
+  }
+  const node = this.parentNode;
+  if (!node) {
     return null;
-  if (node.nodeType === Node.ELEMENT_NODE)
+  }
+  if (node.nodeType === Node.ELEMENT_NODE) {
     return /** @type {!Element} */ (node);
-  if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE)
+  }
+  if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
     return /** @type {!Element} */ (node.host);
+  }
   return null;
 };
 
@@ -246,10 +288,12 @@ Node.prototype.parentElementOrShadowHost = function() {
  * @return {?Node}
  */
 Node.prototype.parentNodeOrShadowHost = function() {
-  if (this.parentNode)
+  if (this.parentNode) {
     return this.parentNode;
-  if (this.nodeType === Node.DOCUMENT_FRAGMENT_NODE && this.host)
+  }
+  if (this.nodeType === Node.DOCUMENT_FRAGMENT_NODE && this.host) {
     return this.host;
+  }
   return null;
 };
 
@@ -257,9 +301,10 @@ Node.prototype.parentNodeOrShadowHost = function() {
  * @return {?Selection}
  */
 Node.prototype.getComponentSelection = function() {
-  var parent = this.parentNode;
-  while (parent && parent.nodeType !== Node.DOCUMENT_FRAGMENT_NODE)
+  let parent = this.parentNode;
+  while (parent && parent.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) {
     parent = parent.parentNode;
+  }
   return parent instanceof ShadowRoot ? parent.getSelection() : this.window().getSelection();
 };
 
@@ -268,15 +313,19 @@ Node.prototype.getComponentSelection = function() {
  */
 Node.prototype.hasSelection = function() {
   // TODO(luoe): use contains(node, {includeShadow: true}) when it is fixed for shadow dom.
-  var contents = this.querySelectorAll('content');
-  for (var content of contents) {
-    if (Array.prototype.some.call(content.getDistributedNodes(), node => node.hasSelection()))
-      return true;
+  if (this instanceof Element) {
+    const slots = this.querySelectorAll('slot');
+    for (const slot of slots) {
+      if (Array.prototype.some.call(slot.assignedNodes(), node => node.hasSelection())) {
+        return true;
+      }
+    }
   }
 
-  var selection = this.getComponentSelection();
-  if (selection.type !== 'Range')
+  const selection = this.getComponentSelection();
+  if (selection.type !== 'Range') {
     return false;
+  }
   return selection.containsNode(this, true) || selection.anchorNode.isSelfOrDescendant(this) ||
       selection.focusNode.isSelfOrDescendant(this);
 };
@@ -285,43 +334,47 @@ Node.prototype.hasSelection = function() {
  * @return {!Window}
  */
 Node.prototype.window = function() {
-  return this.ownerDocument.defaultView;
+  return /** @type {!Window} */ (this.ownerDocument.defaultView);
 };
 
 Element.prototype.removeChildren = function() {
-  if (this.firstChild)
+  if (this.firstChild) {
     this.textContent = '';
+  }
 };
 
 /**
  * @param {string} tagName
  * @param {string=} customElementType
  * @return {!Element}
+ * @suppress {checkTypes}
  * @suppressGlobalPropertiesCheck
  */
-function createElement(tagName, customElementType) {
-  return document.createElement(tagName, customElementType || '');
-}
+self.createElement = function(tagName, customElementType) {
+  return document.createElement(tagName, {is: customElementType});
+};
 
 /**
  * @param {number|string} data
  * @return {!Text}
  * @suppressGlobalPropertiesCheck
  */
-function createTextNode(data) {
+self.createTextNode = function(data) {
   return document.createTextNode(data);
-}
+};
 
 /**
  * @param {string} elementName
  * @param {string=} className
  * @param {string=} customElementType
+ * @suppress {checkTypes}
  * @return {!Element}
  */
 Document.prototype.createElementWithClass = function(elementName, className, customElementType) {
-  var element = this.createElement(elementName, customElementType || '');
-  if (className)
+  const element = this.createElement(elementName, {is: customElementType});
+  if (className) {
     element.className = className;
+  }
   return element;
 };
 
@@ -332,9 +385,9 @@ Document.prototype.createElementWithClass = function(elementName, className, cus
  * @return {!Element}
  * @suppressGlobalPropertiesCheck
  */
-function createElementWithClass(elementName, className, customElementType) {
+self.createElementWithClass = function(elementName, className, customElementType) {
   return document.createElementWithClass(elementName, className, customElementType);
-}
+};
 
 /**
  * @param {string} childType
@@ -342,9 +395,10 @@ function createElementWithClass(elementName, className, customElementType) {
  * @return {!Element}
  */
 Document.prototype.createSVGElement = function(childType, className) {
-  var element = this.createElementNS('http://www.w3.org/2000/svg', childType);
-  if (className)
+  const element = this.createElementNS('http://www.w3.org/2000/svg', childType);
+  if (className) {
     element.setAttribute('class', className);
+  }
   return element;
 };
 
@@ -354,17 +408,17 @@ Document.prototype.createSVGElement = function(childType, className) {
  * @return {!Element}
  * @suppressGlobalPropertiesCheck
  */
-function createSVGElement(childType, className) {
+self.createSVGElement = function(childType, className) {
   return document.createSVGElement(childType, className);
-}
+};
 
 /**
  * @return {!DocumentFragment}
  * @suppressGlobalPropertiesCheck
  */
-function createDocumentFragment() {
+self.createDocumentFragment = function() {
   return document.createDocumentFragment();
-}
+};
 
 /**
  * @param {string} elementName
@@ -373,7 +427,7 @@ function createDocumentFragment() {
  * @return {!Element}
  */
 Element.prototype.createChild = function(elementName, className, customElementType) {
-  var element = this.ownerDocument.createElementWithClass(elementName, className, customElementType);
+  const element = this.ownerDocument.createElementWithClass(elementName, className, customElementType);
   this.appendChild(element);
   return element;
 };
@@ -385,7 +439,7 @@ DocumentFragment.prototype.createChild = Element.prototype.createChild;
  * @return {!Text}
  */
 Element.prototype.createTextChild = function(text) {
-  var element = this.ownerDocument.createTextNode(text);
+  const element = this.ownerDocument.createTextNode(text);
   this.appendChild(element);
   return element;
 };
@@ -396,8 +450,9 @@ DocumentFragment.prototype.createTextChild = Element.prototype.createTextChild;
  * @param {...string} var_args
  */
 Element.prototype.createTextChildren = function(var_args) {
-  for (var i = 0, n = arguments.length; i < n; ++i)
+  for (let i = 0, n = arguments.length; i < n; ++i) {
     this.createTextChild(arguments[i]);
+  }
 };
 
 DocumentFragment.prototype.createTextChildren = Element.prototype.createTextChildren;
@@ -420,7 +475,7 @@ Element.prototype.totalOffsetTop = function() {
  * @return {!{left: number, top: number}}
  */
 Element.prototype.totalOffset = function() {
-  var rect = this.getBoundingClientRect();
+  const rect = this.getBoundingClientRect();
   return {left: rect.left, top: rect.top};
 };
 
@@ -430,7 +485,7 @@ Element.prototype.totalOffset = function() {
  * @return {!Element}
  */
 Element.prototype.createSVGChild = function(childType, className) {
-  var child = this.ownerDocument.createSVGElement(childType, className);
+  const child = this.ownerDocument.createSVGElement(childType, className);
   this.appendChild(child);
   return child;
 };
@@ -438,7 +493,7 @@ Element.prototype.createSVGChild = function(childType, className) {
 /**
  * @unrestricted
  */
-var AnchorBox = class {
+var AnchorBox = class {  // eslint-disable-line
   /**
    * @param {number=} x
    * @param {number=} y
@@ -460,48 +515,52 @@ var AnchorBox = class {
   contains(x, y) {
     return x >= this.x && x <= this.x + this.width && y >= this.y && y <= this.y + this.height;
   }
+
+  /**
+   * @param {!AnchorBox} box
+   * @return {!AnchorBox}
+   */
+  relativeTo(box) {
+    return new AnchorBox(this.x - box.x, this.y - box.y, this.width, this.height);
+  }
+
+  /**
+   * @param {!Element} element
+   * @return {!AnchorBox}
+   */
+  relativeToElement(element) {
+    return this.relativeTo(element.boxInWindow(element.ownerDocument.defaultView));
+  }
+
+  /**
+   * @param {?AnchorBox} anchorBox
+   * @return {boolean}
+   */
+  equals(anchorBox) {
+    return !!anchorBox && this.x === anchorBox.x && this.y === anchorBox.y && this.width === anchorBox.width &&
+        this.height === anchorBox.height;
+  }
 };
 
-/**
- * @param {!AnchorBox} box
- * @return {!AnchorBox}
- */
-AnchorBox.prototype.relativeTo = function(box) {
-  return new AnchorBox(this.x - box.x, this.y - box.y, this.width, this.height);
-};
+/** @constructor */
+self.AnchorBox = AnchorBox;
 
 /**
- * @param {!Element} element
- * @return {!AnchorBox}
- */
-AnchorBox.prototype.relativeToElement = function(element) {
-  return this.relativeTo(element.boxInWindow(element.ownerDocument.defaultView));
-};
-
-/**
- * @param {?AnchorBox} anchorBox
- * @return {boolean}
- */
-AnchorBox.prototype.equals = function(anchorBox) {
-  return !!anchorBox && this.x === anchorBox.x && this.y === anchorBox.y && this.width === anchorBox.width &&
-      this.height === anchorBox.height;
-};
-
-/**
- * @param {!Window=} targetWindow
+ * @param {?Window=} targetWindow
  * @return {!AnchorBox}
  */
 Element.prototype.boxInWindow = function(targetWindow) {
   targetWindow = targetWindow || this.ownerDocument.defaultView;
 
-  var anchorBox = new AnchorBox();
-  var curElement = this;
-  var curWindow = this.ownerDocument.defaultView;
+  const anchorBox = new AnchorBox();
+  let curElement = this;
+  let curWindow = this.ownerDocument.defaultView;
   while (curWindow && curElement) {
     anchorBox.x += curElement.totalOffsetLeft();
     anchorBox.y += curElement.totalOffsetTop();
-    if (curWindow === targetWindow)
+    if (curWindow === targetWindow) {
       break;
+    }
     curElement = curWindow.frameElement;
     curWindow = curWindow.parent;
   }
@@ -516,8 +575,9 @@ Element.prototype.boxInWindow = function(targetWindow) {
  */
 Event.prototype.consume = function(preventDefault) {
   this.stopImmediatePropagation();
-  if (preventDefault)
+  if (preventDefault) {
     this.preventDefault();
+  }
   this.handled = true;
 };
 
@@ -530,12 +590,13 @@ Text.prototype.select = function(start, end) {
   start = start || 0;
   end = end || this.textContent.length;
 
-  if (start < 0)
+  if (start < 0) {
     start = end + start;
+  }
 
-  var selection = this.getComponentSelection();
+  const selection = this.getComponentSelection();
   selection.removeAllRanges();
-  var range = this.ownerDocument.createRange();
+  const range = this.ownerDocument.createRange();
   range.setStart(this, start);
   range.setEnd(this, end);
   selection.addRange(range);
@@ -548,12 +609,13 @@ Text.prototype.select = function(start, end) {
 Element.prototype.selectionLeftOffset = function() {
   // Calculate selection offset relative to the current element.
 
-  var selection = this.getComponentSelection();
-  if (!selection.containsNode(this, true))
+  const selection = this.getComponentSelection();
+  if (!selection.containsNode(this, true)) {
     return null;
+  }
 
-  var leftOffset = selection.anchorOffset;
-  var node = selection.anchorNode;
+  let leftOffset = selection.anchorOffset;
+  let node = selection.anchorNode;
 
   while (node !== this) {
     while (node.previousSibling) {
@@ -570,8 +632,9 @@ Element.prototype.selectionLeftOffset = function() {
  * @param {...!Node} var_args
  */
 Node.prototype.appendChildren = function(var_args) {
-  for (var i = 0, n = arguments.length; i < n; ++i)
+  for (let i = 0, n = arguments.length; i < n; ++i) {
     this.appendChild(arguments[i]);
+  }
 };
 
 /**
@@ -589,12 +652,13 @@ Node.prototype.deepTextContent = function() {
  * @return {!Array.<!Node>}
  */
 Node.prototype.childTextNodes = function() {
-  var node = this.traverseNextTextNode(this);
-  var result = [];
-  var nonTextTags = {'STYLE': 1, 'SCRIPT': 1};
+  let node = this.traverseNextTextNode(this);
+  const result = [];
+  const nonTextTags = {'STYLE': 1, 'SCRIPT': 1};
   while (node) {
-    if (!nonTextTags[node.parentElement.nodeName])
+    if (!nonTextTags[node.parentElement.nodeName]) {
       result.push(node);
+    }
     node = node.traverseNextTextNode(this);
   }
   return result;
@@ -605,13 +669,15 @@ Node.prototype.childTextNodes = function() {
  * @return {boolean}
  */
 Node.prototype.isAncestor = function(node) {
-  if (!node)
+  if (!node) {
     return false;
+  }
 
-  var currentNode = node.parentNodeOrShadowHost();
+  let currentNode = node.parentNodeOrShadowHost();
   while (currentNode) {
-    if (this === currentNode)
+    if (this === currentNode) {
       return true;
+    }
     currentNode = currentNode.parentNodeOrShadowHost();
   }
   return false;
@@ -646,27 +712,32 @@ Node.prototype.isSelfOrDescendant = function(node) {
  * @return {?Node}
  */
 Node.prototype.traverseNextNode = function(stayWithin) {
-  if (this.shadowRoot)
+  if (this.shadowRoot) {
     return this.shadowRoot;
+  }
 
-  var distributedNodes = this.getDistributedNodes ? this.getDistributedNodes() : [];
+  const distributedNodes = this instanceof HTMLSlotElement ? this.assignedNodes() : [];
 
-  if (distributedNodes.length)
+  if (distributedNodes.length) {
     return distributedNodes[0];
+  }
 
-  if (this.firstChild)
+  if (this.firstChild) {
     return this.firstChild;
+  }
 
-  var node = this;
+  let node = this;
   while (node) {
-    if (stayWithin && node === stayWithin)
+    if (stayWithin && node === stayWithin) {
       return null;
+    }
 
-    var sibling = nextSibling(node);
-    if (sibling)
+    const sibling = nextSibling(node);
+    if (sibling) {
       return sibling;
+    }
 
-    node = insertionPoint(node) || node.parentNodeOrShadowHost();
+    node = node.assignedSlot || node.parentNodeOrShadowHost();
   }
 
   /**
@@ -674,24 +745,16 @@ Node.prototype.traverseNextNode = function(stayWithin) {
    * @return {?Node}
    */
   function nextSibling(node) {
-    var parent = insertionPoint(node);
-    if (!parent)
+    if (!node.assignedSlot) {
       return node.nextSibling;
-    var distributedNodes = parent.getDistributedNodes ? parent.getDistributedNodes() : [];
+    }
+    const distributedNodes = node.assignedSlot.assignedNodes();
 
-    var position = Array.prototype.indexOf.call(distributedNodes, node);
-    if (position + 1 < distributedNodes.length)
+    const position = Array.prototype.indexOf.call(distributedNodes, node);
+    if (position + 1 < distributedNodes.length) {
       return distributedNodes[position + 1];
+    }
     return null;
-  }
-
-  /**
-   * @param {!Node} node
-   * @return {?Node}
-   */
-  function insertionPoint(node) {
-    var insertionPoints = node.getDestinationInsertionPoints ? node.getDestinationInsertionPoints() : [];
-    return insertionPoints.length > 0 ? insertionPoints[insertionPoints.length - 1] : null;
   }
 
   return null;
@@ -702,13 +765,16 @@ Node.prototype.traverseNextNode = function(stayWithin) {
  * @return {?Node}
  */
 Node.prototype.traversePreviousNode = function(stayWithin) {
-  if (stayWithin && this === stayWithin)
+  if (stayWithin && this === stayWithin) {
     return null;
-  var node = this.previousSibling;
-  while (node && node.lastChild)
+  }
+  let node = this.previousSibling;
+  while (node && node.lastChild) {
     node = node.lastChild;
-  if (node)
+  }
+  if (node) {
     return node;
+  }
   return this.parentNodeOrShadowHost();
 };
 
@@ -737,9 +803,11 @@ Node.prototype.setTextContentTruncatedIfNeeded = function(text, placeholder) {
  */
 Event.prototype.deepElementFromPoint = function() {
   // Some synthetic events have zero coordinates which lead to a wrong element. Better return nothing in this case.
-  if (!this.which && !this.pageX && !this.pageY && !this.clientX && !this.clientY && !this.movementX && !this.movementY)
+  if (!this.which && !this.pageX && !this.pageY && !this.clientX && !this.clientY && !this.movementX &&
+      !this.movementY) {
     return null;
-  var root = this.target && this.target.getComponentRoot();
+  }
+  const root = this.target && this.target.getComponentRoot();
   return root ? root.deepElementFromPoint(this.pageX, this.pageY) : null;
 };
 
@@ -749,12 +817,13 @@ Event.prototype.deepElementFromPoint = function() {
  * @return {?Node}
  */
 Document.prototype.deepElementFromPoint = function(x, y) {
-  var container = this;
-  var node = null;
+  let container = this;
+  let node = null;
   while (container) {
-    var innerNode = container.elementFromPoint(x, y);
-    if (!innerNode)
+    const innerNode = container.elementFromPoint(x, y);
+    if (!innerNode || node === innerNode) {
       break;
+    }
     node = innerNode;
     container = node.shadowRoot;
   }
@@ -767,9 +836,10 @@ DocumentFragment.prototype.deepElementFromPoint = Document.prototype.deepElement
  * @return {?Element}
  */
 Document.prototype.deepActiveElement = function() {
-  var activeElement = this.activeElement;
-  while (activeElement && activeElement.shadowRoot && activeElement.shadowRoot.activeElement)
+  let activeElement = this.activeElement;
+  while (activeElement && activeElement.shadowRoot && activeElement.shadowRoot.activeElement) {
     activeElement = activeElement.shadowRoot.activeElement;
+  }
   return activeElement;
 };
 
@@ -779,7 +849,7 @@ DocumentFragment.prototype.deepActiveElement = Document.prototype.deepActiveElem
  * @return {boolean}
  */
 Element.prototype.hasFocus = function() {
-  var root = this.getComponentRoot();
+  const root = this.getComponentRoot();
   return !!root && this.isSelfOrAncestor(root.activeElement);
 };
 
@@ -787,25 +857,61 @@ Element.prototype.hasFocus = function() {
  * @return {?Document|?DocumentFragment}
  */
 Node.prototype.getComponentRoot = function() {
-  var node = this;
-  while (node && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE && node.nodeType !== Node.DOCUMENT_NODE)
+  let node = this;
+  while (node && node.nodeType !== Node.DOCUMENT_FRAGMENT_NODE && node.nodeType !== Node.DOCUMENT_NODE) {
     node = node.parentNode;
+  }
   return /** @type {?Document|?DocumentFragment} */ (node);
+};
+
+/**
+ * @param {!Element} element
+ * @param {function(!Event)} callback
+ */
+self.onInvokeElement = function(element, callback) {
+  element.addEventListener('keydown', event => {
+    if (self.isEnterOrSpaceKey(event)) {
+      callback(event);
+    }
+  });
+  element.addEventListener('click', event => callback(event));
 };
 
 /**
  * @param {!Event} event
  * @return {boolean}
  */
-function isEnterKey(event) {
+self.isEnterKey = function(event) {
   // Check if in IME.
   return event.keyCode !== 229 && event.key === 'Enter';
-}
+};
 
 /**
  * @param {!Event} event
  * @return {boolean}
  */
-function isEscKey(event) {
+self.isEnterOrSpaceKey = function(event) {
+  return self.isEnterKey(event) || event.key === ' ';
+};
+
+/**
+ * @param {!Event} event
+ * @return {boolean}
+ */
+self.isEscKey = function(event) {
   return event.keyCode === 27;
-}
+};
+
+// DevTools front-end still assumes that
+//   classList.toggle('a', undefined) works as
+//   classList.toggle('a', false) rather than as
+//   classList.toggle('a');
+(function() {
+const originalToggle = DOMTokenList.prototype.toggle;
+DOMTokenList.prototype['toggle'] = function(token, force) {
+  if (arguments.length === 1) {
+    force = !this.contains(token);
+  }
+  return originalToggle.call(this, token, !!force);
+};
+})();

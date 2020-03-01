@@ -1,150 +1,170 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-/** @typedef {!{
-        rect: !Protocol.DOM.Rect,
-        snapshot: !SDK.PaintProfilerSnapshot
-    }}
-*/
-SDK.SnapshotWithRect;
+
+import {DOMModel, DOMNode} from './DOMModel.js';      // eslint-disable-line no-unused-vars
+import {SnapshotWithRect} from './PaintProfiler.js';  // eslint-disable-line no-unused-vars
+import {Target} from './SDKModel.js';                 // eslint-disable-line no-unused-vars
 
 /**
  * @interface
  */
-SDK.Layer = function() {};
-
-SDK.Layer.prototype = {
+export class Layer {
   /**
    * @return {string}
    */
-  id() {},
+  id() {
+  }
 
   /**
    * @return {?string}
    */
-  parentId() {},
+  parentId() {
+  }
 
   /**
-   * @return {?SDK.Layer}
+   * @return {?Layer}
    */
-  parent() {},
+  parent() {
+  }
 
   /**
    * @return {boolean}
    */
-  isRoot() {},
+  isRoot() {
+  }
 
   /**
-   * @return {!Array.<!SDK.Layer>}
+   * @return {!Array.<!Layer>}
    */
-  children() {},
+  children() {
+  }
 
   /**
-   * @param {!SDK.Layer} child
+   * @param {!Layer} child
    */
-  addChild(child) {},
+  addChild(child) {
+  }
 
   /**
-   * @return {?SDK.DOMNode}
+   * @return {?DOMNode}
    */
-  node() {},
+  node() {
+  }
 
   /**
-   * @return {?SDK.DOMNode}
+   * @return {?DOMNode}
    */
-  nodeForSelfOrAncestor() {},
-
-  /**
-   * @return {number}
-   */
-  offsetX() {},
-
-  /**
-   * @return {number}
-   */
-  offsetY() {},
+  nodeForSelfOrAncestor() {
+  }
 
   /**
    * @return {number}
    */
-  width() {},
+  offsetX() {
+  }
 
   /**
    * @return {number}
    */
-  height() {},
+  offsetY() {
+  }
+
+  /**
+   * @return {number}
+   */
+  width() {
+  }
+
+  /**
+   * @return {number}
+   */
+  height() {
+  }
 
   /**
    * @return {?Array.<number>}
    */
-  transform() {},
+  transform() {
+  }
 
   /**
    * @return {!Array.<number>}
    */
-  quad() {},
+  quad() {
+  }
 
   /**
    * @return {!Array.<number>}
    */
-  anchorPoint() {},
+  anchorPoint() {
+  }
 
   /**
    * @return {boolean}
    */
-  invisible() {},
+  invisible() {
+  }
 
   /**
    * @return {number}
    */
-  paintCount() {},
+  paintCount() {
+  }
 
   /**
    * @return {?Protocol.DOM.Rect}
    */
-  lastPaintRect() {},
+  lastPaintRect() {
+  }
 
   /**
    * @return {!Array.<!Protocol.LayerTree.ScrollRect>}
    */
-  scrollRects() {},
+  scrollRects() {
+  }
 
   /**
-   * @return {?SDK.Layer.StickyPositionConstraint}
+   * @return {?Layer.StickyPositionConstraint}
    */
-  stickyPositionConstraint() {},
+  stickyPositionConstraint() {
+  }
 
   /**
    * @return {number}
    */
-  gpuMemoryUsage() {},
+  gpuMemoryUsage() {
+  }
 
   /**
    * @return {!Promise<!Array<string>>}
    */
-  requestCompositingReasons() {},
+  requestCompositingReasonIds() {
+  }
 
   /**
    * @return {boolean}
    */
-  drawsContent() {},
+  drawsContent() {
+  }
 
   /**
-   * @return {!Array<!Promise<?SDK.SnapshotWithRect>>}
+   * @return {!Array<!Promise<?SnapshotWithRect>>}
    */
   snapshots() {}
-};
+}
 
-SDK.Layer.ScrollRectType = {
+Layer.ScrollRectType = {
   NonFastScrollable: 'NonFastScrollable',
   TouchEventHandler: 'TouchEventHandler',
   WheelEventHandler: 'WheelEventHandler',
-  RepaintsOnScroll: 'RepaintsOnScroll'
+  RepaintsOnScroll: 'RepaintsOnScroll',
+  MainThreadScrollingReason: 'MainThreadScrollingReason'
 };
 
-SDK.Layer.StickyPositionConstraint = class {
+export class StickyPositionConstraint {
   /**
-   * @param {?SDK.LayerTreeBase} layerTree
+   * @param {?LayerTreeBase} layerTree
    * @param {!Protocol.LayerTree.StickyPositionConstraint} constraint
    * @struct
    */
@@ -153,15 +173,17 @@ SDK.Layer.StickyPositionConstraint = class {
     this._stickyBoxRect = constraint.stickyBoxRect;
     /** @type {!Protocol.DOM.Rect} */
     this._containingBlockRect = constraint.containingBlockRect;
-    /** @type {?SDK.Layer} */
+    /** @type {?Layer} */
     this._nearestLayerShiftingStickyBox = null;
-    if (layerTree && constraint.nearestLayerShiftingStickyBox)
+    if (layerTree && constraint.nearestLayerShiftingStickyBox) {
       this._nearestLayerShiftingStickyBox = layerTree.layerById(constraint.nearestLayerShiftingStickyBox);
+    }
 
-    /** @type {?SDK.Layer} */
+    /** @type {?Layer} */
     this._nearestLayerShiftingContainingBlock = null;
-    if (layerTree && constraint.nearestLayerShiftingContainingBlock)
+    if (layerTree && constraint.nearestLayerShiftingContainingBlock) {
       this._nearestLayerShiftingContainingBlock = layerTree.layerById(constraint.nearestLayerShiftingContainingBlock);
+    }
   }
 
   /**
@@ -179,53 +201,53 @@ SDK.Layer.StickyPositionConstraint = class {
   }
 
   /**
-   * @return {?SDK.Layer}
+   * @return {?Layer}
    */
   nearestLayerShiftingStickyBox() {
     return this._nearestLayerShiftingStickyBox;
   }
 
   /**
-   * @return {?SDK.Layer}
+   * @return {?Layer}
    */
   nearestLayerShiftingContainingBlock() {
     return this._nearestLayerShiftingContainingBlock;
   }
-};
+}
 
 /**
  * @unrestricted
  */
-SDK.LayerTreeBase = class {
+export class LayerTreeBase {
   /**
-   * @param {?SDK.Target} target
+   * @param {?Target} target
    */
   constructor(target) {
     this._target = target;
-    this._domModel = target ? target.model(SDK.DOMModel) : null;
+    this._domModel = target ? target.model(DOMModel) : null;
     this._layersById = {};
     this._root = null;
     this._contentRoot = null;
-    /** @type {!Map<number, ?SDK.DOMNode>} */
+    /** @type {!Map<number, ?DOMNode>} */
     this._backendNodeIdToNode = new Map();
   }
 
   /**
-   * @return {?SDK.Target}
+   * @return {?Target}
    */
   target() {
     return this._target;
   }
 
   /**
-   * @return {?SDK.Layer}
+   * @return {?Layer}
    */
   root() {
     return this._root;
   }
 
   /**
-   * @param {?SDK.Layer} root
+   * @param {?Layer} root
    * @protected
    */
   setRoot(root) {
@@ -233,14 +255,14 @@ SDK.LayerTreeBase = class {
   }
 
   /**
-   * @return {?SDK.Layer}
+   * @return {?Layer}
    */
   contentRoot() {
     return this._contentRoot;
   }
 
   /**
-   * @param {?SDK.Layer} contentRoot
+   * @param {?Layer} contentRoot
    * @protected
    */
   setContentRoot(contentRoot) {
@@ -248,22 +270,23 @@ SDK.LayerTreeBase = class {
   }
 
   /**
-   * @param {function(!SDK.Layer)} callback
-   * @param {?SDK.Layer=} root
+   * @param {function(!Layer)} callback
+   * @param {?Layer=} root
    * @return {boolean}
    */
   forEachLayer(callback, root) {
     if (!root) {
       root = this.root();
-      if (!root)
+      if (!root) {
         return false;
+      }
     }
     return callback(root) || root.children().some(this.forEachLayer.bind(this, callback));
   }
 
   /**
    * @param {string} id
-   * @return {?SDK.Layer}
+   * @return {?Layer}
    */
   layerById(id) {
     return this._layersById[id] || null;
@@ -274,19 +297,22 @@ SDK.LayerTreeBase = class {
    * @return {!Promise}
    */
   async resolveBackendNodeIds(requestedNodeIds) {
-    if (!requestedNodeIds.size || !this._domModel)
+    if (!requestedNodeIds.size || !this._domModel) {
       return;
+    }
 
-    var nodesMap = await this._domModel.pushNodesByBackendIdsToFrontend(requestedNodeIds);
+    const nodesMap = await this._domModel.pushNodesByBackendIdsToFrontend(requestedNodeIds);
 
-    if (!nodesMap)
+    if (!nodesMap) {
       return;
-    for (var nodeId of nodesMap.keysArray())
+    }
+    for (const nodeId of nodesMap.keys()) {
       this._backendNodeIdToNode.set(nodeId, nodesMap.get(nodeId) || null);
+    }
   }
 
   /**
-   * @return {!Map<number, ?SDK.DOMNode>}
+   * @return {!Map<number, ?DOMNode>}
    */
   backendNodeIdToNode() {
     return this._backendNodeIdToNode;
@@ -308,9 +334,9 @@ SDK.LayerTreeBase = class {
 
   /**
    * @param {number} id
-   * @return {?SDK.DOMNode}
+   * @return {?DOMNode}
    */
   _nodeForId(id) {
     return this._domModel ? this._domModel.nodeForId(id) : null;
   }
-};
+}

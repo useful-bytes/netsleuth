@@ -5,27 +5,23 @@
  */
 
 .computed-style-property {
-    display: flex;
     overflow: hidden;
     flex: auto;
+    text-overflow: ellipsis;
 }
 
 .computed-style-property .property-name {
-    min-width: 5em;
+    width: 16em;
     text-overflow: ellipsis;
     overflow: hidden;
-    flex-shrink: 1;
-    flex-basis: 16em;
-    flex-grow: 1;
+    max-width: 52%;
+    display: inline-block;
+    vertical-align: text-top;
 }
 
 .computed-style-property .property-value {
     margin-left: 2em;
     position: relative;
-    display: flex;
-    flex-shrink: 0;
-    flex-basis: 5em;
-    flex-grow: 10;
 }
 
 .computed-style-property .property-value-text {
@@ -43,6 +39,7 @@
     display: none;
     position: absolute;
     left: -16px;
+    top: 0;
 }
 
 .goto-source-icon:hover {
@@ -75,7 +72,7 @@
 .property-trace-value {
     position: relative;
     display: inline-block;
-    margin-left: 2em;
+    margin-left: 16px;
 }
 
 .property-trace-inactive .property-trace-value::before {
@@ -112,4 +109,45 @@
 
 .delimeter::selection {
     color: transparent;
+}
+
+.computed-narrow .computed-style-property .property-name,
+.computed-narrow .computed-style-property .property-value {
+    display: inline-block;
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    white-space: nowrap;
+}
+
+.computed-narrow .computed-style-property {
+    padding: 2px 0;
+    display: block;
+    white-space: normal;
+}
+
+.computed-narrow.tree-outline li::before {
+    margin-top: -14px;
+}
+
+@media (forced-colors: active) {
+    .computed-style-property-inherited {
+        opacity: 1;
+    }
+    :host-context(.monospace.computed-properties) .tree-outline li:hover {
+        forced-color-adjust: none;
+        background-color: Highlight;
+    }
+    :host-context(.monospace.computed-properties) .tree-outline:not(.hide-selection-when-blurred) li.parent:hover.selected::before,
+    :host-context(.monospace.computed-properties) .tree-outline-disclosure li.parent:hover::before,
+    :host-context(.monospace.computed-properties) .tree-outline li:hover .goto-source-icon {
+        background-color: HighlightText;
+    }
+    :host-context(.monospace.computed-properties) .tree-outline li:hover * {
+        color: HighlightText;
+    }
+    .property-trace-inactive .property-trace-value::before {
+        content: "";
+        border-bottom-color: HighlightText !important;
+    }
 }

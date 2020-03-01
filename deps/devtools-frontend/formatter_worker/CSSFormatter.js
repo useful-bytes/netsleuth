@@ -28,12 +28,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import {FormattedContentBuilder} from './FormattedContentBuilder.js';  // eslint-disable-line no-unused-vars
+import {createTokenizer} from './FormatterWorker.js';
+
 /**
  * @unrestricted
  */
-FormatterWorker.CSSFormatter = class {
+export class CSSFormatter {
   /**
-   * @param {!FormatterWorker.FormattedContentBuilder} builder
+   * @param {!FormattedContentBuilder} builder
    */
   constructor(builder) {
     this._builder = builder;
@@ -51,8 +54,8 @@ FormatterWorker.CSSFormatter = class {
     this._toOffset = toOffset;
     this._lastLine = -1;
     this._state = {};
-    var tokenize = FormatterWorker.createTokenizer('text/css');
-    var oldEnforce = this._builder.setEnforceSpaceBetweenWords(false);
+    const tokenize = createTokenizer('text/css');
+    const oldEnforce = this._builder.setEnforceSpaceBetweenWords(false);
     tokenize(text.substring(this._fromOffset, this._toOffset), this._tokenCallback.bind(this));
     this._builder.setEnforceSpaceBetweenWords(oldEnforce);
   }
@@ -64,30 +67,36 @@ FormatterWorker.CSSFormatter = class {
    */
   _tokenCallback(token, type, startPosition) {
     startPosition += this._fromOffset;
-    var startLine = this._lineEndings.lowerBound(startPosition);
-    if (startLine !== this._lastLine)
+    const startLine = this._lineEndings.lowerBound(startPosition);
+    if (startLine !== this._lastLine) {
       this._state.eatWhitespace = true;
-    if (/^property/.test(type) && !this._state.inPropertyValue)
+    }
+    if (/^property/.test(type) && !this._state.inPropertyValue) {
       this._state.seenProperty = true;
+    }
     this._lastLine = startLine;
-    var isWhitespace = /^\s+$/.test(token);
+    const isWhitespace = /^\s+$/.test(token);
     if (isWhitespace) {
-      if (!this._state.eatWhitespace)
+      if (!this._state.eatWhitespace) {
         this._builder.addSoftSpace();
+      }
       return;
     }
     this._state.eatWhitespace = false;
-    if (token === '\n')
+    if (token === '\n') {
       return;
+    }
 
     if (token !== '}') {
-      if (this._state.afterClosingBrace)
+      if (this._state.afterClosingBrace) {
         this._builder.addNewLine(true);
+      }
       this._state.afterClosingBrace = false;
     }
     if (token === '}') {
-      if (this._state.inPropertyValue)
+      if (this._state.inPropertyValue) {
         this._builder.addNewLine();
+      }
       this._builder.decreaseNestingLevel();
       this._state.afterClosingBrace = true;
       this._state.inPropertyValue = false;
@@ -108,8 +117,9 @@ FormatterWorker.CSSFormatter = class {
 
     this._builder.addToken(token, startPosition);
 
-    if (type === 'comment' && !this._state.inPropertyValue && !this._state.seenProperty)
+    if (type === 'comment' && !this._state.inPropertyValue && !this._state.seenProperty) {
       this._builder.addNewLine();
+    }
     if (token === ';' && this._state.inPropertyValue) {
       this._state.inPropertyValue = false;
       this._builder.addNewLine();
@@ -117,4 +127,4 @@ FormatterWorker.CSSFormatter = class {
       this._builder.addNewLine();
     }
   }
-};
+}

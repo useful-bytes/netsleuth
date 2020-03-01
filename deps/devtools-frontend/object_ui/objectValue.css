@@ -19,8 +19,8 @@
     display: flex !important;
 }
 
-.object-value-node:hover {
-    background-color: rgba(56, 121, 217, 0.1);
+.value.object-value-node:hover {
+    background-color: var(--item-hover-color);
 }
 
 .object-value-function-prefix,
@@ -41,6 +41,10 @@
     color: rgb(28, 0, 207);
 }
 
+.object-value-bigint {
+    color: rgb(0, 93, 0);
+}
+
 .object-value-string,
 .object-value-regexp,
 .object-value-symbol {
@@ -54,22 +58,15 @@
 }
 
 .object-value-node {
-    color: rgb(136, 18, 128);
     position: relative;
     vertical-align: baseline;
-    color: inherit;
+    color: rgb(48, 57, 66);
     display: inline-block;
 }
 
 .object-value-null,
 .object-value-undefined {
     color: rgb(128, 128, 128);
-}
-
-.object-value {
-    text-overflow: ellipsis;
-    overflow: hidden;
-    -webkit-user-select: text;
 }
 
 .object-value-calculate-value-button:hover {
@@ -92,7 +89,7 @@
     color: gray;
 }
 
-.object-properties-preview {
+.value .object-properties-preview {
     white-space: nowrap;
 }
 
@@ -103,4 +100,11 @@
 
 .object-properties-preview .name {
     color: #565656;
+}
+
+@media (forced-colors: active) {
+    .object-value-calculate-value-button:hover {
+        forced-color-adjust: none;
+        color: Highlight;
+    }
 }

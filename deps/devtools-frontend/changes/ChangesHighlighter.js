@@ -2,24 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import {Row, RowType} from './ChangesView.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @param {!Object} config
- * @param {{diffRows: !Array<!Changes.ChangesView.Row>, baselineLines: !Array<string>, currentLines: !Array<string>, mimeType: string}} parserConfig
+ * @param {{diffRows: !Array<!Row>, baselineLines: !Array<string>, currentLines: !Array<string>, mimeType: string}} parserConfig
  * @return {{
- *  startState: function():!Changes.ChangesHighlighter.DiffState,
- *  token: function(!CodeMirror.StringStream, !Changes.ChangesHighlighter.DiffState):string,
- *  blankLine: function(!Changes.ChangesHighlighter.DiffState):string,
- *  copyState: function(!Changes.ChangesHighlighter.DiffState):Changes.ChangesHighlighter.DiffState
+ *  startState: function():!DiffState,
+ *  token: function(!CodeMirror.StringStream, !DiffState):string,
+ *  blankLine: function(!DiffState):string,
+ *  copyState: function(!DiffState):DiffState
  * }}
  */
-Changes.ChangesHighlighter = function(config, parserConfig) {
-  var diffRows = parserConfig.diffRows;
-  var baselineLines = parserConfig.baselineLines;
-  var currentLines = parserConfig.currentLines;
-  var syntaxHighlightMode = CodeMirror.getMode({}, parserConfig.mimeType);
+export function ChangesHighlighter(config, parserConfig) {
+  const diffRows = parserConfig.diffRows;
+  const baselineLines = parserConfig.baselineLines;
+  const currentLines = parserConfig.currentLines;
+  const syntaxHighlightMode = CodeMirror.getMode({}, parserConfig.mimeType);
 
   /**
-   * @param {!Changes.ChangesHighlighter.DiffState} state
+   * @param {!DiffState} state
    * @param {number} baselineLineNumber
    * @param {number} currentLineNumber
    */
@@ -41,11 +43,12 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
    * @param {!Array<string>} lines
    */
   function fastForwardSyntaxHighlighter(syntaxState, from, to, lines) {
-    var lineNumber = from;
+    let lineNumber = from;
     while (lineNumber < to && lineNumber < lines.length) {
-      var stream = new CodeMirror.StringStream(lines[lineNumber]);
-      if (stream.eol() && syntaxHighlightMode.blankLine)
+      const stream = new CodeMirror.StringStream(lines[lineNumber]);
+      if (stream.eol() && syntaxHighlightMode.blankLine) {
         syntaxHighlightMode.blankLine(syntaxState);
+      }
       while (!stream.eol()) {
         syntaxHighlightMode.token(stream, syntaxState);
         stream.start = stream.pos;
@@ -56,7 +59,7 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
 
   return {
     /**
-     * @return {!Changes.ChangesHighlighter.DiffState}
+     * @return {!DiffState}
      */
     startState: function() {
       return {
@@ -75,21 +78,22 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
 
     /**
      * @param {!CodeMirror.StringStream} stream
-     * @param {!Changes.ChangesHighlighter.DiffState} state
+     * @param {!DiffState} state
      * @return {string}
      */
     token: function(stream, state) {
-      var diffRow = diffRows[state.rowNumber];
+      const diffRow = diffRows[state.rowNumber];
       if (!diffRow) {
         stream.next();
         return '';
       }
       fastForward(state, diffRow.baselineLineNumber - 1, diffRow.currentLineNumber - 1);
-      var classes = '';
-      if (stream.pos === 0)
+      let classes = '';
+      if (stream.pos === 0) {
         classes += ' line-background-' + diffRow.type + ' line-' + diffRow.type;
+      }
 
-      var syntaxHighlighterNeedsRefresh = state.diffPosition >= state.syntaxPosition;
+      const syntaxHighlighterNeedsRefresh = state.diffPosition >= state.syntaxPosition;
       if (state.diffPosition <= state.syntaxPosition) {
         state.diffPosition += diffRow.tokens[state.diffTokenIndex].text.length;
         state.diffStyle = diffRow.tokens[state.diffTokenIndex].className;
@@ -97,10 +101,9 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
       }
 
       if (syntaxHighlighterNeedsRefresh) {
-        if (diffRow.type === Changes.ChangesView.RowType.Deletion || diffRow.type === Changes.ChangesView.RowType.Addition ||
-            diffRow.type === Changes.ChangesView.RowType.Equal) {
+        if (diffRow.type === RowType.Deletion || diffRow.type === RowType.Addition || diffRow.type === RowType.Equal) {
           state.syntaxStyle = syntaxHighlightMode.token(
-              stream, diffRow.type === Changes.ChangesView.RowType.Deletion ? state.baselineSyntaxState : state.currentSyntaxState);
+              stream, diffRow.type === RowType.Deletion ? state.baselineSyntaxState : state.currentSyntaxState);
           state.syntaxPosition = stream.pos;
         } else {
           state.syntaxStyle = '';
@@ -114,10 +117,11 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
 
       if (stream.eol()) {
         state.rowNumber++;
-        if (diffRow.type === Changes.ChangesView.RowType.Deletion)
+        if (diffRow.type === RowType.Deletion) {
           state.baselineLineNumber++;
-        else
+        } else {
           state.currentLineNumber++;
+        }
         state.diffPosition = 0;
         state.syntaxPosition = 0;
         state.diffTokenIndex = 0;
@@ -126,24 +130,25 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
     },
 
     /**
-     * @param {!Changes.ChangesHighlighter.DiffState} state
+     * @param {!DiffState} state
      * @return {string}
      */
     blankLine: function(state) {
-      var diffRow = diffRows[state.rowNumber];
+      const diffRow = diffRows[state.rowNumber];
       state.rowNumber++;
       state.syntaxPosition = 0;
       state.diffPosition = 0;
       state.diffTokenIndex = 0;
-      if (!diffRow)
+      if (!diffRow) {
         return '';
+      }
 
-      var style = '';
+      let style = '';
       if (syntaxHighlightMode.blankLine) {
-        if (diffRow.type === Changes.ChangesView.RowType.Equal || diffRow.type === Changes.ChangesView.RowType.Addition) {
+        if (diffRow.type === RowType.Equal || diffRow.type === RowType.Addition) {
           style = syntaxHighlightMode.blankLine(state.currentSyntaxState);
           state.currentLineNumber++;
-        } else if (diffRow.type === Changes.ChangesView.RowType.Deletion) {
+        } else if (diffRow.type === RowType.Deletion) {
           style = syntaxHighlightMode.blankLine(state.baselineSyntaxState);
           state.baselineLineNumber++;
         }
@@ -152,17 +157,19 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
     },
 
     /**
-     * @param {!Changes.ChangesHighlighter.DiffState} state
-     * @return {!Changes.ChangesHighlighter.DiffState}
+     * @param {!DiffState} state
+     * @return {!DiffState}
      */
     copyState: function(state) {
-      var newState = Object.assign({}, state);
+      const newState = Object.assign({}, state);
       newState.currentSyntaxState = CodeMirror.copyState(syntaxHighlightMode, state.currentSyntaxState);
       newState.baselineSyntaxState = CodeMirror.copyState(syntaxHighlightMode, state.baselineSyntaxState);
-      return /** @type {!Changes.ChangesHighlighter.DiffState} */ (newState);
+      return /** @type {!DiffState} */ (newState);
     }
   };
-};
+}
+
+CodeMirror.defineMode('devtools-diff', ChangesHighlighter);
 
 /**
  * @typedef {!{
@@ -178,6 +185,4 @@ Changes.ChangesHighlighter = function(config, parserConfig) {
  *  diffStyle: string
  * }}
  */
-Changes.ChangesHighlighter.DiffState;
-
-CodeMirror.defineMode('devtools-diff', Changes.ChangesHighlighter);
+export let DiffState;

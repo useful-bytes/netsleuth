@@ -10,7 +10,10 @@
         }
     ],
     "dependencies": ["network", "platform", "ui", "sdk"],
-    "scripts": [
+    "scripts": [],
+    "modules": [
+        "security.js",
+        "security-legacy.js",
         "SecurityModel.js",
         "SecurityPanel.js"
     ],

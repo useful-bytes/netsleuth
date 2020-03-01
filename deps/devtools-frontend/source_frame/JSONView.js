@@ -27,39 +27,68 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import * as Common from '../common/common.js';
+import * as Formatter from '../formatter/formatter.js';
+import * as ObjectUI from '../object_ui/object_ui.js';
+import * as SDK from '../sdk/sdk.js';
+import * as UI from '../ui/ui.js';
+
 /**
- * @implements {UI.Searchable}
- * @unrestricted
+ * @implements {UI.SearchableView.Searchable}
  */
-SourceFrame.JSONView = class extends UI.VBox {
+export class JSONView extends UI.Widget.VBox {
   /**
-   * @param {!SourceFrame.ParsedJSON} parsedJSON
+   * @param {!ParsedJSON} parsedJSON
+   * @param {boolean=} startCollapsed
    */
-  constructor(parsedJSON) {
+  constructor(parsedJSON, startCollapsed) {
     super();
+    this._initialized = false;
+    this.registerRequiredCSS('source_frame/jsonView.css');
     this._parsedJSON = parsedJSON;
+    this._startCollapsed = !!startCollapsed;
     this.element.classList.add('json-view');
 
-    /** @type {?UI.SearchableView} */
+    /** @type {?UI.SearchableView.SearchableView} */
     this._searchableView;
-    /** @type {!ObjectUI.ObjectPropertiesSection} */
+    /** @type {!ObjectUI.ObjectPropertiesSection.ObjectPropertiesSection} */
     this._treeOutline;
     /** @type {number} */
     this._currentSearchFocusIndex = 0;
-    /** @type {!Array.<!UI.TreeElement>} */
+    /** @type {!Array.<!UI.TreeOutline.TreeElement>} */
     this._currentSearchTreeElements = [];
     /** @type {?RegExp} */
     this._searchRegex = null;
   }
 
   /**
-   * @param {!SourceFrame.ParsedJSON} parsedJSON
-   * @return {!UI.SearchableView}
+   * @param {string} content
+   * @return {!Promise<?UI.SearchableView.SearchableView>}
    */
-  static createSearchableView(parsedJSON) {
-    var jsonView = new SourceFrame.JSONView(parsedJSON);
-    var searchableView = new UI.SearchableView(jsonView);
-    searchableView.setPlaceholder(Common.UIString('Find'));
+  static async createView(content) {
+    // We support non-strict JSON parsing by parsing an AST tree which is why we offload it to a worker.
+    const parsedJSON = await JSONView._parseJSON(content);
+    if (!parsedJSON || typeof parsedJSON.data !== 'object') {
+      return null;
+    }
+
+    const jsonView = new JSONView(parsedJSON);
+    const searchableView = new UI.SearchableView.SearchableView(jsonView);
+    searchableView.setPlaceholder(Common.UIString.UIString('Find'));
+    jsonView._searchableView = searchableView;
+    jsonView.show(searchableView.element);
+    return searchableView;
+  }
+
+  /**
+   * @param {?Object} obj
+   * @return {!UI.SearchableView.SearchableView}
+   */
+  static createViewSync(obj) {
+    const jsonView = new JSONView(new ParsedJSON(obj, '', ''));
+    const searchableView = new UI.SearchableView.SearchableView(jsonView);
+    searchableView.setPlaceholder(Common.UIString.UIString('Find'));
     jsonView._searchableView = searchableView;
     jsonView.show(searchableView.element);
     jsonView.element.setAttribute('tabIndex', 0);
@@ -68,23 +97,28 @@ SourceFrame.JSONView = class extends UI.VBox {
 
   /**
    * @param {?string} text
-   * @return {!Promise<?SourceFrame.ParsedJSON>}
+   * @return {!Promise<?ParsedJSON>}
    */
-  static parseJSON(text) {
-    var returnObj = null;
-    if (text)
-      returnObj = SourceFrame.JSONView._extractJSON(/** @type {string} */ (text));
-    if (!returnObj)
-      return Promise.resolve(/** @type {?SourceFrame.ParsedJSON} */ (null));
-    return Formatter.formatterWorkerPool().parseJSONRelaxed(returnObj.data).then(handleReturnedJSON);
+  static _parseJSON(text) {
+    let returnObj = null;
+    if (text) {
+      returnObj = JSONView._extractJSON(/** @type {string} */ (text));
+    }
+    if (!returnObj) {
+      return Promise.resolve(/** @type {?ParsedJSON} */ (null));
+    }
+    return Formatter.FormatterWorkerPool.formatterWorkerPool()
+        .parseJSONRelaxed(returnObj.data)
+        .then(handleReturnedJSON);
 
     /**
      * @param {*} data
-     * @return {?SourceFrame.ParsedJSON}
+     * @return {?ParsedJSON}
      */
     function handleReturnedJSON(data) {
-      if (!data)
+      if (!data) {
         return null;
+      }
       returnObj.data = data;
       return returnObj;
     }
@@ -92,29 +126,32 @@ SourceFrame.JSONView = class extends UI.VBox {
 
   /**
    * @param {string} text
-   * @return {?SourceFrame.ParsedJSON}
+   * @return {?ParsedJSON}
    */
   static _extractJSON(text) {
     // Do not treat HTML as JSON.
-    if (text.startsWith('<'))
+    if (text.startsWith('<')) {
       return null;
-    var inner = SourceFrame.JSONView._findBrackets(text, '{', '}');
-    var inner2 = SourceFrame.JSONView._findBrackets(text, '[', ']');
+    }
+    let inner = JSONView._findBrackets(text, '{', '}');
+    const inner2 = JSONView._findBrackets(text, '[', ']');
     inner = inner2.length > inner.length ? inner2 : inner;
 
     // Return on blank payloads or on payloads significantly smaller than original text.
-    if (inner.length === -1 || text.length - inner.length > 80)
+    if (inner.length === -1 || text.length - inner.length > 80) {
       return null;
+    }
 
-    var prefix = text.substring(0, inner.start);
-    var suffix = text.substring(inner.end + 1);
+    const prefix = text.substring(0, inner.start);
+    const suffix = text.substring(inner.end + 1);
     text = text.substring(inner.start, inner.end + 1);
 
     // Only process valid JSONP.
-    if (suffix.trim().length && !(suffix.trim().startsWith(')') && prefix.trim().endsWith('(')))
+    if (suffix.trim().length && !(suffix.trim().startsWith(')') && prefix.trim().endsWith('('))) {
       return null;
+    }
 
-    return new SourceFrame.ParsedJSON(text, prefix, suffix);
+    return new ParsedJSON(text, prefix, suffix);
   }
 
   /**
@@ -124,11 +161,12 @@ SourceFrame.JSONView = class extends UI.VBox {
    * @return {{start: number, end: number, length: number}}
    */
   static _findBrackets(text, open, close) {
-    var start = text.indexOf(open);
-    var end = text.lastIndexOf(close);
-    var length = end - start - 1;
-    if (start === -1 || end === -1 || end < start)
+    const start = text.indexOf(open);
+    const end = text.lastIndexOf(close);
+    let length = end - start - 1;
+    if (start === -1 || end === -1 || end < start) {
       length = -1;
+    }
     return {start: start, end: end, length: length};
   }
 
@@ -140,32 +178,40 @@ SourceFrame.JSONView = class extends UI.VBox {
   }
 
   _initialize() {
-    if (this._initialized)
+    if (this._initialized) {
       return;
+    }
     this._initialized = true;
 
-    var obj = SDK.RemoteObject.fromLocalObject(this._parsedJSON.data);
-    var title = this._parsedJSON.prefix + obj.description + this._parsedJSON.suffix;
-    this._treeOutline = new ObjectUI.ObjectPropertiesSection(obj, title);
+    const obj = SDK.RemoteObject.RemoteObject.fromLocalObject(this._parsedJSON.data);
+    const title = this._parsedJSON.prefix + obj.description + this._parsedJSON.suffix;
+    this._treeOutline = new ObjectUI.ObjectPropertiesSection.ObjectPropertiesSection(
+        obj, title, undefined, undefined, undefined, undefined, true /* showOverflow */);
+    this._treeOutline.enableContextMenu();
     this._treeOutline.setEditable(false);
-    this._treeOutline.expand();
+    if (!this._startCollapsed) {
+      this._treeOutline.expand();
+    }
     this.element.appendChild(this._treeOutline.element);
+    this._treeOutline.firstChild().select(true /* omitFocus */, false /* selectedByUser */);
   }
 
   /**
    * @param {number} index
    */
   _jumpToMatch(index) {
-    if (!this._searchRegex)
+    if (!this._searchRegex) {
       return;
-    var previousFocusElement = this._currentSearchTreeElements[this._currentSearchFocusIndex];
-    if (previousFocusElement)
+    }
+    const previousFocusElement = this._currentSearchTreeElements[this._currentSearchFocusIndex];
+    if (previousFocusElement) {
       previousFocusElement.setSearchRegex(this._searchRegex);
+    }
 
-    var newFocusElement = this._currentSearchTreeElements[index];
+    const newFocusElement = this._currentSearchTreeElements[index];
     if (newFocusElement) {
       this._updateSearchIndex(index);
-      newFocusElement.setSearchRegex(this._searchRegex, UI.highlightedCurrentSearchResultClassName);
+      newFocusElement.setSearchRegex(this._searchRegex, UI.UIUtils.highlightedCurrentSearchResultClassName);
       newFocusElement.reveal();
     } else {
       this._updateSearchIndex(0);
@@ -176,8 +222,9 @@ SourceFrame.JSONView = class extends UI.VBox {
    * @param {number} count
    */
   _updateSearchCount(count) {
-    if (!this._searchableView)
+    if (!this._searchableView) {
       return;
+    }
     this._searchableView.updateSearchMatchesCount(count);
   }
 
@@ -186,8 +233,9 @@ SourceFrame.JSONView = class extends UI.VBox {
    */
   _updateSearchIndex(index) {
     this._currentSearchFocusIndex = index;
-    if (!this._searchableView)
+    if (!this._searchableView) {
       return;
+    }
     this._searchableView.updateCurrentMatchIndex(index);
   }
 
@@ -198,9 +246,10 @@ SourceFrame.JSONView = class extends UI.VBox {
     this._searchRegex = null;
     this._currentSearchTreeElements = [];
 
-    for (var element = this._treeOutline.rootElement(); element; element = element.traverseNextTreeElement(false)) {
-      if (!(element instanceof ObjectUI.ObjectPropertyTreeElement))
+    for (let element = this._treeOutline.rootElement(); element; element = element.traverseNextTreeElement(false)) {
+      if (!(element instanceof ObjectUI.ObjectPropertiesSection.ObjectPropertyTreeElement)) {
         continue;
+      }
       element.revertHighlightChanges();
     }
     this._updateSearchCount(0);
@@ -214,23 +263,26 @@ SourceFrame.JSONView = class extends UI.VBox {
    * @param {boolean=} jumpBackwards
    */
   performSearch(searchConfig, shouldJump, jumpBackwards) {
-    var newIndex = this._currentSearchFocusIndex;
-    var previousSearchFocusElement = this._currentSearchTreeElements[newIndex];
+    let newIndex = this._currentSearchFocusIndex;
+    const previousSearchFocusElement = this._currentSearchTreeElements[newIndex];
     this.searchCanceled();
     this._searchRegex = searchConfig.toSearchRegex(true);
 
-    for (var element = this._treeOutline.rootElement(); element; element = element.traverseNextTreeElement(false)) {
-      if (!(element instanceof ObjectUI.ObjectPropertyTreeElement))
+    for (let element = this._treeOutline.rootElement(); element; element = element.traverseNextTreeElement(false)) {
+      if (!(element instanceof ObjectUI.ObjectPropertiesSection.ObjectPropertyTreeElement)) {
         continue;
-      var hasMatch = element.setSearchRegex(this._searchRegex);
-      if (hasMatch)
+      }
+      const hasMatch = element.setSearchRegex(this._searchRegex);
+      if (hasMatch) {
         this._currentSearchTreeElements.push(element);
+      }
       if (previousSearchFocusElement === element) {
-        var currentIndex = this._currentSearchTreeElements.length - 1;
-        if (hasMatch || jumpBackwards)
+        const currentIndex = this._currentSearchTreeElements.length - 1;
+        if (hasMatch || jumpBackwards) {
           newIndex = currentIndex;
-        else
+        } else {
           newIndex = currentIndex + 1;
+        }
       }
     }
     this._updateSearchCount(this._currentSearchTreeElements.length);
@@ -248,9 +300,10 @@ SourceFrame.JSONView = class extends UI.VBox {
    * @override
    */
   jumpToNextSearchResult() {
-    if (!this._currentSearchTreeElements.length)
+    if (!this._currentSearchTreeElements.length) {
       return;
-    var newIndex = mod(this._currentSearchFocusIndex + 1, this._currentSearchTreeElements.length);
+    }
+    const newIndex = mod(this._currentSearchFocusIndex + 1, this._currentSearchTreeElements.length);
     this._jumpToMatch(newIndex);
   }
 
@@ -258,9 +311,10 @@ SourceFrame.JSONView = class extends UI.VBox {
    * @override
    */
   jumpToPreviousSearchResult() {
-    if (!this._currentSearchTreeElements.length)
+    if (!this._currentSearchTreeElements.length) {
       return;
-    var newIndex = mod(this._currentSearchFocusIndex - 1, this._currentSearchTreeElements.length);
+    }
+    const newIndex = mod(this._currentSearchFocusIndex - 1, this._currentSearchTreeElements.length);
     this._jumpToMatch(newIndex);
   }
 
@@ -279,13 +333,13 @@ SourceFrame.JSONView = class extends UI.VBox {
   supportsRegexSearch() {
     return true;
   }
-};
+}
 
 
 /**
  * @unrestricted
  */
-SourceFrame.ParsedJSON = class {
+export class ParsedJSON {
   /**
    * @param {*} data
    * @param {string} prefix
@@ -296,4 +350,4 @@ SourceFrame.ParsedJSON = class {
     this.prefix = prefix;
     this.suffix = suffix;
   }
-};
+}

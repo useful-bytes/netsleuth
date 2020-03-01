@@ -7,8 +7,8 @@
 .styles-section {
     min-height: 18px;
     white-space: nowrap;
-    -webkit-user-select: text;
-    border-bottom: 1px solid #eee;
+    user-select: text;
+    border-bottom: 1px solid var(--divider-color);
     position: relative;
     overflow: hidden;
 }
@@ -21,20 +21,23 @@
     border-bottom: none;
 }
 
-.styles-pane .sidebar-separator {
-    border-top: 0 none;
-}
-
 .styles-section.read-only {
-    background-color: #eee;
+    background-color: #fafafa;
+    font-style: italic;
 }
 
-.styles-filter-engaged,
+.styles-section[data-keyboard-focus="true"]:focus {
+    background-color: hsl(214, 48%, 95%);
+}
+
+.styles-section.read-only[data-keyboard-focus="true"]:focus {
+    background-color: hsl(215, 25%, 87%);
+}
+
 .styles-section .simple-selector.filter-match {
     background-color: rgba(255, 255, 0, 0.5);
 }
 
-:host-context(.-theme-with-dark-background) .styles-filter-engaged,
 :host-context(.-theme-with-dark-background) .styles-section .simple-selector.filter-match {
     background-color: hsla(133, 100%, 30%, 0.5);
 }
@@ -51,7 +54,7 @@
 }
 
 .styles-section-title .media-list {
-    color: #888;
+    color: hsl(0, 0%, 46%);
 }
 
 .styles-section-title .media-list.media-matches .media.editable-media {
@@ -65,13 +68,13 @@
 
 .styles-section-title .media .subtitle {
     float: right;
-    color: rgb(85, 85, 85);
+    color: hsl(0, 0%, 34%);
 }
 
 .styles-section-subtitle {
-    color: rgb(85, 85, 85);
+    color: hsl(0, 0%, 44%);
     float: right;
-    margin-left: 5px;
+    padding-left: 15px;
     max-width: 100%;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -80,12 +83,18 @@
     margin-bottom: -1px;
 }
 
+.sidebar-pane-open-brace,
+.sidebar-pane-closing-brace {
+    color: hsl(0, 0%, 46%);
+}
+
 .styles-section .styles-section-subtitle .devtools-link {
-    color: inherit;
+    color: hsl(0, 0%, 44%);
+    text-decoration-color: hsl(0, 0%, 60%);
 }
 
 .styles-section .selector {
-    color: #888;
+    color: hsl(0, 0%, 46%);
 }
 
 .styles-section .simple-selector.selector-matches, .styles-section.keyframe-key {
@@ -145,6 +154,10 @@
 .styles-sidebar-pane-toolbar-container {
     flex-shrink: 0;
     overflow: hidden;
+    position: sticky;
+    top: 0;
+    background-color: var(--toolbar-bg-color);
+    z-index: 1;
 }
 
 .styles-sidebar-pane-toolbar {
@@ -161,8 +174,22 @@
     outline: none !important;
     border: none;
     width: 100%;
-    background: transparent;
-    margin-left: 4px;
+    background: white;
+    padding-left: 4px;
+    margin: 3px;
+}
+
+.styles-sidebar-pane-filter-box > input:hover {
+    box-shadow: var(--focus-ring-inactive-shadow);
+}
+
+.styles-sidebar-pane-filter-box > input:focus,
+.styles-sidebar-pane-filter-box > input:not(:placeholder-shown) {
+    box-shadow: var(--focus-ring-active-shadow);
+}
+
+.styles-sidebar-pane-filter-box > input::placeholder {
+    color: rgba(0, 0, 0, 0.54);
 }
 
 .styles-section.styles-panel-hovered:not(.read-only) span.simple-selector:hover,
@@ -172,22 +199,23 @@
 }
 
 .sidebar-separator {
-    background-color: #ddd;
+    background-color: var(--toolbar-bg-color);
     padding: 0 5px;
-    border-top: 1px solid #ccc;
-    border-bottom: 1px solid #ccc;
-    color: rgb(50, 50, 50);
+    border-bottom: 1px solid var(--divider-color);
+    color: hsla(0, 0%, 32%, 1);
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
-    line-height: 16px;
+    line-height: 22px;
 }
 
 .sidebar-separator > span.monospace {
-    background: rgb(255, 255, 255);
-    padding: 0px 3px;
-    border-radius: 2px;
-    border: 1px solid #C1C1C1;
+    max-width: 90px;
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    margin-left: 2px;
 }
 
 .sidebar-pane-section-toolbar {
@@ -196,8 +224,50 @@
     bottom: 0;
     visibility: hidden;
     background-color: rgba(255, 255, 255, 0.9);
+    z-index: 0;
+}
+
+.styles-section[data-keyboard-focus="true"]:focus .sidebar-pane-section-toolbar {
+    background-color: hsla(214, 67%, 95%, 0.9);
 }
 
 .styles-pane:not(.is-editing-style) .styles-section.matched-styles:not(.read-only):hover .sidebar-pane-section-toolbar {
     visibility: visible;
+}
+
+.styles-show-all {
+    margin-left: 16px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-width: -webkit-fill-available;
+}
+
+@media (forced-colors: active) {
+    .styles-sidebar-pane-filter-box > input {
+        border: 1px solid ButtonText;
+        background: ButtonFace;
+    }
+    .styles-section[data-keyboard-focus="true"]:focus,
+    .styles-section.read-only[data-keyboard-focus="true"]:focus {
+        forced-color-adjust: none;
+        background-color: Highlight;
+    }
+    .styles-section[data-keyboard-focus="true"]:focus *,
+    .styles-section.read-only[data-keyboard-focus="true"]:focus *,
+    .styles-section[data-keyboard-focus="true"]:focus .styles-section-subtitle .devtools-link {
+        color: HighlightText;
+        text-decoration-color: HighlightText;
+    }
+    .styles-section[data-keyboard-focus="true"]:focus .sidebar-pane-section-toolbar {
+        background-color: ButtonFace;
+    }
+    .sidebar-pane-section-toolbar {
+        forced-color-adjust: none;
+        border-color: 1px solid ButtonText;
+        background-color: ButtonFace;
+    }
+    .styles-section .styles-section-subtitle .devtools-link {
+        color: LinkText;
+        text-decoration-color: LinkText;
+    }
 }

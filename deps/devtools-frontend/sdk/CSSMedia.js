@@ -1,26 +1,31 @@
 // Copyright 2016 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import {CSSLocation, CSSModel, Edit} from './CSSModel.js';     // eslint-disable-line no-unused-vars
+import {CSSStyleSheetHeader} from './CSSStyleSheetHeader.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @unrestricted
  */
-SDK.CSSMediaQuery = class {
+export class CSSMediaQuery {
   /**
    * @param {!Protocol.CSS.MediaQuery} payload
    */
   constructor(payload) {
     this._active = payload.active;
     this._expressions = [];
-    for (var j = 0; j < payload.expressions.length; ++j)
-      this._expressions.push(SDK.CSSMediaQueryExpression.parsePayload(payload.expressions[j]));
+    for (let j = 0; j < payload.expressions.length; ++j) {
+      this._expressions.push(CSSMediaQueryExpression.parsePayload(payload.expressions[j]));
+    }
   }
 
   /**
    * @param {!Protocol.CSS.MediaQuery} payload
-   * @return {!SDK.CSSMediaQuery}
+   * @return {!CSSMediaQuery}
    */
   static parsePayload(payload) {
-    return new SDK.CSSMediaQuery(payload);
+    return new CSSMediaQuery(payload);
   }
 
   /**
@@ -31,18 +36,18 @@ SDK.CSSMediaQuery = class {
   }
 
   /**
-   * @return {!Array.<!SDK.CSSMediaQueryExpression>}
+   * @return {!Array.<!CSSMediaQueryExpression>}
    */
   expressions() {
     return this._expressions;
   }
-};
+}
 
 
 /**
  * @unrestricted
  */
-SDK.CSSMediaQueryExpression = class {
+export class CSSMediaQueryExpression {
   /**
    * @param {!Protocol.CSS.MediaQueryExpression} payload
    */
@@ -56,10 +61,10 @@ SDK.CSSMediaQueryExpression = class {
 
   /**
    * @param {!Protocol.CSS.MediaQueryExpression} payload
-   * @return {!SDK.CSSMediaQueryExpression}
+   * @return {!CSSMediaQueryExpression}
    */
   static parsePayload(payload) {
-    return new SDK.CSSMediaQueryExpression(payload);
+    return new CSSMediaQueryExpression(payload);
   }
 
   /**
@@ -96,15 +101,15 @@ SDK.CSSMediaQueryExpression = class {
   computedLength() {
     return this._computedLength;
   }
-};
+}
 
 
 /**
  * @unrestricted
  */
-SDK.CSSMedia = class {
+export class CSSMedia {
   /**
-   * @param {!SDK.CSSModel} cssModel
+   * @param {!CSSModel} cssModel
    * @param {!Protocol.CSS.CSSMedia} payload
    */
   constructor(cssModel, payload) {
@@ -113,23 +118,24 @@ SDK.CSSMedia = class {
   }
 
   /**
-   * @param {!SDK.CSSModel} cssModel
+   * @param {!CSSModel} cssModel
    * @param {!Protocol.CSS.CSSMedia} payload
-   * @return {!SDK.CSSMedia}
+   * @return {!CSSMedia}
    */
   static parsePayload(cssModel, payload) {
-    return new SDK.CSSMedia(cssModel, payload);
+    return new CSSMedia(cssModel, payload);
   }
 
   /**
-   * @param {!SDK.CSSModel} cssModel
+   * @param {!CSSModel} cssModel
    * @param {!Array.<!Protocol.CSS.CSSMedia>} payload
-   * @return {!Array.<!SDK.CSSMedia>}
+   * @return {!Array.<!CSSMedia>}
    */
   static parseMediaArrayPayload(cssModel, payload) {
-    var result = [];
-    for (var i = 0; i < payload.length; ++i)
-      result.push(SDK.CSSMedia.parsePayload(cssModel, payload[i]));
+    const result = [];
+    for (let i = 0; i < payload.length; ++i) {
+      result.push(CSSMedia.parsePayload(cssModel, payload[i]));
+    }
     return result;
   }
 
@@ -145,30 +151,34 @@ SDK.CSSMedia = class {
     this.mediaList = null;
     if (payload.mediaList) {
       this.mediaList = [];
-      for (var i = 0; i < payload.mediaList.length; ++i)
-        this.mediaList.push(SDK.CSSMediaQuery.parsePayload(payload.mediaList[i]));
+      for (let i = 0; i < payload.mediaList.length; ++i) {
+        this.mediaList.push(CSSMediaQuery.parsePayload(payload.mediaList[i]));
+      }
     }
   }
 
   /**
-   * @param {!SDK.CSSModel.Edit} edit
+   * @param {!Edit} edit
    */
   rebase(edit) {
-    if (this.styleSheetId !== edit.styleSheetId || !this.range)
+    if (this.styleSheetId !== edit.styleSheetId || !this.range) {
       return;
-    if (edit.oldRange.equal(this.range))
+    }
+    if (edit.oldRange.equal(this.range)) {
       this._reinitialize(/** @type {!Protocol.CSS.CSSMedia} */ (edit.payload));
-    else
+    } else {
       this.range = this.range.rebaseAfterTextEdit(edit.oldRange, edit.newRange);
+    }
   }
 
   /**
-   * @param {!SDK.CSSMedia} other
+   * @param {!CSSMedia} other
    * @return {boolean}
    */
   equal(other) {
-    if (!this.styleSheetId || !this.range || !other.range)
+    if (!this.styleSheetId || !this.range || !other.range) {
       return false;
+    }
     return this.styleSheetId === other.styleSheetId && this.range.equal(other.range);
   }
 
@@ -176,11 +186,13 @@ SDK.CSSMedia = class {
    * @return {boolean}
    */
   active() {
-    if (!this.mediaList)
+    if (!this.mediaList) {
       return true;
-    for (var i = 0; i < this.mediaList.length; ++i) {
-      if (this.mediaList[i].active())
+    }
+    for (let i = 0; i < this.mediaList.length; ++i) {
+      if (this.mediaList[i].active()) {
         return true;
+      }
     }
     return false;
   }
@@ -189,11 +201,13 @@ SDK.CSSMedia = class {
    * @return {number|undefined}
    */
   lineNumberInSource() {
-    if (!this.range)
+    if (!this.range) {
       return undefined;
-    var header = this.header();
-    if (!header)
+    }
+    const header = this.header();
+    if (!header) {
       return undefined;
+    }
     return header.lineNumberInSource(this.range.startLine);
   }
 
@@ -201,34 +215,37 @@ SDK.CSSMedia = class {
    * @return {number|undefined}
    */
   columnNumberInSource() {
-    if (!this.range)
+    if (!this.range) {
       return undefined;
-    var header = this.header();
-    if (!header)
+    }
+    const header = this.header();
+    if (!header) {
       return undefined;
+    }
     return header.columnNumberInSource(this.range.startLine, this.range.startColumn);
   }
 
   /**
-   * @return {?SDK.CSSStyleSheetHeader}
+   * @return {?CSSStyleSheetHeader}
    */
   header() {
     return this.styleSheetId ? this._cssModel.styleSheetHeaderForId(this.styleSheetId) : null;
   }
 
   /**
-   * @return {?SDK.CSSLocation}
+   * @return {?CSSLocation}
    */
   rawLocation() {
-    var header = this.header();
-    if (!header || this.lineNumberInSource() === undefined)
+    const header = this.header();
+    if (!header || this.lineNumberInSource() === undefined) {
       return null;
-    var lineNumber = Number(this.lineNumberInSource());
-    return new SDK.CSSLocation(header, lineNumber, this.columnNumberInSource());
+    }
+    const lineNumber = Number(this.lineNumberInSource());
+    return new CSSLocation(header, lineNumber, this.columnNumberInSource());
   }
-};
+}
 
-SDK.CSSMedia.Source = {
+export const Source = {
   LINKED_SHEET: 'linkedSheet',
   INLINE_SHEET: 'inlineSheet',
   MEDIA_RULE: 'mediaRule',

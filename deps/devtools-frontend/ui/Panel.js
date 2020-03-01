@@ -25,13 +25,18 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-// For testing.
-UI.panels = [];
+
+import {SearchableView} from './SearchableView.js';  // eslint-disable-line no-unused-vars
+import {SplitWidget} from './SplitWidget.js';
+import {VBox} from './Widget.js';
 
 /**
  * @unrestricted
  */
-UI.Panel = class extends UI.VBox {
+export class Panel extends VBox {
+  /**
+   * @param {string} name
+   */
   constructor(name) {
     super();
 
@@ -42,8 +47,6 @@ UI.Panel = class extends UI.VBox {
 
     // For testing.
     UI.panels[name] = this;
-
-    this._shortcuts = /** !Object.<number, function(Event=):boolean> */ ({});
   }
 
   get name() {
@@ -51,7 +54,7 @@ UI.Panel = class extends UI.VBox {
   }
 
   /**
-   * @return {?UI.SearchableView}
+   * @return {?SearchableView}
    */
   searchableView() {
     return null;
@@ -64,52 +67,12 @@ UI.Panel = class extends UI.VBox {
   elementsToRestoreScrollPositionsFor() {
     return [];
   }
-
-  /**
-   * @param {!KeyboardEvent} event
-   */
-  handleShortcut(event) {
-    var shortcutKey = UI.KeyboardShortcut.makeKeyFromEvent(event);
-    var handler = this._shortcuts[shortcutKey];
-    if (handler && handler(event))
-      event.handled = true;
-  }
-
-  /**
-   * @param {!Array.<!UI.KeyboardShortcut.Descriptor>} keys
-   * @param {function(!Event=):boolean} handler
-   */
-  registerShortcuts(keys, handler) {
-    for (var i = 0; i < keys.length; ++i)
-      this._shortcuts[keys[i].key] = handler;
-  }
-
-  /**
-   * @param {!UI.Infobar} infobar
-   */
-  showInfobar(infobar) {
-    infobar.setCloseCallback(this._onInfobarClosed.bind(this, infobar));
-    if (this.element.firstChild)
-      this.element.insertBefore(infobar.element, this.element.firstChild);
-    else
-      this.element.appendChild(infobar.element);
-    infobar.setParentView(this);
-    this.doResize();
-  }
-
-  /**
-   * @param {!UI.Infobar} infobar
-   */
-  _onInfobarClosed(infobar) {
-    infobar.element.remove();
-    this.doResize();
-  }
-};
+}
 
 /**
  * @unrestricted
  */
-UI.PanelWithSidebar = class extends UI.Panel {
+export class PanelWithSidebar extends Panel {
   /**
    * @param {string} name
    * @param {number=} defaultWidth
@@ -117,14 +80,13 @@ UI.PanelWithSidebar = class extends UI.Panel {
   constructor(name, defaultWidth) {
     super(name);
 
-    this._panelSplitWidget =
-        new UI.SplitWidget(true, false, this._panelName + 'PanelSplitViewState', defaultWidth || 200);
+    this._panelSplitWidget = new SplitWidget(true, false, this._panelName + 'PanelSplitViewState', defaultWidth || 200);
     this._panelSplitWidget.show(this.element);
 
-    this._mainWidget = new UI.VBox();
+    this._mainWidget = new VBox();
     this._panelSplitWidget.setMainWidget(this._mainWidget);
 
-    this._sidebarWidget = new UI.VBox();
+    this._sidebarWidget = new VBox();
     this._sidebarWidget.setMinimumSize(100, 25);
     this._panelSplitWidget.setSidebarWidget(this._sidebarWidget);
 
@@ -146,9 +108,9 @@ UI.PanelWithSidebar = class extends UI.Panel {
   }
 
   /**
-   * @return {!UI.SplitWidget}
+   * @return {!SplitWidget}
    */
   splitWidget() {
     return this._panelSplitWidget;
   }
-};
+}

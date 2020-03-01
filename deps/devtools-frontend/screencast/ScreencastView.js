@@ -27,22 +27,30 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import * as Common from '../common/common.js';
+import * as Host from '../host/host.js';
+import * as SDK from '../sdk/sdk.js';
+import * as UI from '../ui/ui.js';
+
+import {InputModel} from './InputModel.js';
+
 /**
  * @implements {SDK.OverlayModel.Highlighter}
  * @unrestricted
  */
-Screencast.ScreencastView = class extends UI.VBox {
+export class ScreencastView extends UI.Widget.VBox {
   /**
-   * @param {!SDK.ScreenCaptureModel} screenCaptureModel
+   * @param {!SDK.ScreenCaptureModel.ScreenCaptureModel} screenCaptureModel
    */
   constructor(screenCaptureModel) {
     super();
     this._screenCaptureModel = screenCaptureModel;
-    this._domModel = screenCaptureModel.target().model(SDK.DOMModel);
-    this._overlayModel = screenCaptureModel.target().model(SDK.OverlayModel);
-    this._resourceTreeModel = screenCaptureModel.target().model(SDK.ResourceTreeModel);
-    this._networkManager = screenCaptureModel.target().model(SDK.NetworkManager);
-    this._inputModel = screenCaptureModel.target().model(Screencast.InputModel);
+    this._domModel = screenCaptureModel.target().model(SDK.DOMModel.DOMModel);
+    this._overlayModel = screenCaptureModel.target().model(SDK.OverlayModel.OverlayModel);
+    this._resourceTreeModel = screenCaptureModel.target().model(SDK.ResourceTreeModel.ResourceTreeModel);
+    this._networkManager = screenCaptureModel.target().model(SDK.NetworkManager.NetworkManager);
+    this._inputModel = screenCaptureModel.target().model(InputModel);
 
     this.setMinimumSize(150, 150);
     this.registerRequiredCSS('screencast/screencastView.css');
@@ -58,7 +66,7 @@ Screencast.ScreencastView = class extends UI.VBox {
     this._glassPaneElement = this._canvasContainerElement.createChild('div', 'screencast-glasspane fill hidden');
 
     this._canvasElement = this._canvasContainerElement.createChild('canvas');
-    this._canvasElement.tabIndex = 1;
+    this._canvasElement.tabIndex = 0;
     this._canvasElement.addEventListener('mousedown', this._handleMouseEvent.bind(this), false);
     this._canvasElement.addEventListener('mouseup', this._handleMouseEvent.bind(this), false);
     this._canvasElement.addEventListener('mousemove', this._handleMouseEvent.bind(this), false);
@@ -89,10 +97,10 @@ Screencast.ScreencastView = class extends UI.VBox {
     this._checkerboardPattern = this._createCheckerboardPattern(this._context);
 
     this._shortcuts = /** !Object.<number, function(Event=):boolean> */ ({});
-    this._shortcuts[UI.KeyboardShortcut.makeKey('l', UI.KeyboardShortcut.Modifiers.Ctrl)] =
+    this._shortcuts[UI.KeyboardShortcut.KeyboardShortcut.makeKey('l', UI.KeyboardShortcut.Modifiers.Ctrl)] =
         this._focusNavigationBar.bind(this);
 
-    SDK.targetManager.addEventListener(SDK.TargetManager.Events.SuspendStateChanged, this._onSuspendStateChange, this);
+    self.SDK.targetManager.addEventListener(SDK.SDKModel.Events.SuspendStateChanged, this._onSuspendStateChange, this);
     this._updateGlasspane();
   }
 
@@ -111,14 +119,16 @@ Screencast.ScreencastView = class extends UI.VBox {
   }
 
   _startCasting() {
-    if (SDK.targetManager.allTargetsSuspended())
+    if (self.SDK.targetManager.allTargetsSuspended()) {
       return;
-    if (this._isCasting)
+    }
+    if (this._isCasting) {
       return;
+    }
     this._isCasting = true;
 
     const maxImageDimension = 2048;
-    var dimensions = this._viewportDimensions();
+    const dimensions = this._viewportDimensions();
     if (dimensions.width < 0 || dimensions.height < 0) {
       this._isCasting = false;
       return;
@@ -130,21 +140,26 @@ Screencast.ScreencastView = class extends UI.VBox {
         'jpeg', 80, Math.floor(Math.min(maxImageDimension, dimensions.width)),
         Math.floor(Math.min(maxImageDimension, dimensions.height)), undefined, this._screencastFrame.bind(this),
         this._screencastVisibilityChanged.bind(this));
-    for (var emulationModel of SDK.targetManager.models(SDK.EmulationModel))
+    for (const emulationModel of self.SDK.targetManager.models(SDK.EmulationModel.EmulationModel)) {
       emulationModel.overrideEmulateTouch(true);
-    if (this._overlayModel)
+    }
+    if (this._overlayModel) {
       this._overlayModel.setHighlighter(this);
+    }
   }
 
   _stopCasting() {
-    if (!this._isCasting)
+    if (!this._isCasting) {
       return;
+    }
     this._isCasting = false;
     this._screenCaptureModel.stopScreencast();
-    for (var emulationModel of SDK.targetManager.models(SDK.EmulationModel))
+    for (const emulationModel of self.SDK.targetManager.models(SDK.EmulationModel.EmulationModel)) {
       emulationModel.overrideEmulateTouch(false);
-    if (this._overlayModel)
+    }
+    if (this._overlayModel) {
       this._overlayModel.setHighlighter(null);
+    }
   }
 
   /**
@@ -158,21 +173,22 @@ Screencast.ScreencastView = class extends UI.VBox {
       this._scrollOffsetX = metadata.scrollOffsetX;
       this._scrollOffsetY = metadata.scrollOffsetY;
 
-      var deviceSizeRatio = metadata.deviceHeight / metadata.deviceWidth;
-      var dimensionsCSS = this._viewportDimensions();
+      const deviceSizeRatio = metadata.deviceHeight / metadata.deviceWidth;
+      const dimensionsCSS = this._viewportDimensions();
 
       this._imageZoom = Math.min(
           dimensionsCSS.width / this._imageElement.naturalWidth,
           dimensionsCSS.height / (this._imageElement.naturalWidth * deviceSizeRatio));
       this._viewportElement.classList.remove('hidden');
-      var bordersSize = Screencast.ScreencastView._bordersSize;
-      if (this._imageZoom < 1.01 / window.devicePixelRatio)
+      const bordersSize = _bordersSize;
+      if (this._imageZoom < 1.01 / window.devicePixelRatio) {
         this._imageZoom = 1 / window.devicePixelRatio;
+      }
       this._screenZoom = this._imageElement.naturalWidth * this._imageZoom / metadata.deviceWidth;
       this._viewportElement.style.width = metadata.deviceWidth * this._screenZoom + bordersSize + 'px';
       this._viewportElement.style.height = metadata.deviceHeight * this._screenZoom + bordersSize + 'px';
 
-      this.highlightDOMNode(this._highlightNode, this._highlightConfig);
+      this.highlightInOverlay({node: this._highlightNode}, this._highlightConfig);
     };
     this._imageElement.src = 'data:image/jpg;base64,' + base64Data;
   }
@@ -190,22 +206,23 @@ Screencast.ScreencastView = class extends UI.VBox {
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _onSuspendStateChange(event) {
-    if (SDK.targetManager.allTargetsSuspended())
+    if (self.SDK.targetManager.allTargetsSuspended()) {
       this._stopCasting();
-    else
+    } else {
       this._startCasting();
+    }
     this._updateGlasspane();
   }
 
   _updateGlasspane() {
     if (this._targetInactive) {
-      this._glassPaneElement.textContent = Common.UIString('The tab is inactive');
+      this._glassPaneElement.textContent = Common.UIString.UIString('The tab is inactive');
       this._glassPaneElement.classList.remove('hidden');
-    } else if (SDK.targetManager.allTargetsSuspended()) {
-      this._glassPaneElement.textContent = Common.UIString('Profiling in progress');
+    } else if (self.SDK.targetManager.allTargetsSuspended()) {
+      this._glassPaneElement.textContent = Common.UIString.UIString('Profiling in progress');
       this._glassPaneElement.classList.remove('hidden');
     } else {
       this._glassPaneElement.classList.add('hidden');
@@ -221,32 +238,36 @@ Screencast.ScreencastView = class extends UI.VBox {
       return;
     }
 
-    if (!this._pageScaleFactor || !this._domModel)
-      return;
-
-    if (!this._inspectModeConfig || event.type === 'mousewheel') {
-      if (this._inputModel)
-        this._inputModel.emitTouchFromMouseEvent(event, this._screenOffsetTop, this._screenZoom);
-      event.preventDefault();
-      if (event.type === 'mousedown')
-        this._canvasElement.focus();
+    if (!this._pageScaleFactor || !this._domModel) {
       return;
     }
 
-    var position = this._convertIntoScreenSpace(event);
+    if (!this._inspectModeConfig || event.type === 'mousewheel') {
+      if (this._inputModel) {
+        this._inputModel.emitTouchFromMouseEvent(event, this._screenOffsetTop, this._screenZoom);
+      }
+      event.preventDefault();
+      if (event.type === 'mousedown') {
+        this._canvasElement.focus();
+      }
+      return;
+    }
 
-    var node = await this._domModel.nodeForLocation(
+    const position = this._convertIntoScreenSpace(event);
+
+    const node = await this._domModel.nodeForLocation(
         Math.floor(position.x / this._pageScaleFactor + this._scrollOffsetX),
         Math.floor(position.y / this._pageScaleFactor + this._scrollOffsetY),
-        Common.moduleSetting('showUAShadowDOM').get());
+        self.Common.settings.moduleSetting('showUAShadowDOM').get());
 
-    if (!node)
+    if (!node) {
       return;
+    }
     if (event.type === 'mousemove') {
-      this.highlightDOMNode(node, this._inspectModeConfig);
+      this.highlightInOverlay({node}, this._inspectModeConfig);
       this._domModel.overlayModel().nodeHighlightRequested(node.id);
     } else if (event.type === 'click') {
-      Common.Revealer.reveal(node);
+      this._domModel.overlayModel().inspectNodeRequested(node.backendNodeId());
     }
   }
 
@@ -259,15 +280,16 @@ Screencast.ScreencastView = class extends UI.VBox {
       return;
     }
 
-    var shortcutKey = UI.KeyboardShortcut.makeKeyFromEvent(/** @type {!KeyboardEvent} */ (event));
-    var handler = this._shortcuts[shortcutKey];
+    const shortcutKey = UI.KeyboardShortcut.KeyboardShortcut.makeKeyFromEvent(/** @type {!KeyboardEvent} */ (event));
+    const handler = this._shortcuts[shortcutKey];
     if (handler && handler(event)) {
       event.consume();
       return;
     }
 
-    if (this._inputModel)
+    if (this._inputModel) {
       this._inputModel.emitKeyEvent(event);
+    }
     event.consume();
     this._canvasElement.focus();
   }
@@ -283,8 +305,9 @@ Screencast.ScreencastView = class extends UI.VBox {
    * @param {!Event} event
    */
   _handleBlurEvent(event) {
-    if (this._inputModel)
+    if (this._inputModel) {
       this._inputModel.cancelTouch();
+    }
   }
 
   /**
@@ -292,7 +315,7 @@ Screencast.ScreencastView = class extends UI.VBox {
    * @return {!{x: number, y: number}}
    */
   _convertIntoScreenSpace(event) {
-    var position = {};
+    const position = {};
     position.x = Math.round(event.offsetX / this._screenZoom);
     position.y = Math.round(event.offsetY / this._screenZoom - this._screenOffsetTop);
     return position;
@@ -313,12 +336,30 @@ Screencast.ScreencastView = class extends UI.VBox {
 
   /**
    * @override
-   * @param {?SDK.DOMNode} node
+   * @param {!SDK.OverlayModel.HighlightData} data
    * @param {?Protocol.Overlay.HighlightConfig} config
-   * @param {!Protocol.DOM.BackendNodeId=} backendNodeId
-   * @param {!Protocol.Runtime.RemoteObjectId=} objectId
    */
-  highlightDOMNode(node, config, backendNodeId, objectId) {
+  highlightInOverlay(data, config) {
+    this._highlightInOverlay(data, config);
+  }
+
+  /**
+   * @param {!SDK.OverlayModel.HighlightData} data
+   * @param {?Protocol.Overlay.HighlightConfig} config
+   */
+  async _highlightInOverlay(data, config) {
+    const {node: n, deferredNode, object} = data;
+    let node = n;
+    if (!node && deferredNode) {
+      node = await deferredNode.resolvePromise();
+    }
+    if (!node && object) {
+      const domModel = object.runtimeModel().target().model(SDK.DOMModel.DOMModel);
+      if (domModel) {
+        node = await domModel.pushObjectAsNodeToFrontend(object);
+      }
+    }
+
     this._highlightNode = node;
     this._highlightConfig = config;
     if (!node) {
@@ -349,12 +390,12 @@ Screencast.ScreencastView = class extends UI.VBox {
   _scaleModel(model) {
     /**
      * @param {!Protocol.DOM.Quad} quad
-     * @this {Screencast.ScreencastView}
+     * @this {ScreencastView}
      */
     function scaleQuad(quad) {
-      for (var i = 0; i < quad.length; i += 2) {
-        quad[i] = quad[i] * this._screenZoom;
-        quad[i + 1] = (quad[i + 1] + this._screenOffsetTop) * this._screenZoom;
+      for (let i = 0; i < quad.length; i += 2) {
+        quad[i] = quad[i] * this._pageScaleFactor * this._screenZoom;
+        quad[i + 1] = (quad[i + 1] * this._pageScaleFactor + this._screenOffsetTop) * this._screenZoom;
       }
     }
 
@@ -366,11 +407,11 @@ Screencast.ScreencastView = class extends UI.VBox {
   }
 
   _repaint() {
-    var model = this._model;
-    var config = this._config;
+    const model = this._model;
+    const config = this._config;
 
-    var canvasWidth = this._canvasElement.getBoundingClientRect().width;
-    var canvasHeight = this._canvasElement.getBoundingClientRect().height;
+    const canvasWidth = this._canvasElement.getBoundingClientRect().width;
+    const canvasHeight = this._canvasElement.getBoundingClientRect().height;
     this._canvasElement.width = window.devicePixelRatio * canvasWidth;
     this._canvasElement.height = window.devicePixelRatio * canvasHeight;
 
@@ -389,20 +430,26 @@ Screencast.ScreencastView = class extends UI.VBox {
     if (model && config) {
       this._context.save();
       const transparentColor = 'rgba(0, 0, 0, 0)';
-      var quads = [];
-      if (model.content && config.contentColor !== transparentColor)
+      const quads = [];
+      if (model.content && config.contentColor !== transparentColor) {
         quads.push({quad: model.content, color: config.contentColor});
-      if (model.padding && config.paddingColor !== transparentColor)
+      }
+      if (model.padding && config.paddingColor !== transparentColor) {
         quads.push({quad: model.padding, color: config.paddingColor});
-      if (model.border && config.borderColor !== transparentColor)
+      }
+      if (model.border && config.borderColor !== transparentColor) {
         quads.push({quad: model.border, color: config.borderColor});
-      if (model.margin && config.marginColor !== transparentColor)
+      }
+      if (model.margin && config.marginColor !== transparentColor) {
         quads.push({quad: model.margin, color: config.marginColor});
+      }
 
-      for (var i = quads.length - 1; i > 0; --i)
+      for (let i = quads.length - 1; i > 0; --i) {
         this._drawOutlinedQuadWithClip(quads[i].quad, quads[i - 1].quad, quads[i].color);
-      if (quads.length > 0)
+      }
+      if (quads.length > 0) {
         this._drawOutlinedQuad(quads[0].quad, quads[0].color);
+      }
       this._context.restore();
 
       this._drawElementTitle();
@@ -421,9 +468,10 @@ Screencast.ScreencastView = class extends UI.VBox {
    * @return {string}
    */
   _cssColor(color) {
-    if (!color)
+    if (!color) {
       return 'transparent';
-    return Common.Color.fromRGBA([color.r, color.g, color.b, color.a]).asString(Common.Color.Format.RGBA) || '';
+    }
+    return Common.Color.Color.fromRGBA([color.r, color.g, color.b, color.a]).asString(Common.Color.Format.RGBA) || '';
   }
 
   /**
@@ -470,39 +518,42 @@ Screencast.ScreencastView = class extends UI.VBox {
   }
 
   _drawElementTitle() {
-    if (!this._node)
+    if (!this._node) {
       return;
+    }
 
-    var canvasWidth = this._canvasElement.getBoundingClientRect().width;
-    var canvasHeight = this._canvasElement.getBoundingClientRect().height;
+    const canvasWidth = this._canvasElement.getBoundingClientRect().width;
+    const canvasHeight = this._canvasElement.getBoundingClientRect().height;
 
-    var lowerCaseName = this._node.localName() || this._node.nodeName().toLowerCase();
+    const lowerCaseName = this._node.localName() || this._node.nodeName().toLowerCase();
     this._tagNameElement.textContent = lowerCaseName;
     this._nodeIdElement.textContent = this._node.getAttribute('id') ? '#' + this._node.getAttribute('id') : '';
     this._nodeIdElement.textContent = this._node.getAttribute('id') ? '#' + this._node.getAttribute('id') : '';
-    var className = this._node.getAttribute('class');
-    if (className && className.length > 50)
+    let className = this._node.getAttribute('class');
+    if (className && className.length > 50) {
       className = className.substring(0, 50) + '\u2026';
+    }
     this._classNameElement.textContent = className || '';
     this._nodeWidthElement.textContent = this._model.width;
     this._nodeHeightElement.textContent = this._model.height;
 
     this._titleElement.classList.remove('hidden');
-    var titleWidth = this._titleElement.offsetWidth + 6;
-    var titleHeight = this._titleElement.offsetHeight + 4;
+    const titleWidth = this._titleElement.offsetWidth + 6;
+    const titleHeight = this._titleElement.offsetHeight + 4;
 
-    var anchorTop = this._model.margin[1];
-    var anchorBottom = this._model.margin[7];
+    const anchorTop = this._model.margin[1];
+    const anchorBottom = this._model.margin[7];
 
     const arrowHeight = 7;
-    var renderArrowUp = false;
-    var renderArrowDown = false;
+    let renderArrowUp = false;
+    let renderArrowDown = false;
 
-    var boxX = Math.max(2, this._model.margin[0]);
-    if (boxX + titleWidth > canvasWidth)
+    let boxX = Math.max(2, this._model.margin[0]);
+    if (boxX + titleWidth > canvasWidth) {
       boxX = canvasWidth - titleWidth - 2;
+    }
 
-    var boxY;
+    let boxY;
     if (anchorTop > canvasHeight) {
       boxY = canvasHeight - titleHeight - arrowHeight;
       renderArrowDown = true;
@@ -553,9 +604,9 @@ Screencast.ScreencastView = class extends UI.VBox {
    */
   _viewportDimensions() {
     const gutterSize = 30;
-    const bordersSize = Screencast.ScreencastView._bordersSize;
-    var width = this.element.offsetWidth - bordersSize - gutterSize;
-    var height = this.element.offsetHeight - bordersSize - gutterSize - Screencast.ScreencastView._navBarHeight;
+    const bordersSize = _bordersSize;
+    const width = this.element.offsetWidth - bordersSize - gutterSize;
+    const height = this.element.offsetHeight - bordersSize - gutterSize - _navBarHeight;
     return {width: width, height: height};
   }
 
@@ -581,11 +632,11 @@ Screencast.ScreencastView = class extends UI.VBox {
    * @param {!CanvasRenderingContext2D} context
    */
   _createCheckerboardPattern(context) {
-    var pattern = /** @type {!HTMLCanvasElement} */ (createElement('canvas'));
+    const pattern = /** @type {!HTMLCanvasElement} */ (createElement('canvas'));
     const size = 32;
     pattern.width = size * 2;
     pattern.height = size * 2;
-    var pctx = pattern.getContext('2d');
+    const pctx = pattern.getContext('2d');
 
     pctx.fillStyle = 'rgb(195, 195, 195)';
     pctx.fillRect(0, 0, size * 2, size * 2);
@@ -603,10 +654,10 @@ Screencast.ScreencastView = class extends UI.VBox {
     this._navigationForward = this._navigationBar.createChild('button', 'forward');
     this._navigationForward.disabled = true;
     this._navigationReload = this._navigationBar.createChild('button', 'reload');
-    this._navigationUrl = UI.createInput();
+    this._navigationUrl = UI.UIUtils.createInput();
     this._navigationBar.appendChild(this._navigationUrl);
     this._navigationUrl.type = 'text';
-    this._navigationProgressBar = new Screencast.ScreencastView.ProgressTracker(
+    this._navigationProgressBar = new ProgressTracker(
         this._resourceTreeModel, this._networkManager, this._navigationBar.createChild('div', 'progress'));
 
     if (this._resourceTreeModel) {
@@ -626,9 +677,10 @@ Screencast.ScreencastView = class extends UI.VBox {
    * @param {number} offset
    */
   _navigateToHistoryEntry(offset) {
-    var newIndex = this._historyIndex + offset;
-    if (newIndex < 0 || newIndex >= this._historyEntries.length)
+    const newIndex = this._historyIndex + offset;
+    if (newIndex < 0 || newIndex >= this._historyEntries.length) {
       return;
+    }
     this._resourceTreeModel.navigateToHistoryEntry(this._historyEntries[newIndex]);
     this._requestNavigationHistory();
   }
@@ -641,21 +693,25 @@ Screencast.ScreencastView = class extends UI.VBox {
    * @param {!Event} event
    */
   _navigationUrlKeyUp(event) {
-    if (event.key !== 'Enter')
+    if (event.key !== 'Enter') {
       return;
-    var url = this._navigationUrl.value;
-    if (!url)
+    }
+    let url = this._navigationUrl.value;
+    if (!url) {
       return;
-    if (!url.match(Screencast.ScreencastView._SchemeRegex))
+    }
+    if (!url.match(_SchemeRegex)) {
       url = 'http://' + url;
+    }
     this._resourceTreeModel.navigate(url);
     this._canvasElement.focus();
   }
 
   async _requestNavigationHistory() {
-    var history = await this._resourceTreeModel.navigationHistory();
-    if (!history)
+    const history = await this._resourceTreeModel.navigationHistory();
+    if (!history) {
       return;
+    }
 
     this._historyIndex = history.currentIndex;
     this._historyEntries = history.entries;
@@ -663,11 +719,12 @@ Screencast.ScreencastView = class extends UI.VBox {
     this._navigationBack.disabled = this._historyIndex === 0;
     this._navigationForward.disabled = this._historyIndex === (this._historyEntries.length - 1);
 
-    var url = this._historyEntries[this._historyIndex].url;
-    var match = url.match(Screencast.ScreencastView._HttpRegex);
-    if (match)
+    let url = this._historyEntries[this._historyIndex].url;
+    const match = url.match(_HttpRegex);
+    if (match) {
       url = match[1];
-    InspectorFrontendHost.inspectedURLChanged(url);
+    }
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.inspectedURLChanged(url);
     this._navigationUrl.value = url;
   }
 
@@ -676,23 +733,20 @@ Screencast.ScreencastView = class extends UI.VBox {
     this._navigationUrl.select();
     return true;
   }
-};
+}
 
-Screencast.ScreencastView._bordersSize = 44;
-
-Screencast.ScreencastView._navBarHeight = 29;
-
-Screencast.ScreencastView._HttpRegex = /^http:\/\/(.+)/;
-
-Screencast.ScreencastView._SchemeRegex = /^(https?|about|chrome):/;
+export const _bordersSize = 44;
+export const _navBarHeight = 29;
+export const _HttpRegex = /^http:\/\/(.+)/;
+export const _SchemeRegex = /^(https?|about|chrome):/;
 
 /**
  * @unrestricted
  */
-Screencast.ScreencastView.ProgressTracker = class {
+export class ProgressTracker {
   /**
-   * @param {?SDK.ResourceTreeModel} resourceTreeModel
-   * @param {?SDK.NetworkManager} networkManager
+   * @param {?SDK.ResourceTreeModel.ResourceTreeModel} resourceTreeModel
+   * @param {?SDK.NetworkManager.NetworkManager} networkManager
    * @param {!Element} element
    */
   constructor(resourceTreeModel, networkManager, element) {
@@ -720,8 +774,9 @@ Screencast.ScreencastView.ProgressTracker = class {
     delete this._requestIds;
     this._updateProgress(1);  // Display 100% progress on load, hide it in 0.5s.
     setTimeout(function() {
-      if (!this._navigationProgressVisible())
+      if (!this._navigationProgressVisible()) {
         this._displayProgress(0);
+      }
     }.bind(this), 500);
   }
 
@@ -730,22 +785,26 @@ Screencast.ScreencastView.ProgressTracker = class {
   }
 
   _onRequestStarted(event) {
-    if (!this._navigationProgressVisible())
+    if (!this._navigationProgressVisible()) {
       return;
-    var request = /** @type {!SDK.NetworkRequest} */ (event.data);
+    }
+    const request = /** @type {!SDK.NetworkRequest.NetworkRequest} */ (event.data);
     // Ignore long-living WebSockets for the sake of progress indicator, as we won't be waiting them anyway.
-    if (request.type === Common.resourceTypes.WebSocket)
+    if (request.type === Common.ResourceType.resourceTypes.WebSocket) {
       return;
+    }
     this._requestIds[request.requestId()] = request;
     ++this._startedRequests;
   }
 
   _onRequestFinished(event) {
-    if (!this._navigationProgressVisible())
+    if (!this._navigationProgressVisible()) {
       return;
-    var request = /** @type {!SDK.NetworkRequest} */ (event.data);
-    if (!(request.requestId() in this._requestIds))
+    }
+    const request = /** @type {!SDK.NetworkRequest.NetworkRequest} */ (event.data);
+    if (!(request.requestId() in this._requestIds)) {
       return;
+    }
     ++this._finishedRequests;
     setTimeout(function() {
       this._updateProgress(
@@ -754,10 +813,12 @@ Screencast.ScreencastView.ProgressTracker = class {
   }
 
   _updateProgress(progress) {
-    if (!this._navigationProgressVisible())
+    if (!this._navigationProgressVisible()) {
       return;
-    if (this._maxDisplayedProgress >= progress)
+    }
+    if (this._maxDisplayedProgress >= progress) {
       return;
+    }
     this._maxDisplayedProgress = progress;
     this._displayProgress(progress);
   }
@@ -765,4 +826,4 @@ Screencast.ScreencastView.ProgressTracker = class {
   _displayProgress(progress) {
     this._element.style.width = (100 * progress) + '%';
   }
-};
+}

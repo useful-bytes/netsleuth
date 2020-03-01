@@ -31,7 +31,7 @@
 /**
  * @unrestricted
  */
-UI.SyntaxHighlighter = class {
+export class SyntaxHighlighter {
   /**
    * @param {string} mimeType
    * @param {boolean} stripExtraWhitespace
@@ -47,10 +47,11 @@ UI.SyntaxHighlighter = class {
    * @return {!Element}
    */
   createSpan(content, className) {
-    var span = createElement('span');
-    span.className = 'cm-' + className;
-    if (this._stripExtraWhitespace && className !== 'whitespace')
+    const span = createElement('span');
+    span.className = className.replace(/\S+/g, 'cm-$&');
+    if (this._stripExtraWhitespace && className !== 'whitespace') {
       content = content.replace(/^[\n\r]*/, '').replace(/\s*$/, '');
+    }
     span.createTextChild(content);
     return span;
   }
@@ -60,29 +61,30 @@ UI.SyntaxHighlighter = class {
    * @return {!Promise.<undefined>}
    */
   syntaxHighlightNode(node) {
-    var lines = node.textContent.split('\n');
-    var plainTextStart;
-    var line;
+    const lines = node.textContent.split('\n');
+    let plainTextStart;
+    let line;
 
     return self.runtime.extension(TextUtils.TokenizerFactory).instance().then(processTokens.bind(this));
 
     /**
      * @param {!TextUtils.TokenizerFactory} tokenizerFactory
-     * @this {UI.SyntaxHighlighter}
+     * @this {SyntaxHighlighter}
      */
     function processTokens(tokenizerFactory) {
       node.removeChildren();
-      var tokenize = tokenizerFactory.createTokenizer(this._mimeType);
-      for (var i = 0; i < lines.length; ++i) {
+      const tokenize = tokenizerFactory.createTokenizer(this._mimeType);
+      for (let i = 0; i < lines.length; ++i) {
         line = lines[i];
         plainTextStart = 0;
         tokenize(line, processToken.bind(this));
         if (plainTextStart < line.length) {
-          var plainText = line.substring(plainTextStart, line.length);
+          const plainText = line.substring(plainTextStart, line.length);
           node.createTextChild(plainText);
         }
-        if (i < lines.length - 1)
+        if (i < lines.length - 1) {
           node.createTextChild('\n');
+        }
       }
     }
 
@@ -91,18 +93,19 @@ UI.SyntaxHighlighter = class {
      * @param {?string} tokenType
      * @param {number} column
      * @param {number} newColumn
-     * @this {UI.SyntaxHighlighter}
+     * @this {SyntaxHighlighter}
      */
     function processToken(token, tokenType, column, newColumn) {
-      if (!tokenType)
+      if (!tokenType) {
         return;
+      }
 
       if (column > plainTextStart) {
-        var plainText = line.substring(plainTextStart, column);
+        const plainText = line.substring(plainTextStart, column);
         node.createTextChild(plainText);
       }
       node.appendChild(this.createSpan(token, tokenType));
       plainTextStart = newColumn;
     }
   }
-};
+}

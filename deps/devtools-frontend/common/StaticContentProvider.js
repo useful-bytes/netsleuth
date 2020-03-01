@@ -1,15 +1,19 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import {ContentProvider, DeferredContent, SearchMatch} from './ContentProvider.js';  // eslint-disable-line no-unused-vars
+import {ResourceType} from './ResourceType.js';  // eslint-disable-line no-unused-vars
+
 /**
- * @implements {Common.ContentProvider}
+ * @implements {ContentProvider}
  * @unrestricted
  */
-Common.StaticContentProvider = class {
+export class StaticContentProvider {
   /**
    * @param {string} contentURL
-   * @param {!Common.ResourceType} contentType
-   * @param {function():!Promise<?string>} lazyContent
+   * @param {!ResourceType} contentType
+   * @param {function():!Promise<!DeferredContent>} lazyContent
    */
   constructor(contentURL, contentType, lazyContent) {
     this._contentURL = contentURL;
@@ -19,13 +23,13 @@ Common.StaticContentProvider = class {
 
   /**
    * @param {string} contentURL
-   * @param {!Common.ResourceType} contentType
+   * @param {!ResourceType} contentType
    * @param {string} content
-   * @return {!Common.StaticContentProvider}
+   * @return {!StaticContentProvider}
    */
   static fromString(contentURL, contentType, content) {
-    var lazyContent = () => Promise.resolve(content);
-    return new Common.StaticContentProvider(contentURL, contentType, lazyContent);
+    const lazyContent = () => Promise.resolve({content, isEncoded: false});
+    return new StaticContentProvider(contentURL, contentType, lazyContent);
   }
 
   /**
@@ -38,7 +42,7 @@ Common.StaticContentProvider = class {
 
   /**
    * @override
-   * @return {!Common.ResourceType}
+   * @return {!ResourceType}
    */
   contentType() {
     return this._contentType;
@@ -46,7 +50,15 @@ Common.StaticContentProvider = class {
 
   /**
    * @override
-   * @return {!Promise<?string>}
+   * @return {!Promise<boolean>}
+   */
+  contentEncoded() {
+    return Promise.resolve(false);
+  }
+
+  /**
+   * @override
+   * @return {!Promise<!DeferredContent>}
    */
   requestContent() {
     return this._lazyContent();
@@ -57,10 +69,10 @@ Common.StaticContentProvider = class {
    * @param {string} query
    * @param {boolean} caseSensitive
    * @param {boolean} isRegex
-   * @return {!Promise<!Array<!Common.ContentProvider.SearchMatch>>}
+   * @return {!Promise<!Array<!SearchMatch>>}
    */
   async searchInContent(query, caseSensitive, isRegex) {
-    var content = await this._lazyContent();
-    return content ? Common.ContentProvider.performSearchInContent(content, query, caseSensitive, isRegex) : [];
+    const {content} = (await this._lazyContent());
+    return content ? ContentProvider.performSearchInContent(content, query, caseSensitive, isRegex) : [];
   }
-};
+}

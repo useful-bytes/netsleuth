@@ -31,7 +31,7 @@
     position: absolute;
     top: 0;
     width: 100%;
-    background-color: #f3f3f3;
+    background-color: var(--toolbar-bg-color);
     border-bottom: 1px solid #ccc;
     overflow: hidden;
 }
@@ -50,20 +50,20 @@
     margin-top: 0;
 }
 
-.scripts-debug-toolbar-drawer > label {
-    display: flex;
+.scripts-debug-toolbar-drawer > [is=dt-checkbox] {
+    display: none;
     padding-left: 3px;
     height: 28px;
 }
 
-.panel.sources .sidebar-pane-stack {
-    overflow: auto;
-}
-
-.cursor-pointer {
-    cursor: pointer;
+.scripts-debug-toolbar-drawer.expanded > [is=dt-checkbox] {
+    display: flex;
 }
 
 .cursor-auto {
     cursor: auto;
+}
+
+.navigator-tabbed-pane {
+    background-color: var(--toolbar-bg-color);
 }

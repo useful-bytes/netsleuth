@@ -27,28 +27,34 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-UI.SettingsUI = {};
+
+import * as Common from '../common/common.js';
+
+import * as ARIAUtils from './ARIAUtils.js';
+import {CheckboxLabel} from './UIUtils.js';
 
 /**
  * @param {string} name
- * @param {!Common.Setting} setting
+ * @param {!Common.Settings.Setting} setting
  * @param {boolean=} omitParagraphElement
  * @param {string=} tooltip
  * @return {!Element}
  */
-UI.SettingsUI.createSettingCheckbox = function(name, setting, omitParagraphElement, tooltip) {
-  var label = UI.CheckboxLabel.create(name);
-  if (tooltip)
+export const createSettingCheckbox = function(name, setting, omitParagraphElement, tooltip) {
+  const label = CheckboxLabel.create(name);
+  if (tooltip) {
     label.title = tooltip;
+  }
 
-  var input = label.checkboxElement;
+  const input = label.checkboxElement;
   input.name = name;
-  UI.SettingsUI.bindCheckbox(input, setting);
+  bindCheckbox(input, setting);
 
-  if (omitParagraphElement)
+  if (omitParagraphElement) {
     return label;
+  }
 
-  var p = createElement('p');
+  const p = createElement('p');
   p.appendChild(label);
   return p;
 };
@@ -56,31 +62,39 @@ UI.SettingsUI.createSettingCheckbox = function(name, setting, omitParagraphEleme
 /**
  * @param {string} name
  * @param {!Array<!{text: string, value: *, raw: (boolean|undefined)}>} options
- * @param {!Common.Setting} setting
+ * @param {!Common.Settings.Setting} setting
+ * @param {string=} subtitle
  * @return {!Element}
  */
-UI.SettingsUI.createSettingSelect = function(name, options, setting) {
-  var p = createElement('p');
-  p.createChild('label').textContent = name;
-  var select = p.createChild('select', 'chrome-select');
+const createSettingSelect = function(name, options, setting, subtitle) {
+  const settingSelectElement = createElement('p');
+  const label = settingSelectElement.createChild('label');
+  const select = settingSelectElement.createChild('select', 'chrome-select');
+  label.textContent = name;
+  if (subtitle) {
+    settingSelectElement.classList.add('chrome-select-label');
+    label.createChild('p').textContent = subtitle;
+  }
+  ARIAUtils.bindLabelToControl(label, select);
 
-  for (var i = 0; i < options.length; ++i) {
+  for (let i = 0; i < options.length; ++i) {
     // The "raw" flag indicates text is non-i18n-izable.
-    var option = options[i];
-    var optionName = option.raw ? option.text : Common.UIString(option.text);
+    const option = options[i];
+    const optionName = option.raw ? option.text : Common.UIString.UIString(option.text);
     select.add(new Option(optionName, option.value));
   }
 
   setting.addChangeListener(settingChanged);
   settingChanged();
   select.addEventListener('change', selectChanged, false);
-  return p;
+  return settingSelectElement;
 
   function settingChanged() {
-    var newValue = setting.get();
-    for (var i = 0; i < options.length; i++) {
-      if (options[i].value === newValue)
+    const newValue = setting.get();
+    for (let i = 0; i < options.length; i++) {
+      if (options[i].value === newValue) {
         select.selectedIndex = i;
+      }
     }
   }
 
@@ -92,19 +106,21 @@ UI.SettingsUI.createSettingSelect = function(name, options, setting) {
 
 /**
  * @param {!Element} input
- * @param {!Common.Setting} setting
+ * @param {!Common.Settings.Setting} setting
  */
-UI.SettingsUI.bindCheckbox = function(input, setting) {
+export const bindCheckbox = function(input, setting) {
   function settingChanged() {
-    if (input.checked !== setting.get())
+    if (input.checked !== setting.get()) {
       input.checked = setting.get();
+    }
   }
   setting.addChangeListener(settingChanged);
   settingChanged();
 
   function inputChanged() {
-    if (setting.get() !== input.checked)
+    if (setting.get() !== input.checked) {
       setting.set(input.checked);
+    }
   }
   input.addEventListener('change', inputChanged, false);
 };
@@ -114,29 +130,34 @@ UI.SettingsUI.bindCheckbox = function(input, setting) {
  * @param {!Element} element
  * @return {!Element}
  */
-UI.SettingsUI.createCustomSetting = function(name, element) {
-  var p = createElement('p');
-  var fieldsetElement = p.createChild('fieldset');
-  fieldsetElement.createChild('label').textContent = name;
+export const createCustomSetting = function(name, element) {
+  const p = createElement('p');
+  const fieldsetElement = p.createChild('fieldset');
+  const label = fieldsetElement.createChild('label');
+  label.textContent = name;
+  ARIAUtils.bindLabelToControl(label, element);
   fieldsetElement.appendChild(element);
   return p;
 };
 
 /**
- * @param {!Common.Setting} setting
+ * @param {!Common.Settings.Setting} setting
+ * @param {string=} subtitle
  * @return {?Element}
  */
-UI.SettingsUI.createControlForSetting = function(setting) {
-  if (!setting.extension())
+export const createControlForSetting = function(setting, subtitle) {
+  if (!setting.extension()) {
     return null;
-  var descriptor = setting.extension().descriptor();
-  var uiTitle = Common.UIString(setting.title() || '');
+  }
+  const descriptor = setting.extension().descriptor();
+  const uiTitle = Common.UIString.UIString(setting.title() || '');
   switch (descriptor['settingType']) {
     case 'boolean':
-      return UI.SettingsUI.createSettingCheckbox(uiTitle, setting);
+      return createSettingCheckbox(uiTitle, setting);
     case 'enum':
-      if (Array.isArray(descriptor['options']))
-        return UI.SettingsUI.createSettingSelect(uiTitle, descriptor['options'], setting);
+      if (Array.isArray(descriptor['options'])) {
+        return createSettingSelect(uiTitle, descriptor['options'], setting, subtitle);
+      }
       console.error('Enum setting defined without options');
       return null;
     default:
@@ -148,11 +169,9 @@ UI.SettingsUI.createControlForSetting = function(setting) {
 /**
  * @interface
  */
-UI.SettingUI = function() {};
-
-UI.SettingUI.prototype = {
+export class SettingUI {
   /**
    * @return {?Element}
    */
   settingElement() {}
-};
+}

@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-Screencast.InputModel = class extends SDK.SDKModel {
+import * as SDK from '../sdk/sdk.js';
+
+export class InputModel extends SDK.SDKModel.SDKModel {
   /**
-   * @param {!SDK.Target} target
+   * @param {!SDK.SDKModel.Target} target
    */
   constructor(target) {
     super(target);
@@ -18,7 +20,7 @@ Screencast.InputModel = class extends SDK.SDKModel {
    * @param {!Event} event
    */
   emitKeyEvent(event) {
-    var type;
+    let type;
     switch (event.type) {
       case 'keydown':
         type = 'keyDown';
@@ -33,11 +35,10 @@ Screencast.InputModel = class extends SDK.SDKModel {
         return;
     }
 
-    var text = event.type === 'keypress' ? String.fromCharCode(event.charCode) : undefined;
+    const text = event.type === 'keypress' ? String.fromCharCode(event.charCode) : undefined;
     this._inputAgent.invoke_dispatchKeyEvent({
       type: type,
       modifiers: this._modifiersForEvent(event),
-      timestamp: event.timeStamp / 1000,
       text: text,
       unmodifiedText: text ? text.toLowerCase() : undefined,
       keyIdentifier: event.keyIdentifier,
@@ -57,30 +58,32 @@ Screencast.InputModel = class extends SDK.SDKModel {
    * @param {number} zoom
    */
   emitTouchFromMouseEvent(event, offsetTop, zoom) {
-    var buttons = {0: 'none', 1: 'left', 2: 'middle', 3: 'right'};
-    var types = {
+    const buttons = {0: 'none', 1: 'left', 2: 'middle', 3: 'right'};
+    const types = {
       'mousedown': 'mousePressed',
       'mouseup': 'mouseReleased',
       'mousemove': 'mouseMoved',
       'mousewheel': 'mouseWheel'
     };
-    if (!(event.type in types) || !(event.which in buttons))
+    if (!(event.type in types) || !(event.which in buttons)) {
       return;
-    if (event.type !== 'mousewheel' && buttons[event.which] === 'none')
+    }
+    if (event.type !== 'mousewheel' && buttons[event.which] === 'none') {
       return;
+    }
 
-    if (event.type === 'mousedown' || this._activeTouchOffsetTop === null)
+    if (event.type === 'mousedown' || this._activeTouchOffsetTop === null) {
       this._activeTouchOffsetTop = offsetTop;
+    }
 
-    var x = Math.round(event.offsetX / zoom);
-    var y = Math.round(event.offsetY / zoom);
+    const x = Math.round(event.offsetX / zoom);
+    let y = Math.round(event.offsetY / zoom);
     y = Math.round(y - this._activeTouchOffsetTop);
-    var params = {
+    const params = {
       type: types[event.type],
       x: x,
       y: y,
       modifiers: this._modifiersForEvent(event),
-      timestamp: event.timeStamp / 1000,
       button: buttons[event.which],
       clickCount: 0
     };
@@ -90,14 +93,15 @@ Screencast.InputModel = class extends SDK.SDKModel {
     } else {
       this._activeTouchParams = params;
     }
-    if (event.type === 'mouseup')
+    if (event.type === 'mouseup') {
       this._activeTouchOffsetTop = null;
+    }
     this._inputAgent.invoke_emulateTouchFromMouseEvent(params);
   }
 
   cancelTouch() {
-    if (this._activeTouchOffsetTop !== null) {
-      var params = this._activeTouchParams;
+    if (this._activeTouchParams !== null) {
+      const params = this._activeTouchParams;
       this._activeTouchParams = null;
       params.type = 'mouseReleased';
       this._inputAgent.invoke_emulateTouchFromMouseEvent(params);
@@ -111,6 +115,6 @@ Screencast.InputModel = class extends SDK.SDKModel {
   _modifiersForEvent(event) {
     return (event.altKey ? 1 : 0) | (event.ctrlKey ? 2 : 0) | (event.metaKey ? 4 : 0) | (event.shiftKey ? 8 : 0);
   }
-};
+}
 
-SDK.SDKModel.register(Screencast.InputModel, SDK.Target.Capability.Input, false);
+SDK.SDKModel.SDKModel.register(InputModel, SDK.SDKModel.Capability.Input, false);

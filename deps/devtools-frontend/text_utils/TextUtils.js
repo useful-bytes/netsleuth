@@ -27,7 +27,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-TextUtils.TextUtils = {
+export const Utils = {
   /**
    * @param {string} char
    * @return {boolean}
@@ -42,7 +42,7 @@ TextUtils.TextUtils = {
    * @return {boolean}
    */
   isWordChar: function(char) {
-    return !TextUtils.TextUtils.isStopChar(char) && !TextUtils.TextUtils.isSpaceChar(char);
+    return !Utils.isStopChar(char) && !Utils.isSpaceChar(char);
   },
 
   /**
@@ -50,7 +50,7 @@ TextUtils.TextUtils = {
    * @return {boolean}
    */
   isSpaceChar: function(char) {
-    return TextUtils.TextUtils._SpaceCharRegex.test(char);
+    return Utils._SpaceCharRegex.test(char);
   },
 
   /**
@@ -58,9 +58,10 @@ TextUtils.TextUtils = {
    * @return {boolean}
    */
   isWord: function(word) {
-    for (var i = 0; i < word.length; ++i) {
-      if (!TextUtils.TextUtils.isWordChar(word.charAt(i)))
+    for (let i = 0; i < word.length; ++i) {
+      if (!Utils.isWordChar(word.charAt(i))) {
         return false;
+      }
     }
     return true;
   },
@@ -86,7 +87,7 @@ TextUtils.TextUtils = {
    * @return {boolean}
    */
   isBraceChar: function(char) {
-    return TextUtils.TextUtils.isOpeningBraceChar(char) || TextUtils.TextUtils.isClosingBraceChar(char);
+    return Utils.isOpeningBraceChar(char) || Utils.isClosingBraceChar(char);
   },
 
   /**
@@ -95,18 +96,20 @@ TextUtils.TextUtils = {
    * @param {function(string)} wordCallback
    */
   textToWords: function(text, isWordChar, wordCallback) {
-    var startWord = -1;
-    for (var i = 0; i < text.length; ++i) {
+    let startWord = -1;
+    for (let i = 0; i < text.length; ++i) {
       if (!isWordChar(text.charAt(i))) {
-        if (startWord !== -1)
+        if (startWord !== -1) {
           wordCallback(text.substring(startWord, i));
+        }
         startWord = -1;
       } else if (startWord === -1) {
         startWord = i;
       }
     }
-    if (startWord !== -1)
+    if (startWord !== -1) {
       wordCallback(text.substring(startWord));
+    }
   },
 
   /**
@@ -114,9 +117,10 @@ TextUtils.TextUtils = {
    * @return {string}
    */
   lineIndent: function(line) {
-    var indentation = 0;
-    while (indentation < line.length && TextUtils.TextUtils.isSpaceChar(line.charAt(indentation)))
+    let indentation = 0;
+    while (indentation < line.length && Utils.isSpaceChar(line.charAt(indentation))) {
       ++indentation;
+    }
     return line.substr(0, indentation);
   },
 
@@ -139,17 +143,18 @@ TextUtils.TextUtils = {
   /**
    * @param {string} text
    * @param {!Array<!RegExp>} regexes
-   * @return {!Array<{value: string, position: number, regexIndex: number}>}
+   * @return {!Array<{value: string, position: number, regexIndex: number, captureGroups: !Array<string|undefined>}>}
    */
   splitStringByRegexes(text, regexes) {
-    var matches = [];
-    var globalRegexes = [];
-    for (var i = 0; i < regexes.length; i++) {
-      var regex = regexes[i];
-      if (!regex.global)
+    const matches = [];
+    const globalRegexes = [];
+    for (let i = 0; i < regexes.length; i++) {
+      const regex = regexes[i];
+      if (!regex.global) {
         globalRegexes.push(new RegExp(regex.source, regex.flags ? regex.flags + 'g' : 'g'));
-      else
+      } else {
         globalRegexes.push(regex);
+      }
     }
     doSplit(text, 0, 0);
     return matches;
@@ -162,34 +167,94 @@ TextUtils.TextUtils = {
     function doSplit(text, regexIndex, startIndex) {
       if (regexIndex >= globalRegexes.length) {
         // Set regexIndex as -1 if text did not match with any regular expression
-        matches.push({value: text, position: startIndex, regexIndex: -1});
+        matches.push({value: text, position: startIndex, regexIndex: -1, captureGroups: []});
         return;
       }
-      var regex = globalRegexes[regexIndex];
-      var currentIndex = 0;
-      var result;
+      const regex = globalRegexes[regexIndex];
+      let currentIndex = 0;
+      let result;
       regex.lastIndex = 0;
       while ((result = regex.exec(text)) !== null) {
-        var stringBeforeMatch = text.substring(currentIndex, result.index);
-        if (stringBeforeMatch)
+        const stringBeforeMatch = text.substring(currentIndex, result.index);
+        if (stringBeforeMatch) {
           doSplit(stringBeforeMatch, regexIndex + 1, startIndex + currentIndex);
-        var match = result[0];
-        matches.push({value: match, position: startIndex + result.index, regexIndex: regexIndex});
+        }
+        const match = result[0];
+        matches.push({
+          value: match,
+          position: startIndex + result.index,
+          regexIndex: regexIndex,
+          captureGroups: result.slice(1)
+        });
         currentIndex = result.index + match.length;
       }
-      var stringAfterMatches = text.substring(currentIndex);
-      if (stringAfterMatches)
+      const stringAfterMatches = text.substring(currentIndex);
+      if (stringAfterMatches) {
         doSplit(stringAfterMatches, regexIndex + 1, startIndex + currentIndex);
+      }
     }
   }
 };
 
-TextUtils.TextUtils._SpaceCharRegex = /\s/;
+export class FilterParser {
+  /**
+   * @param {!Array<string>} keys
+   */
+  constructor(keys) {
+    this._keys = keys;
+  }
+
+  /**
+   * @param {!ParsedFilter} filter
+   * @return {!ParsedFilter}
+   */
+  static cloneFilter(filter) {
+    return {key: filter.key, text: filter.text, regex: filter.regex, negative: filter.negative};
+  }
+
+  /**
+   * @param {string} query
+   * @return {!Array<!ParsedFilter>}
+   */
+  parse(query) {
+    const splitResult = Utils.splitStringByRegexes(
+        query, [Utils._keyValueFilterRegex, Utils._regexFilterRegex, Utils._textFilterRegex]);
+    const filters = [];
+    for (let i = 0; i < splitResult.length; i++) {
+      const regexIndex = splitResult[i].regexIndex;
+      if (regexIndex === -1) {
+        continue;
+      }
+      const result = splitResult[i].captureGroups;
+      if (regexIndex === 0) {
+        if (this._keys.indexOf(/** @type {string} */ (result[1])) !== -1) {
+          filters.push({key: result[1], text: result[2], negative: !!result[0]});
+        } else {
+          filters.push({text: result[1] + ':' + result[2], negative: !!result[0]});
+        }
+      } else if (regexIndex === 1) {
+        try {
+          filters.push({regex: new RegExp(result[1], 'i'), negative: !!result[0]});
+        } catch (e) {
+          filters.push({text: '/' + result[1] + '/', negative: !!result[0]});
+        }
+      } else if (regexIndex === 2) {
+        filters.push({text: result[1], negative: !!result[0]});
+      }
+    }
+    return filters;
+  }
+}
+
+Utils._keyValueFilterRegex = /(?:^|\s)(\-)?([\w\-]+):([^\s]+)/;
+Utils._regexFilterRegex = /(?:^|\s)(\-)?\/([^\s]+)\//;
+Utils._textFilterRegex = /(?:^|\s)(\-)?([^\s]+)/;
+Utils._SpaceCharRegex = /\s/;
 
 /**
  * @enum {string}
  */
-TextUtils.TextUtils.Indent = {
+Utils.Indent = {
   TwoSpaces: '  ',
   FourSpaces: '    ',
   EightSpaces: '        ',
@@ -199,7 +264,7 @@ TextUtils.TextUtils.Indent = {
 /**
  * @unrestricted
  */
-TextUtils.TextUtils.BalancedJSONTokenizer = class {
+export class BalancedJSONTokenizer {
   /**
    * @param {function(string)} callback
    * @param {boolean=} findMultiple
@@ -219,14 +284,16 @@ TextUtils.TextUtils.BalancedJSONTokenizer = class {
    */
   write(chunk) {
     this._buffer += chunk;
-    var lastIndex = this._buffer.length;
-    var buffer = this._buffer;
-    for (var index = this._index; index < lastIndex; ++index) {
-      var character = buffer[index];
+    const lastIndex = this._buffer.length;
+    const buffer = this._buffer;
+    let index;
+    for (index = this._index; index < lastIndex; ++index) {
+      const character = buffer[index];
       if (character === '"') {
         this._closingDoubleQuoteRegex.lastIndex = index;
-        if (!this._closingDoubleQuoteRegex.test(buffer))
+        if (!this._closingDoubleQuoteRegex.test(buffer)) {
           break;
+        }
         index = this._closingDoubleQuoteRegex.lastIndex - 1;
       } else if (character === '{') {
         ++this._balance;
@@ -238,8 +305,9 @@ TextUtils.TextUtils.BalancedJSONTokenizer = class {
         }
         if (!this._balance) {
           this._lastBalancedIndex = index + 1;
-          if (!this._findMultiple)
+          if (!this._findMultiple) {
             break;
+          }
         }
       } else if (character === ']' && !this._balance) {
         this._reportBalanced();
@@ -252,8 +320,9 @@ TextUtils.TextUtils.BalancedJSONTokenizer = class {
   }
 
   _reportBalanced() {
-    if (!this._lastBalancedIndex)
+    if (!this._lastBalancedIndex) {
       return;
+    }
     this._callback(this._buffer.slice(0, this._lastBalancedIndex));
     this._buffer = this._buffer.slice(this._lastBalancedIndex);
     this._index -= this._lastBalancedIndex;
@@ -266,36 +335,53 @@ TextUtils.TextUtils.BalancedJSONTokenizer = class {
   remainder() {
     return this._buffer;
   }
-};
+}
 
 /**
  * @interface
  */
-TextUtils.TokenizerFactory = function() {};
-
-TextUtils.TokenizerFactory.prototype = {
+export class TokenizerFactory {
   /**
    * @param {string} mimeType
    * @return {function(string, function(string, ?string, number, number))}
    */
   createTokenizer(mimeType) {}
-};
+}
 
 /**
  * @param {string} text
  * @return {boolean}
  */
-TextUtils.isMinified = function(text) {
-  var kMaxNonMinifiedLength = 500;
-  var linesToCheck = 10;
-  var lastPosition = 0;
+export function isMinified(text) {
+  const kMaxNonMinifiedLength = 500;
+  let linesToCheck = 10;
+  let lastPosition = 0;
   do {
-    var eolIndex = text.indexOf('\n', lastPosition);
-    if (eolIndex < 0)
+    let eolIndex = text.indexOf('\n', lastPosition);
+    if (eolIndex < 0) {
       eolIndex = text.length;
-    if (eolIndex - lastPosition > kMaxNonMinifiedLength && text.substr(lastPosition, 3) !== '//#')
+    }
+    if (eolIndex - lastPosition > kMaxNonMinifiedLength && text.substr(lastPosition, 3) !== '//#') {
       return true;
+    }
     lastPosition = eolIndex + 1;
   } while (--linesToCheck >= 0 && lastPosition < text.length);
+
+  // Check the end of the text as well
+  linesToCheck = 10;
+  lastPosition = text.length;
+  do {
+    let eolIndex = text.lastIndexOf('\n', lastPosition);
+    if (eolIndex < 0) {
+      eolIndex = 0;
+    }
+    if (lastPosition - eolIndex > kMaxNonMinifiedLength && text.substr(lastPosition, 3) !== '//#') {
+      return true;
+    }
+    lastPosition = eolIndex - 1;
+  } while (--linesToCheck >= 0 && lastPosition > 0);
   return false;
-};
+}
+
+/** @typedef {{key:(string|undefined), text:(?string|undefined), regex:(!RegExp|undefined), negative:boolean}} */
+export let ParsedFilter;

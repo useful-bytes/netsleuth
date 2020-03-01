@@ -2,13 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-Help.ReleaseNoteView = class extends UI.VBox {
+import * as Host from '../host/host.js';
+import * as UI from '../ui/ui.js';
+
+import {latestReleaseNote, releaseNoteViewId} from './HelpImpl.js';
+
+export class ReleaseNoteView extends UI.Widget.VBox {
   constructor() {
     super(true);
     this.registerRequiredCSS('help/releaseNote.css');
-    var releaseNoteElement = this._createReleaseNoteElement(Help.latestReleaseNote());
-    var topSection = this.contentElement.createChild('div', 'release-note-top-section');
-    topSection.textContent = Common.UIString(Help.latestReleaseNote().header);
+    const releaseNoteElement = this._createReleaseNoteElement(latestReleaseNote());
+    const topSection = this.contentElement.createChild('div', 'release-note-top-section');
+    topSection.textContent = ls`${latestReleaseNote().header}`;
     this.contentElement.appendChild(releaseNoteElement);
   }
 
@@ -17,35 +22,53 @@ Help.ReleaseNoteView = class extends UI.VBox {
    * @return {!Element}
    */
   _createReleaseNoteElement(releaseNote) {
-    var hbox = createElementWithClass('div', 'hbox');
-    var container = hbox.createChild('div', 'release-note-container');
-    var contentContainer = container.createChild('ul');
-    for (var highlight of releaseNote.highlights) {
-      var listItem = contentContainer.createChild('li');
-      var title = UI.createExternalLink(highlight.link, highlight.title + ' ', 'release-note-title');
-      title.title = '';
-      listItem.appendChild(title);
-      var subtitle = UI.createExternalLink(highlight.link, highlight.subtitle + ' ', 'release-note-subtitle');
-      subtitle.title = '';
-      listItem.appendChild(subtitle);
+    const hbox = createElementWithClass('div', 'hbox');
+    const container = hbox.createChild('div', 'release-note-container');
+    const contentContainer = container.createChild('ul');
+    UI.ARIAUtils.setAccessibleName(contentContainer, ls`${latestReleaseNote().header}`);
+
+    let linkNumber = 1;
+    for (const highlight of releaseNote.highlights) {
+      const listItem = contentContainer.createChild('li');
+      const linkWrapper = UI.XLink.XLink.create(highlight.link, '', 'release-note-link');
+      linkWrapper.textContent = '';
+      UI.ARIAUtils.markAsLink(linkWrapper);
+      UI.ARIAUtils.setAccessibleName(
+          linkWrapper, `${highlight.title}: ${highlight.subtitle} ${linkNumber} of ${releaseNote.highlights.length}`);
+
+      const title = linkWrapper.createChild('div', 'release-note-title');
+      title.textContent = highlight.title;
+
+      const subtitle = linkWrapper.createChild('div', 'release-note-subtitle');
+      subtitle.textContent = highlight.subtitle;
+
+      listItem.appendChild(linkWrapper);
+      linkNumber++;
     }
 
-    var actionContainer = container.createChild('div', 'release-note-action-container');
-    actionContainer.appendChild(UI.createTextButton(Common.UIString('Learn more'), event => {
+    const actionContainer = container.createChild('div', 'release-note-action-container');
+    const learnMore = UI.UIUtils.createTextButton(ls`Learn more`, event => {
       event.consume(true);
-      InspectorFrontendHost.openInNewTab(releaseNote.link);
-    }));
-    actionContainer.appendChild(UI.createTextButton(Common.UIString('Close'), event => {
+      Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(releaseNote.link);
+    });
+    UI.ARIAUtils.markAsLink(learnMore);
+    actionContainer.appendChild(learnMore);
+
+    actionContainer.appendChild(UI.UIUtils.createTextButton(ls`Close`, event => {
       event.consume(true);
-      UI.inspectorView.closeDrawerTab(Help.releaseNoteViewId, true);
+      self.UI.inspectorView.closeDrawerTab(releaseNoteViewId, true);
     }, 'close-release-note'));
 
-    var imageLink = UI.createExternalLink(releaseNote.link, ' ');
+    const imageLink = UI.XLink.XLink.create(releaseNote.link, ' ');
     imageLink.classList.add('release-note-image');
-    imageLink.title = '';
+    imageLink.title = ls`${latestReleaseNote().header}`;
+
     hbox.appendChild(imageLink);
-    var image = imageLink.createChild('img');
+    const image = imageLink.createChild('img');
     image.src = 'Images/whatsnew.png';
+    image.title = imageLink.title;
+    image.alt = image.title;
+
     return hbox;
   }
-};
+}

@@ -1,42 +1,24 @@
-/*
- * Copyright 2014 The Chromium Authors. All rights reserved.
- * Use of this source code is governed by a BSD-style license that can be
- * found in the LICENSE file.
- */
-/**
- * @interface
- */
-SDK.TracingManagerClient = function() {};
+// Copyright 2014 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
-SDK.TracingManagerClient.prototype = {
-  /**
-   * @param {!Array.<!SDK.TracingManager.EventPayload>} events
-   */
-  traceEventsCollected(events) {},
-  tracingComplete() {},
-  /**
-   * @param {number} usage
-   */
-  tracingBufferUsage(usage) {},
-  /**
-   * @param {number} progress
-   */
-  eventsRetrievalProgress(progress) {}
-};
+import * as ProtocolModule from '../protocol/protocol.js';
+
+import {Capability, SDKModel, Target} from './SDKModel.js';  // eslint-disable-line no-unused-vars
 
 /**
  * @unrestricted
  */
-SDK.TracingManager = class extends SDK.SDKModel {
+export class TracingManager extends SDKModel {
   /**
-   * @param {!SDK.Target} target
+   * @param {!Target} target
    */
   constructor(target) {
     super(target);
     this._tracingAgent = target.tracingAgent();
-    target.registerTracingDispatcher(new SDK.TracingDispatcher(this));
+    target.registerTracingDispatcher(new TracingDispatcher(this));
 
-    /** @type {?SDK.TracingManagerClient} */
+    /** @type {?TracingManagerClient} */
     this._activeClient = null;
     this._eventBufferSize = 0;
     this._eventsRetrieved = 0;
@@ -53,15 +35,19 @@ SDK.TracingManager = class extends SDK.SDKModel {
   }
 
   /**
-   * @param {!Array.<!SDK.TracingManager.EventPayload>} events
+   * @param {!Array.<!EventPayload>} events
    */
   _eventsCollected(events) {
     this._activeClient.traceEventsCollected(events);
     this._eventsRetrieved += events.length;
-    if (!this._eventBufferSize)
+    if (!this._eventBufferSize) {
+      this._activeClient.eventsRetrievalProgress(0);
       return;
-    if (this._eventsRetrieved > this._eventBufferSize)
+    }
+
+    if (this._eventsRetrieved > this._eventBufferSize) {
       this._eventsRetrieved = this._eventBufferSize;
+    }
     this._activeClient.eventsRetrievalProgress(this._eventsRetrieved / this._eventBufferSize);
   }
 
@@ -74,62 +60,78 @@ SDK.TracingManager = class extends SDK.SDKModel {
   }
 
   /**
-   * @param {!SDK.TracingManagerClient} client
+   * @param {!TracingManagerClient} client
    * @param {string} categoryFilter
    * @param {string} options
-   * @return {!Promise}
+   * @return {!Promise<!Object>}
    */
-  start(client, categoryFilter, options) {
-    if (this._activeClient)
+  async start(client, categoryFilter, options) {
+    if (this._activeClient) {
       throw new Error('Tracing is already started');
-    var bufferUsageReportingIntervalMs = 500;
+    }
+    const bufferUsageReportingIntervalMs = 500;
     this._activeClient = client;
-    return this._tracingAgent.start(
-        categoryFilter, options, bufferUsageReportingIntervalMs, SDK.TracingManager.TransferMode.ReportEvents);
+    const args = {
+      bufferUsageReportingInterval: bufferUsageReportingIntervalMs,
+      categories: categoryFilter,
+      options: options,
+      transferMode: TransferMode.ReportEvents
+    };
+    const response = await this._tracingAgent.invoke_start(args);
+    if (response[ProtocolModule.InspectorBackend.ProtocolError]) {
+      this._activeClient = null;
+    }
+    return response;
   }
 
   stop() {
-    if (!this._activeClient)
+    if (!this._activeClient) {
       throw new Error('Tracing is not started');
-    if (this._finishing)
+    }
+    if (this._finishing) {
       throw new Error('Tracing is already being stopped');
+    }
     this._finishing = true;
     this._tracingAgent.end();
   }
-};
+}
 
-SDK.SDKModel.register(SDK.TracingManager, SDK.Target.Capability.Tracing, false);
-
-/** @typedef {!{
-        cat: string,
-        pid: number,
-        tid: number,
-        ts: number,
-        ph: string,
-        name: string,
-        args: !Object,
-        dur: number,
-        id: string,
-        id2: (!{global: (string|undefined), local: (string|undefined)}|undefined),
-        scope: string,
-        bind_id: string,
-        s: string
-    }}
- */
-SDK.TracingManager.EventPayload;
-
-SDK.TracingManager.TransferMode = {
+const TransferMode = {
   ReportEvents: 'ReportEvents',
   ReturnAsStream: 'ReturnAsStream'
 };
 
 /**
+ * @interface
+ */
+export class TracingManagerClient {
+  /**
+   * @param {!Array.<!EventPayload>} events
+   */
+  traceEventsCollected(events) {
+  }
+
+  tracingComplete() {
+  }
+  /**
+   * @param {number} usage
+   */
+  tracingBufferUsage(usage) {
+  }
+  /**
+   * @param {number} progress
+   */
+  eventsRetrievalProgress(progress) {
+  }
+}
+
+/**
  * @implements {Protocol.TracingDispatcher}
  * @unrestricted
  */
-SDK.TracingDispatcher = class {
+class TracingDispatcher {
   /**
-   * @param {!SDK.TracingManager} tracingManager
+   * @param {!TracingManager} tracingManager
    */
   constructor(tracingManager) {
     this._tracingManager = tracingManager;
@@ -147,7 +149,7 @@ SDK.TracingDispatcher = class {
 
   /**
    * @override
-   * @param {!Array.<!SDK.TracingManager.EventPayload>} data
+   * @param {!Array.<!EventPayload>} data
    */
   dataCollected(data) {
     this._tracingManager._eventsCollected(data);
@@ -159,4 +161,24 @@ SDK.TracingDispatcher = class {
   tracingComplete() {
     this._tracingManager._tracingComplete();
   }
-};
+}
+
+SDKModel.register(TracingManager, Capability.Tracing, false);
+
+/** @typedef {!{
+        cat: (string|undefined),
+        pid: number,
+        tid: number,
+        ts: number,
+        ph: string,
+        name: string,
+        args: !Object,
+        dur: number,
+        id: string,
+        id2: (!{global: (string|undefined), local: (string|undefined)}|undefined),
+        scope: string,
+        bind_id: string,
+        s: string
+    }}
+ */
+export let EventPayload;

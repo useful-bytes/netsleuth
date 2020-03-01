@@ -1,17 +1,21 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import {VBox} from './Widget.js';
+
 /**
  * @unrestricted
  */
-UI.ThrottledWidget = class extends UI.VBox {
+export class ThrottledWidget extends VBox {
   /**
    * @param {boolean=} isWebComponent
    * @param {number=} timeout
    */
   constructor(isWebComponent, timeout) {
     super(isWebComponent);
-    this._updateThrottler = new Common.Throttler(timeout === undefined ? 100 : timeout);
+    this._updateThrottler = new Common.Throttler.Throttler(timeout === undefined ? 100 : timeout);
     this._updateWhenVisible = false;
   }
 
@@ -25,17 +29,19 @@ UI.ThrottledWidget = class extends UI.VBox {
 
   update() {
     this._updateWhenVisible = !this.isShowing();
-    if (this._updateWhenVisible)
+    if (this._updateWhenVisible) {
       return;
+    }
     this._updateThrottler.schedule(innerUpdate.bind(this));
 
     /**
-     * @this {UI.ThrottledWidget}
+     * @this {ThrottledWidget}
      * @return {!Promise<?>}
      */
     function innerUpdate() {
-      if (this.isShowing())
+      if (this.isShowing()) {
         return this.doUpdate();
+      }
       this._updateWhenVisible = true;
       return Promise.resolve();
     }
@@ -46,7 +52,8 @@ UI.ThrottledWidget = class extends UI.VBox {
    */
   wasShown() {
     super.wasShown();
-    if (this._updateWhenVisible)
+    if (this._updateWhenVisible) {
       this.update();
+    }
   }
-};
+}

@@ -27,24 +27,24 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 /**
  * @interface
  */
-Sources.HistoryEntry = function() {};
-
-Sources.HistoryEntry.prototype = {
+export class HistoryEntry {
   /**
    * @return {boolean}
    */
-  valid() {},
+  valid() {
+  }
 
   reveal() {}
-};
+}
 
 /**
  * @unrestricted
  */
-Sources.SimpleHistoryManager = class {
+export class SimpleHistoryManager {
   /**
    * @param {number} historyDepth
    */
@@ -71,18 +71,20 @@ Sources.SimpleHistoryManager = class {
   }
 
   /**
-   * @param {function(!Sources.HistoryEntry):boolean} filterOutCallback
+   * @param {function(!HistoryEntry):boolean} filterOutCallback
    */
   filterOut(filterOutCallback) {
-    if (this.readOnly())
+    if (this.readOnly()) {
       return;
-    var filteredEntries = [];
-    var removedBeforeActiveEntry = 0;
-    for (var i = 0; i < this._entries.length; ++i) {
-      if (!filterOutCallback(this._entries[i]))
+    }
+    const filteredEntries = [];
+    let removedBeforeActiveEntry = 0;
+    for (let i = 0; i < this._entries.length; ++i) {
+      if (!filterOutCallback(this._entries[i])) {
         filteredEntries.push(this._entries[i]);
-      else if (i <= this._activeEntryIndex)
+      } else if (i <= this._activeEntryIndex) {
         ++removedBeforeActiveEntry;
+      }
     }
     this._entries = filteredEntries;
     this._activeEntryIndex = Math.max(0, this._activeEntryIndex - removedBeforeActiveEntry);
@@ -96,23 +98,26 @@ Sources.SimpleHistoryManager = class {
   }
 
   /**
-   * @return {?Sources.HistoryEntry}
+   * @return {?HistoryEntry}
    */
   active() {
     return this.empty() ? null : this._entries[this._activeEntryIndex];
   }
 
   /**
-   * @param {!Sources.HistoryEntry} entry
+   * @param {!HistoryEntry} entry
    */
   push(entry) {
-    if (this.readOnly())
+    if (this.readOnly()) {
       return;
-    if (!this.empty())
+    }
+    if (!this.empty()) {
       this._entries.splice(this._activeEntryIndex + 1);
+    }
     this._entries.push(entry);
-    if (this._entries.length > this._historyDepth)
+    if (this._entries.length > this._historyDepth) {
       this._entries.shift();
+    }
     this._activeEntryIndex = this._entries.length - 1;
   }
 
@@ -120,14 +125,17 @@ Sources.SimpleHistoryManager = class {
    * @return {boolean}
    */
   rollback() {
-    if (this.empty())
+    if (this.empty()) {
       return false;
+    }
 
-    var revealIndex = this._activeEntryIndex - 1;
-    while (revealIndex >= 0 && !this._entries[revealIndex].valid())
+    let revealIndex = this._activeEntryIndex - 1;
+    while (revealIndex >= 0 && !this._entries[revealIndex].valid()) {
       --revealIndex;
-    if (revealIndex < 0)
+    }
+    if (revealIndex < 0) {
       return false;
+    }
 
     this.readOnlyLock();
     this._entries[revealIndex].reveal();
@@ -141,12 +149,14 @@ Sources.SimpleHistoryManager = class {
    * @return {boolean}
    */
   rollover() {
-    var revealIndex = this._activeEntryIndex + 1;
+    let revealIndex = this._activeEntryIndex + 1;
 
-    while (revealIndex < this._entries.length && !this._entries[revealIndex].valid())
+    while (revealIndex < this._entries.length && !this._entries[revealIndex].valid()) {
       ++revealIndex;
-    if (revealIndex >= this._entries.length)
+    }
+    if (revealIndex >= this._entries.length) {
       return false;
+    }
 
     this.readOnlyLock();
     this._entries[revealIndex].reveal();
@@ -155,4 +165,4 @@ Sources.SimpleHistoryManager = class {
     this._activeEntryIndex = revealIndex;
     return true;
   }
-};
+}

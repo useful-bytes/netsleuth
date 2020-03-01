@@ -27,14 +27,18 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+import {createShadowRootWithCoreStyles} from './utils/create-shadow-root-with-core-styles.js';
+
 /**
- * @implements {Common.Progress}
+ * @implements {Common.Progress.Progress}
  * @unrestricted
  */
-UI.ProgressIndicator = class {
+export class ProgressIndicator {
   constructor() {
     this.element = createElementWithClass('div', 'progress-indicator');
-    this._shadowRoot = UI.createShadowRootWithCoreStyles(this.element, 'ui/progressIndicator.css');
+    this._shadowRoot = createShadowRootWithCoreStyles(this.element, 'ui/progressIndicator.css');
     this._contentElement = this._shadowRoot.createChild('div', 'progress-indicator-shadow-container');
 
     this._labelElement = this._contentElement.createChild('div', 'title');
@@ -58,8 +62,9 @@ UI.ProgressIndicator = class {
    * @override
    */
   done() {
-    if (this._isDone)
+    if (this._isDone) {
       return;
+    }
     this._isDone = true;
     this.element.remove();
   }
@@ -100,8 +105,9 @@ UI.ProgressIndicator = class {
   setWorked(worked, title) {
     this._worked = worked;
     this._progressElement.value = worked;
-    if (title)
+    if (title) {
       this.setTitle(title);
+    }
   }
 
   /**
@@ -111,4 +117,4 @@ UI.ProgressIndicator = class {
   worked(worked) {
     this.setWorked(this._worked + (worked || 1));
   }
-};
+}

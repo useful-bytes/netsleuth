@@ -4,21 +4,47 @@
  * found in the LICENSE file.
  */
 
-:host {
+.content {
+  margin-left: 5px;
+}
+
+.history-dropdown-button {
   width: 160px;
   height: 26px;
   text-align: left;
   display: flex;
+  border: 1px solid transparent;
 }
 
-:host([disabled]) {
+.history-dropdown-button[disabled] {
   opacity: .5;
+  border: 1px solid transparent;
 }
 
-.content {
+.history-dropdown-button > .content {
   padding-right: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1 1;
   min-width: 35px;
+}
+
+.history-dropdown-button[data-keyboard-focus="true"]:focus::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 0px;
+  right: 0px;
+  bottom: 2px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+@media (forced-colors: active) {
+  .history-dropdown-button[disabled] {
+    opacity: 1;
+  }
+  .history-dropdown-button[disabled] [is=ui-icon].icon-mask {
+    background-color: GrayText;
+  }
 }

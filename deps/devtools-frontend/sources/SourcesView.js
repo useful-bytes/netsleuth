@@ -1,13 +1,25 @@
 // Copyright 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+import * as Common from '../common/common.js';
+import * as Persistence from '../persistence/persistence.js';
+import * as QuickOpen from '../quick_open/quick_open.js';
+import * as SourceFrame from '../source_frame/source_frame.js';
+import * as UI from '../ui/ui.js';
+import * as Workspace from '../workspace/workspace.js';
+
+import {EditingLocationHistoryManager} from './EditingLocationHistoryManager.js';
+import {Events as TabbedEditorContainerEvents, TabbedEditorContainer, TabbedEditorContainerDelegate} from './TabbedEditorContainer.js';  // eslint-disable-line no-unused-vars
+import {Events as UISourceCodeFrameEvents, UISourceCodeFrame} from './UISourceCodeFrame.js';
+
 /**
- * @implements {Sources.TabbedEditorContainerDelegate}
- * @implements {UI.Searchable}
- * @implements {UI.Replaceable}
+ * @implements {TabbedEditorContainerDelegate}
+ * @implements {UI.SearchableView.Searchable}
+ * @implements {UI.SearchableView.Replaceable}
  * @unrestricted
  */
-Sources.SourcesView = class extends UI.VBox {
+export class SourcesView extends UI.Widget.VBox {
   /**
    * @suppressGlobalPropertiesCheck
    */
@@ -15,46 +27,50 @@ Sources.SourcesView = class extends UI.VBox {
     super();
     this.registerRequiredCSS('sources/sourcesView.css');
     this.element.id = 'sources-panel-sources-view';
-    this.setMinimumAndPreferredSizes(80, 52, 150, 100);
+    this.setMinimumAndPreferredSizes(88, 52, 150, 100);
 
-    var workspace = Workspace.workspace;
+    const workspace = self.Workspace.workspace;
 
-    this._searchableView = new UI.SearchableView(this, 'sourcesViewSearchConfig');
+    this._searchableView = new UI.SearchableView.SearchableView(this, 'sourcesViewSearchConfig');
     this._searchableView.setMinimalSearchQuerySize(0);
     this._searchableView.show(this.element);
 
-    /** @type {!Map.<!Workspace.UISourceCode, !UI.Widget>} */
+    /** @type {!Map.<!Workspace.UISourceCode.UISourceCode, !UI.Widget.Widget>} */
     this._sourceViewByUISourceCode = new Map();
 
-    this._editorContainer = new Sources.TabbedEditorContainer(
-        this, Common.settings.createLocalSetting('previouslyViewedFiles', []), this._placeholderElement());
+    this._editorContainer = new TabbedEditorContainer(
+        this, self.Common.settings.createLocalSetting('previouslyViewedFiles', []), this._placeholderElement(),
+        this._focusedPlaceholderElement);
     this._editorContainer.show(this._searchableView.element);
-    this._editorContainer.addEventListener(
-        Sources.TabbedEditorContainer.Events.EditorSelected, this._editorSelected, this);
-    this._editorContainer.addEventListener(Sources.TabbedEditorContainer.Events.EditorClosed, this._editorClosed, this);
+    this._editorContainer.addEventListener(TabbedEditorContainerEvents.EditorSelected, this._editorSelected, this);
+    this._editorContainer.addEventListener(TabbedEditorContainerEvents.EditorClosed, this._editorClosed, this);
 
-    this._historyManager = new Sources.EditingLocationHistoryManager(this, this.currentSourceFrame.bind(this));
+    this._historyManager = new EditingLocationHistoryManager(this, this.currentSourceFrame.bind(this));
 
     this._toolbarContainerElement = this.element.createChild('div', 'sources-toolbar');
-    this._toolbarEditorActions = new UI.Toolbar('', this._toolbarContainerElement);
-
-    self.runtime.allInstances(Sources.SourcesView.EditorAction).then(appendButtonsForExtensions.bind(this));
+    if (!Root.Runtime.experiments.isEnabled('sourcesPrettyPrint')) {
+      this._toolbarEditorActions = new UI.Toolbar.Toolbar('', this._toolbarContainerElement);
+      self.runtime.allInstances(EditorAction).then(appendButtonsForExtensions.bind(this));
+    }
     /**
-     * @param {!Array.<!Sources.SourcesView.EditorAction>} actions
-     * @this {Sources.SourcesView}
+     * @param {!Array.<!EditorAction>} actions
+     * @this {SourcesView}
      */
     function appendButtonsForExtensions(actions) {
-      for (var i = 0; i < actions.length; ++i)
+      for (let i = 0; i < actions.length; ++i) {
         this._toolbarEditorActions.appendToolbarItem(actions[i].button(this));
+      }
     }
-    this._scriptViewToolbar = new UI.Toolbar('', this._toolbarContainerElement);
+    this._scriptViewToolbar = new UI.Toolbar.Toolbar('', this._toolbarContainerElement);
     this._scriptViewToolbar.element.style.flex = 'auto';
-    this._bottomToolbar = new UI.Toolbar('', this._toolbarContainerElement);
-    this._bindingChangeBound = this._onBindingChanged.bind(this);
+    this._bottomToolbar = new UI.Toolbar.Toolbar('', this._toolbarContainerElement);
 
-    UI.startBatchUpdate();
+    /** @type {?Common.EventTarget.EventDescriptor} */
+    this._toolbarChangedListener = null;
+
+    UI.UIUtils.startBatchUpdate();
     workspace.uiSourceCodes().forEach(this._addUISourceCode.bind(this));
-    UI.endBatchUpdate();
+    UI.UIUtils.endBatchUpdate();
 
     workspace.addEventListener(Workspace.Workspace.Events.UISourceCodeAdded, this._uiSourceCodeAdded, this);
     workspace.addEventListener(Workspace.Workspace.Events.UISourceCodeRemoved, this._uiSourceCodeRemoved, this);
@@ -64,27 +80,31 @@ Sources.SourcesView = class extends UI.VBox {
      * @param {!Event} event
      */
     function handleBeforeUnload(event) {
-      if (event.returnValue)
+      if (event.returnValue) {
         return;
+      }
 
-      var unsavedSourceCodes = [];
-      var projects = Workspace.workspace.projectsForType(Workspace.projectTypes.FileSystem);
-      for (var i = 0; i < projects.length; ++i) {
+      let unsavedSourceCodes = [];
+      const projects = self.Workspace.workspace.projectsForType(Workspace.Workspace.projectTypes.FileSystem);
+      for (let i = 0; i < projects.length; ++i) {
         unsavedSourceCodes =
             unsavedSourceCodes.concat(projects[i].uiSourceCodes().filter(sourceCode => sourceCode.isDirty()));
       }
 
-      if (!unsavedSourceCodes.length)
+      if (!unsavedSourceCodes.length) {
         return;
+      }
 
-      event.returnValue = Common.UIString('DevTools have unsaved changes that will be permanently lost.');
-      UI.viewManager.showView('sources');
-      for (var i = 0; i < unsavedSourceCodes.length; ++i)
+      event.returnValue = Common.UIString.UIString('DevTools have unsaved changes that will be permanently lost.');
+      self.UI.viewManager.showView('sources');
+      for (let i = 0; i < unsavedSourceCodes.length; ++i) {
         Common.Revealer.reveal(unsavedSourceCodes[i]);
+      }
     }
 
-    if (!window.opener)
+    if (!window.opener) {
       window.addEventListener('beforeunload', handleBeforeUnload, true);
+    }
 
     this._shortcuts = {};
     this.element.addEventListener('keydown', this._handleKeyDown.bind(this), false);
@@ -94,90 +114,120 @@ Sources.SourcesView = class extends UI.VBox {
    * @return {!Element}
    */
   _placeholderElement() {
-    var shortcuts = [
-      {actionId: 'quickOpen.show', description: Common.UIString('Open file')},
-      {actionId: 'commandMenu.show', description: Common.UIString('Run command')}
+    /** @type {!Array.<{element: !Element, handler: !Function}>} */
+    this._placeholderOptionArray = [];
+
+    const shortcuts = [
+      {actionId: 'quickOpen.show', description: ls`Open file`},
+      {actionId: 'commandMenu.show', description: ls`Run command`},
+      {actionId: 'sources.add-folder-to-workspace', description: ls`Drop in a folder to add to workspace`}
     ];
 
-    var element = createElementWithClass('span', 'tabbed-pane-placeholder');
-    for (var shortcut of shortcuts) {
-      var shortcutKeyText = UI.shortcutRegistry.shortcutTitleForAction(shortcut.actionId);
-      var row = element.createChild('div', 'tabbed-pane-placeholder-row');
-      row.createChild('div', 'tabbed-pane-placeholder-key').textContent = shortcutKeyText;
-      row.createChild('div', 'tabbed-pane-placeholder-value').textContent = shortcut.description;
+    const element = createElementWithClass('div');
+    const list = element.createChild('div', 'tabbed-pane-placeholder');
+    list.addEventListener('keydown', this._placeholderOnKeyDown.bind(this), false);
+    UI.ARIAUtils.markAsList(list);
+    UI.ARIAUtils.setAccessibleName(list, ls`Source View Actions`);
+
+    for (let i = 0; i < shortcuts.length; i++) {
+      const shortcut = shortcuts[i];
+      const shortcutKeyText = self.UI.shortcutRegistry.shortcutTitleForAction(shortcut.actionId);
+      const listItemElement = list.createChild('div');
+      UI.ARIAUtils.markAsListitem(listItemElement);
+      const row = listItemElement.createChild('div', 'tabbed-pane-placeholder-row');
+      row.tabIndex = -1;
+      UI.ARIAUtils.markAsButton(row);
+      if (shortcutKeyText) {
+        row.createChild('div', 'tabbed-pane-placeholder-key').textContent = shortcutKeyText;
+        row.createChild('div', 'tabbed-pane-placeholder-value').textContent = shortcut.description;
+      } else {
+        row.createChild('div', 'tabbed-pane-no-shortcut').textContent = shortcut.description;
+      }
+      const action = self.UI.actionRegistry.action(shortcut.actionId);
+      const actionHandler = action.execute.bind(action);
+      this._placeholderOptionArray.push({element: row, handler: actionHandler});
     }
-    if (Runtime.experiments.isEnabled('persistence2'))
-      element.createChild('div').textContent = Common.UIString('Drop in a folder to add to workspace');
+
+    const firstElement = this._placeholderOptionArray[0].element;
+    firstElement.tabIndex = 0;
+    this._focusedPlaceholderElement = firstElement;
+    this._selectedIndex = 0;
+
+    element.appendChild(UI.XLink.XLink.create(
+        'https://developers.google.com/web/tools/chrome-devtools/sources?utm_source=devtools&utm_campaign=2018Q1',
+        'Learn more'));
 
     return element;
   }
 
   /**
-   * @return {!Map.<!Workspace.UISourceCode, number>}
+   * @param {!Event} event
+   */
+  _placeholderOnKeyDown(event) {
+    if (isEnterOrSpaceKey(event)) {
+      this._placeholderOptionArray[this._selectedIndex].handler.call();
+      return;
+    }
+
+    let offset = 0;
+    if (event.key === 'ArrowDown') {
+      offset = 1;
+    } else if (event.key === 'ArrowUp') {
+      offset = -1;
+    }
+
+    const newIndex = Math.max(Math.min(this._placeholderOptionArray.length - 1, this._selectedIndex + offset), 0);
+    const newElement = this._placeholderOptionArray[newIndex].element;
+    const oldElement = this._placeholderOptionArray[this._selectedIndex].element;
+    if (newElement !== oldElement) {
+      oldElement.tabIndex = -1;
+      newElement.tabIndex = 0;
+      UI.ARIAUtils.setSelected(oldElement, false);
+      UI.ARIAUtils.setSelected(newElement, true);
+      this._selectedIndex = newIndex;
+      newElement.focus();
+    }
+  }
+
+  _resetPlaceholderState() {
+    this._placeholderOptionArray[this._selectedIndex].element.tabIndex = -1;
+    this._placeholderOptionArray[0].element.tabIndex = 0;
+    this._selectedIndex = 0;
+  }
+
+  /**
+   * @return {!Map.<!Workspace.UISourceCode.UISourceCode, number>}
    */
   static defaultUISourceCodeScores() {
-    /** @type {!Map.<!Workspace.UISourceCode, number>} */
-    var defaultScores = new Map();
-    var sourcesView = UI.context.flavor(Sources.SourcesView);
+    /** @type {!Map.<!Workspace.UISourceCode.UISourceCode, number>} */
+    const defaultScores = new Map();
+    const sourcesView = self.UI.context.flavor(SourcesView);
     if (sourcesView) {
-      var uiSourceCodes = sourcesView._editorContainer.historyUISourceCodes();
-      for (var i = 1; i < uiSourceCodes.length; ++i)  // Skip current element
+      const uiSourceCodes = sourcesView._editorContainer.historyUISourceCodes();
+      for (let i = 1; i < uiSourceCodes.length; ++i)  // Skip current element
+      {
         defaultScores.set(uiSourceCodes[i], uiSourceCodes.length - i);
+      }
     }
     return defaultScores;
   }
 
   /**
-   * @param {function(!Array.<!UI.KeyboardShortcut.Descriptor>, function(!Event=):boolean)} registerShortcutDelegate
-   */
-  registerShortcuts(registerShortcutDelegate) {
-    /**
-     * @this {Sources.SourcesView}
-     * @param {!Array.<!UI.KeyboardShortcut.Descriptor>} shortcuts
-     * @param {function(!Event=):boolean} handler
-     */
-    function registerShortcut(shortcuts, handler) {
-      registerShortcutDelegate(shortcuts, handler);
-      this._registerShortcuts(shortcuts, handler);
-    }
-
-    registerShortcut.call(
-        this, UI.ShortcutsScreen.SourcesPanelShortcuts.JumpToPreviousLocation,
-        this._onJumpToPreviousLocation.bind(this));
-    registerShortcut.call(
-        this, UI.ShortcutsScreen.SourcesPanelShortcuts.JumpToNextLocation, this._onJumpToNextLocation.bind(this));
-    registerShortcut.call(
-        this, UI.ShortcutsScreen.SourcesPanelShortcuts.CloseEditorTab, this._onCloseEditorTab.bind(this));
-    registerShortcut.call(
-        this, UI.ShortcutsScreen.SourcesPanelShortcuts.GoToLine, this._showGoToLineQuickOpen.bind(this));
-    registerShortcut.call(
-        this, UI.ShortcutsScreen.SourcesPanelShortcuts.GoToMember, this._showOutlineQuickOpen.bind(this));
-    registerShortcut.call(
-        this, UI.ShortcutsScreen.SourcesPanelShortcuts.ToggleBreakpoint,
-        this._toggleBreakpoint.bind(this, false /* onlyDisable */));
-    registerShortcut.call(
-        this, UI.ShortcutsScreen.SourcesPanelShortcuts.ToggleBreakpointEnabled,
-        this._toggleBreakpoint.bind(this, true /* onlyDisable */));
-    registerShortcut.call(this, UI.ShortcutsScreen.SourcesPanelShortcuts.Save, this._save.bind(this));
-    registerShortcut.call(this, UI.ShortcutsScreen.SourcesPanelShortcuts.SaveAll, this._saveAll.bind(this));
-  }
-
-  /**
-   * @return {!UI.Toolbar}
+   * @return {!UI.Toolbar.Toolbar}
    */
   leftToolbar() {
     return this._editorContainer.leftToolbar();
   }
 
   /**
-   * @return {!UI.Toolbar}
+   * @return {!UI.Toolbar.Toolbar}
    */
   rightToolbar() {
     return this._editorContainer.rightToolbar();
   }
 
   /**
-   * @return {!UI.Toolbar}
+   * @return {!UI.Toolbar.Toolbar}
    */
   bottomToolbar() {
     return this._bottomToolbar;
@@ -188,15 +238,17 @@ Sources.SourcesView = class extends UI.VBox {
    * @param {function(!Event=):boolean} handler
    */
   _registerShortcuts(keys, handler) {
-    for (var i = 0; i < keys.length; ++i)
+    for (let i = 0; i < keys.length; ++i) {
       this._shortcuts[keys[i].key] = handler;
+    }
   }
 
   _handleKeyDown(event) {
-    var shortcutKey = UI.KeyboardShortcut.makeKeyFromEvent(event);
-    var handler = this._shortcuts[shortcutKey];
-    if (handler && handler())
+    const shortcutKey = UI.KeyboardShortcut.KeyboardShortcut.makeKeyFromEvent(event);
+    const handler = this._shortcuts[shortcutKey];
+    if (handler && handler()) {
       event.consume(true);
+    }
   }
 
   /**
@@ -204,14 +256,15 @@ Sources.SourcesView = class extends UI.VBox {
    */
   wasShown() {
     super.wasShown();
-    UI.context.setFlavor(Sources.SourcesView, this);
+    self.UI.context.setFlavor(SourcesView, this);
   }
 
   /**
    * @override
    */
   willHide() {
-    UI.context.setFlavor(Sources.SourcesView, null);
+    self.UI.context.setFlavor(SourcesView, null);
+    this._resetPlaceholderState();
     super.willHide();
   }
 
@@ -223,113 +276,115 @@ Sources.SourcesView = class extends UI.VBox {
   }
 
   /**
-   * @return {!UI.SearchableView}
+   * @return {!UI.SearchableView.SearchableView}
    */
   searchableView() {
     return this._searchableView;
   }
 
   /**
-   * @return {?UI.Widget}
+   * @return {?UI.Widget.Widget}
    */
   visibleView() {
     return this._editorContainer.visibleView;
   }
 
   /**
-   * @return {?SourceFrame.UISourceCodeFrame}
+   * @return {?UISourceCodeFrame}
    */
   currentSourceFrame() {
-    var view = this.visibleView();
-    if (!(view instanceof SourceFrame.UISourceCodeFrame))
+    const view = this.visibleView();
+    if (!(view instanceof UISourceCodeFrame)) {
       return null;
-    return /** @type {!SourceFrame.UISourceCodeFrame} */ (view);
+    }
+    return (
+        /** @type {!UISourceCodeFrame} */ (view));
   }
 
   /**
-   * @return {?Workspace.UISourceCode}
+   * @return {?Workspace.UISourceCode.UISourceCode}
    */
   currentUISourceCode() {
     return this._editorContainer.currentFile();
   }
 
   /**
-   * @param {!Event=} event
+   * @return {boolean}
    */
-  _onCloseEditorTab(event) {
-    var uiSourceCode = this._editorContainer.currentFile();
-    if (!uiSourceCode)
+  _onCloseEditorTab() {
+    const uiSourceCode = this._editorContainer.currentFile();
+    if (!uiSourceCode) {
       return false;
+    }
     this._editorContainer.closeFile(uiSourceCode);
     return true;
   }
 
-  /**
-   * @param {!Event=} event
-   */
-  _onJumpToPreviousLocation(event) {
+  _onJumpToPreviousLocation() {
     this._historyManager.rollback();
-    return true;
   }
 
-  /**
-   * @param {!Event=} event
-   */
-  _onJumpToNextLocation(event) {
+  _onJumpToNextLocation() {
     this._historyManager.rollover();
-    return true;
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _uiSourceCodeAdded(event) {
-    var uiSourceCode = /** @type {!Workspace.UISourceCode} */ (event.data);
+    const uiSourceCode = /** @type {!Workspace.UISourceCode.UISourceCode} */ (event.data);
     this._addUISourceCode(uiSourceCode);
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   _addUISourceCode(uiSourceCode) {
-    if (uiSourceCode.project().isServiceProject())
+    if (uiSourceCode.project().isServiceProject()) {
       return;
+    }
+    if (uiSourceCode.project().type() === Workspace.Workspace.projectTypes.FileSystem &&
+        Persistence.FileSystemWorkspaceBinding.FileSystemWorkspaceBinding.fileSystemType(uiSourceCode.project()) ===
+            'overrides') {
+      return;
+    }
     this._editorContainer.addUISourceCode(uiSourceCode);
   }
 
   _uiSourceCodeRemoved(event) {
-    var uiSourceCode = /** @type {!Workspace.UISourceCode} */ (event.data);
+    const uiSourceCode = /** @type {!Workspace.UISourceCode.UISourceCode} */ (event.data);
     this._removeUISourceCodes([uiSourceCode]);
   }
 
   /**
-   * @param {!Array.<!Workspace.UISourceCode>} uiSourceCodes
+   * @param {!Array.<!Workspace.UISourceCode.UISourceCode>} uiSourceCodes
    */
   _removeUISourceCodes(uiSourceCodes) {
     this._editorContainer.removeUISourceCodes(uiSourceCodes);
-    for (var i = 0; i < uiSourceCodes.length; ++i) {
+    for (let i = 0; i < uiSourceCodes.length; ++i) {
       this._removeSourceFrame(uiSourceCodes[i]);
       this._historyManager.removeHistoryForSourceCode(uiSourceCodes[i]);
     }
   }
 
   _projectRemoved(event) {
-    var project = event.data;
-    var uiSourceCodes = project.uiSourceCodes();
+    const project = event.data;
+    const uiSourceCodes = project.uiSourceCodes();
     this._removeUISourceCodes(uiSourceCodes);
   }
 
   _updateScriptViewToolbarItems() {
     this._scriptViewToolbar.removeToolbarItems();
-    var view = this.visibleView();
-    if (view instanceof UI.SimpleView) {
-      for (var item of (/** @type {?UI.SimpleView} */ (view)).syncToolbarItems())
-        this._scriptViewToolbar.appendToolbarItem(item);
+    const view = this.visibleView();
+    if (view instanceof UI.View.SimpleView) {
+      (/** @type {?UI.View.SimpleView} */ (view)).toolbarItems().then(items => {
+        items.map(item => this._scriptViewToolbar.appendToolbarItem(item));
+      });
     }
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    * @param {number=} lineNumber 0-based
    * @param {number=} columnNumber
    * @param {boolean=} omitFocus
@@ -338,188 +393,149 @@ Sources.SourcesView = class extends UI.VBox {
   showSourceLocation(uiSourceCode, lineNumber, columnNumber, omitFocus, omitHighlight) {
     this._historyManager.updateCurrentState();
     this._editorContainer.showFile(uiSourceCode);
-    var currentSourceFrame = this.currentSourceFrame();
-    if (currentSourceFrame && typeof lineNumber === 'number')
+    const currentSourceFrame = this.currentSourceFrame();
+    if (currentSourceFrame && typeof lineNumber === 'number') {
       currentSourceFrame.revealPosition(lineNumber, columnNumber, !omitHighlight);
+    }
     this._historyManager.pushNewState();
-    if (!omitFocus)
+    if (!omitFocus) {
       this.visibleView().focus();
+    }
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @return {!UI.Widget}
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {!UI.Widget.Widget}
    */
   _createSourceView(uiSourceCode) {
-    var sourceFrame;
-    var sourceView;
-    var contentType = uiSourceCode.contentType();
+    let sourceFrame;
+    let sourceView;
+    const contentType = uiSourceCode.contentType();
 
-    if (contentType.hasScripts())
-      sourceFrame = new Sources.JavaScriptSourceFrame(uiSourceCode);
-    else if (contentType.isStyleSheet())
-      sourceFrame = new Sources.CSSSourceFrame(uiSourceCode);
-    else if (contentType === Common.resourceTypes.Image)
-      sourceView = new SourceFrame.ImageView(uiSourceCode.mimeType(), uiSourceCode);
-    else if (contentType === Common.resourceTypes.Font)
-      sourceView = new SourceFrame.FontView(uiSourceCode.mimeType(), uiSourceCode);
-    else
-      sourceFrame = new SourceFrame.UISourceCodeFrame(uiSourceCode);
+    if (contentType === Common.ResourceType.resourceTypes.Image) {
+      sourceView = new SourceFrame.ImageView.ImageView(uiSourceCode.mimeType(), uiSourceCode);
+    } else if (contentType === Common.ResourceType.resourceTypes.Font) {
+      sourceView = new SourceFrame.FontView.FontView(uiSourceCode.mimeType(), uiSourceCode);
+    } else {
+      sourceFrame = new UISourceCodeFrame(uiSourceCode);
+    }
 
     if (sourceFrame) {
-      sourceFrame.setHighlighterType(uiSourceCode.mimeType());
       this._historyManager.trackSourceFrameCursorJumps(sourceFrame);
     }
-    var widget = /** @type {!UI.Widget} */ (sourceFrame || sourceView);
+
+    const widget = /** @type {!UI.Widget.Widget} */ (sourceFrame || sourceView);
     this._sourceViewByUISourceCode.set(uiSourceCode, widget);
-    uiSourceCode.addEventListener(Workspace.UISourceCode.Events.TitleChanged, this._uiSourceCodeTitleChanged, this);
     return widget;
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @return {!UI.Widget}
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {!UI.Widget.Widget}
    */
   _getOrCreateSourceView(uiSourceCode) {
     return this._sourceViewByUISourceCode.get(uiSourceCode) || this._createSourceView(uiSourceCode);
   }
 
   /**
-   * @param {!SourceFrame.UISourceCodeFrame} sourceFrame
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @return {boolean}
+   * @override
+   * @param {!UISourceCodeFrame} sourceFrame
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
-  _sourceFrameMatchesUISourceCode(sourceFrame, uiSourceCode) {
-    if (uiSourceCode.contentType().hasScripts())
-      return sourceFrame instanceof Sources.JavaScriptSourceFrame;
-    if (uiSourceCode.contentType().isStyleSheet())
-      return sourceFrame instanceof Sources.CSSSourceFrame;
-    return !(sourceFrame instanceof Sources.JavaScriptSourceFrame);
-  }
-
-  /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   */
-  _recreateSourceFrameIfNeeded(uiSourceCode) {
-    var oldSourceView = this._sourceViewByUISourceCode.get(uiSourceCode);
-    if (!oldSourceView || !(oldSourceView instanceof SourceFrame.UISourceCodeFrame))
-      return;
-    var oldSourceFrame = /** @type {!SourceFrame.UISourceCodeFrame} */ (oldSourceView);
-    if (this._sourceFrameMatchesUISourceCode(oldSourceFrame, uiSourceCode)) {
-      oldSourceFrame.setHighlighterType(uiSourceCode.mimeType());
-    } else {
-      this._editorContainer.removeUISourceCode(uiSourceCode);
-      this._removeSourceFrame(uiSourceCode);
-    }
+  recycleUISourceCodeFrame(sourceFrame, uiSourceCode) {
+    this._sourceViewByUISourceCode.delete(sourceFrame.uiSourceCode());
+    sourceFrame.setUISourceCode(uiSourceCode);
+    this._sourceViewByUISourceCode.set(uiSourceCode, sourceFrame);
   }
 
   /**
    * @override
-   * @param {!Workspace.UISourceCode} uiSourceCode
-   * @return {!UI.Widget}
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
+   * @return {!UI.Widget.Widget}
    */
   viewForFile(uiSourceCode) {
     return this._getOrCreateSourceView(uiSourceCode);
   }
 
   /**
-   * @param {!Workspace.UISourceCode} uiSourceCode
+   * @param {!Workspace.UISourceCode.UISourceCode} uiSourceCode
    */
   _removeSourceFrame(uiSourceCode) {
-    var sourceView = this._sourceViewByUISourceCode.get(uiSourceCode);
+    const sourceView = this._sourceViewByUISourceCode.get(uiSourceCode);
     this._sourceViewByUISourceCode.remove(uiSourceCode);
-    uiSourceCode.removeEventListener(Workspace.UISourceCode.Events.TitleChanged, this._uiSourceCodeTitleChanged, this);
-    if (sourceView && sourceView instanceof SourceFrame.UISourceCodeFrame)
-      /** @type {!SourceFrame.UISourceCodeFrame} */ (sourceView).dispose();
-  }
-
-  _onBindingChanged() {
-    this.setExecutionLocation(this._executionLocation);
-    this.showSourceLocation(
-        this._executionLocation.uiSourceCode, this._executionLocation.lineNumber, this._executionLocation.columnNumber);
-  }
-
-  clearCurrentExecutionLine() {
-    if (!this._executionLocation)
-      return;
-    Persistence.persistence.unsubscribeFromBindingEvent(this._executionLocation.uiSourceCode, this._bindingChangeBound);
-    this._executionSourceFrame.clearExecutionLine();
-    this._executionSourceFrame = null;
-    this._executionLocation = null;
+    if (sourceView && sourceView instanceof UISourceCodeFrame) {
+      /** @type {!UISourceCodeFrame} */ (sourceView).dispose();
+    }
   }
 
   /**
-   * @param {!Workspace.UILocation} uiLocation
-   */
-  setExecutionLocation(uiLocation) {
-    this.clearCurrentExecutionLine();
-    var binding = Persistence.persistence.binding(uiLocation.uiSourceCode);
-    var uiSourceCode = binding ? binding.fileSystem : uiLocation.uiSourceCode;
-    var sourceView = this._getOrCreateSourceView(uiSourceCode);
-    if (!(sourceView instanceof SourceFrame.UISourceCodeFrame))
-      return;
-    Persistence.persistence.subscribeForBindingEvent(uiLocation.uiSourceCode, this._bindingChangeBound);
-    var sourceFrame = /** @type {!Sources.JavaScriptSourceFrame} */ (sourceView);
-    sourceFrame.setExecutionLocation(
-        new Workspace.UILocation(uiSourceCode, uiLocation.lineNumber, uiLocation.columnNumber));
-    this._executionSourceFrame = sourceFrame;
-    this._executionLocation = uiLocation;
-  }
-
-  /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _editorClosed(event) {
-    var uiSourceCode = /** @type {!Workspace.UISourceCode} */ (event.data);
+    const uiSourceCode = /** @type {!Workspace.UISourceCode.UISourceCode} */ (event.data);
     this._historyManager.removeHistoryForSourceCode(uiSourceCode);
 
-    var wasSelected = false;
-    if (!this._editorContainer.currentFile())
+    let wasSelected = false;
+    if (!this._editorContainer.currentFile()) {
       wasSelected = true;
+    }
 
     // SourcesNavigator does not need to update on EditorClosed.
+    this._removeToolbarChangedListener();
     this._updateScriptViewToolbarItems();
     this._searchableView.resetSearch();
 
-    var data = {};
+    const data = {};
     data.uiSourceCode = uiSourceCode;
     data.wasSelected = wasSelected;
-    this.dispatchEventToListeners(Sources.SourcesView.Events.EditorClosed, data);
+    this.dispatchEventToListeners(Events.EditorClosed, data);
   }
 
   /**
-   * @param {!Common.Event} event
+   * @param {!Common.EventTarget.EventTargetEvent} event
    */
   _editorSelected(event) {
-    var previousSourceFrame =
-        event.data.previousView instanceof SourceFrame.UISourceCodeFrame ? event.data.previousView : null;
-    if (previousSourceFrame)
+    const previousSourceFrame = event.data.previousView instanceof UISourceCodeFrame ? event.data.previousView : null;
+    if (previousSourceFrame) {
       previousSourceFrame.setSearchableView(null);
-    var currentSourceFrame =
-        event.data.currentView instanceof SourceFrame.UISourceCodeFrame ? event.data.currentView : null;
-    if (currentSourceFrame)
+    }
+    const currentSourceFrame = event.data.currentView instanceof UISourceCodeFrame ? event.data.currentView : null;
+    if (currentSourceFrame) {
       currentSourceFrame.setSearchableView(this._searchableView);
+    }
 
     this._searchableView.setReplaceable(!!currentSourceFrame && currentSourceFrame.canEditSource());
     this._searchableView.refreshSearch();
+    this._updateToolbarChangedListener();
     this._updateScriptViewToolbarItems();
 
-    this.dispatchEventToListeners(Sources.SourcesView.Events.EditorSelected, this._editorContainer.currentFile());
+    this.dispatchEventToListeners(Events.EditorSelected, this._editorContainer.currentFile());
   }
 
-  /**
-   * @param {!Common.Event} event
-   */
-  _uiSourceCodeTitleChanged(event) {
-    this._recreateSourceFrameIfNeeded(/** @type {!Workspace.UISourceCode} */ (event.data));
+  _removeToolbarChangedListener() {
+    if (this._toolbarChangedListener) {
+      Common.EventTarget.EventTarget.removeEventListeners([this._toolbarChangedListener]);
+    }
+    this._toolbarChangedListener = null;
+  }
+
+  _updateToolbarChangedListener() {
+    this._removeToolbarChangedListener();
+    const sourceFrame = this.currentSourceFrame();
+    if (!sourceFrame) {
+      return;
+    }
+    this._toolbarChangedListener = sourceFrame.addEventListener(
+        UISourceCodeFrameEvents.ToolbarItemsChanged, this._updateScriptViewToolbarItems, this);
   }
 
   /**
    * @override
    */
   searchCanceled() {
-    if (this._searchView)
+    if (this._searchView) {
       this._searchView.searchCanceled();
+    }
 
     delete this._searchView;
     delete this._searchConfig;
@@ -532,9 +548,10 @@ Sources.SourcesView = class extends UI.VBox {
    * @param {boolean=} jumpBackwards
    */
   performSearch(searchConfig, shouldJump, jumpBackwards) {
-    var sourceFrame = this.currentSourceFrame();
-    if (!sourceFrame)
+    const sourceFrame = this.currentSourceFrame();
+    if (!sourceFrame) {
       return;
+    }
 
     this._searchView = sourceFrame;
     this._searchConfig = searchConfig;
@@ -546,8 +563,9 @@ Sources.SourcesView = class extends UI.VBox {
    * @override
    */
   jumpToNextSearchResult() {
-    if (!this._searchView)
+    if (!this._searchView) {
       return;
+    }
 
     if (this._searchView !== this.currentSourceFrame()) {
       this.performSearch(this._searchConfig, true);
@@ -561,13 +579,15 @@ Sources.SourcesView = class extends UI.VBox {
    * @override
    */
   jumpToPreviousSearchResult() {
-    if (!this._searchView)
+    if (!this._searchView) {
       return;
+    }
 
     if (this._searchView !== this.currentSourceFrame()) {
       this.performSearch(this._searchConfig, true);
-      if (this._searchView)
+      if (this._searchView) {
         this._searchView.jumpToLastSearchResult();
+      }
       return;
     }
 
@@ -596,7 +616,7 @@ Sources.SourcesView = class extends UI.VBox {
    * @param {string} replacement
    */
   replaceSelectionWith(searchConfig, replacement) {
-    var sourceFrame = this.currentSourceFrame();
+    const sourceFrame = this.currentSourceFrame();
     if (!sourceFrame) {
       console.assert(sourceFrame);
       return;
@@ -610,7 +630,7 @@ Sources.SourcesView = class extends UI.VBox {
    * @param {string} replacement
    */
   replaceAllWith(searchConfig, replacement) {
-    var sourceFrame = this.currentSourceFrame();
+    const sourceFrame = this.currentSourceFrame();
     if (!sourceFrame) {
       console.assert(sourceFrame);
       return;
@@ -618,66 +638,34 @@ Sources.SourcesView = class extends UI.VBox {
     sourceFrame.replaceAllWith(searchConfig, replacement);
   }
 
-  /**
-   * @param {!Event=} event
-   */
-  _showOutlineQuickOpen(event) {
-    QuickOpen.QuickOpen.show('@');
-    return true;
+  _showOutlineQuickOpen() {
+    QuickOpen.QuickOpen.QuickOpenImpl.show('@');
   }
 
-  /**
-   * @param {!Event=} event
-   * @return {boolean}
-   */
-  _showGoToLineQuickOpen(event) {
-    if (this._editorContainer.currentFile())
-      QuickOpen.QuickOpen.show(':');
-    return true;
+  _showGoToLineQuickOpen() {
+    if (this._editorContainer.currentFile()) {
+      QuickOpen.QuickOpen.QuickOpenImpl.show(':');
+    }
   }
 
-  /**
-   * @return {boolean}
-   */
   _save() {
     this._saveSourceFrame(this.currentSourceFrame());
-    return true;
   }
 
-  /**
-   * @return {boolean}
-   */
   _saveAll() {
-    var sourceFrames = this._editorContainer.fileViews();
+    const sourceFrames = this._editorContainer.fileViews();
     sourceFrames.forEach(this._saveSourceFrame.bind(this));
-    return true;
   }
 
   /**
-   * @param {?UI.Widget} sourceFrame
+   * @param {?UI.Widget.Widget} sourceFrame
    */
   _saveSourceFrame(sourceFrame) {
-    if (!(sourceFrame instanceof SourceFrame.UISourceCodeFrame))
+    if (!(sourceFrame instanceof UISourceCodeFrame)) {
       return;
-    var uiSourceCodeFrame = /** @type {!SourceFrame.UISourceCodeFrame} */ (sourceFrame);
-    uiSourceCodeFrame.commitEditing();
-  }
-
-  /**
-   * @param {boolean} onlyDisable
-   * @return {boolean}
-   */
-  _toggleBreakpoint(onlyDisable) {
-    var sourceFrame = this.currentSourceFrame();
-    if (!sourceFrame)
-      return false;
-
-    if (sourceFrame instanceof Sources.JavaScriptSourceFrame) {
-      var javaScriptSourceFrame = /** @type {!Sources.JavaScriptSourceFrame} */ (sourceFrame);
-      javaScriptSourceFrame.toggleBreakpointOnCurrentLine(onlyDisable);
-      return true;
     }
-    return false;
+    const uiSourceCodeFrame = /** @type {!UISourceCodeFrame} */ (sourceFrame);
+    uiSourceCodeFrame.commitEditing();
   }
 
   /**
@@ -686,10 +674,10 @@ Sources.SourcesView = class extends UI.VBox {
   toggleBreakpointsActiveState(active) {
     this._editorContainer.view.element.classList.toggle('breakpoints-deactivated', !active);
   }
-};
+}
 
 /** @enum {symbol} */
-Sources.SourcesView.Events = {
+export const Events = {
   EditorClosed: Symbol('EditorClosed'),
   EditorSelected: Symbol('EditorSelected'),
 };
@@ -697,24 +685,22 @@ Sources.SourcesView.Events = {
 /**
  * @interface
  */
-Sources.SourcesView.EditorAction = function() {};
-
-Sources.SourcesView.EditorAction.prototype = {
+export class EditorAction {
   /**
-   * @param {!Sources.SourcesView} sourcesView
-   * @return {!UI.ToolbarButton}
+   * @param {!SourcesView} sourcesView
+   * @return {!UI.Toolbar.ToolbarButton}
    */
   button(sourcesView) {}
-};
+}
 
 /**
- * @implements {UI.ActionDelegate}
+ * @implements {UI.ActionDelegate.ActionDelegate}
  * @unrestricted
  */
-Sources.SourcesView.SwitchFileActionDelegate = class {
+export class SwitchFileActionDelegate {
   /**
-   * @param {!Workspace.UISourceCode} currentUISourceCode
-   * @return {?Workspace.UISourceCode}
+   * @param {!Workspace.UISourceCode.UISourceCode} currentUISourceCode
+   * @return {?Workspace.UISourceCode.UISourceCode}
    */
   static _nextFile(currentUISourceCode) {
     /**
@@ -722,66 +708,96 @@ Sources.SourcesView.SwitchFileActionDelegate = class {
      * @return {string}
      */
     function fileNamePrefix(name) {
-      var lastDotIndex = name.lastIndexOf('.');
-      var namePrefix = name.substr(0, lastDotIndex !== -1 ? lastDotIndex : name.length);
+      const lastDotIndex = name.lastIndexOf('.');
+      const namePrefix = name.substr(0, lastDotIndex !== -1 ? lastDotIndex : name.length);
       return namePrefix.toLowerCase();
     }
 
-    var uiSourceCodes = currentUISourceCode.project().uiSourceCodes();
-    var candidates = [];
-    var url = currentUISourceCode.parentURL();
-    var name = currentUISourceCode.name();
-    var namePrefix = fileNamePrefix(name);
-    for (var i = 0; i < uiSourceCodes.length; ++i) {
-      var uiSourceCode = uiSourceCodes[i];
-      if (url !== uiSourceCode.parentURL())
+    const uiSourceCodes = currentUISourceCode.project().uiSourceCodes();
+    const candidates = [];
+    const url = currentUISourceCode.parentURL();
+    const name = currentUISourceCode.name();
+    const namePrefix = fileNamePrefix(name);
+    for (let i = 0; i < uiSourceCodes.length; ++i) {
+      const uiSourceCode = uiSourceCodes[i];
+      if (url !== uiSourceCode.parentURL()) {
         continue;
-      if (fileNamePrefix(uiSourceCode.name()) === namePrefix)
+      }
+      if (fileNamePrefix(uiSourceCode.name()) === namePrefix) {
         candidates.push(uiSourceCode.name());
+      }
     }
     candidates.sort(String.naturalOrderComparator);
-    var index = mod(candidates.indexOf(name) + 1, candidates.length);
-    var fullURL = (url ? url + '/' : '') + candidates[index];
-    var nextUISourceCode = currentUISourceCode.project().uiSourceCodeForURL(fullURL);
+    const index = mod(candidates.indexOf(name) + 1, candidates.length);
+    const fullURL = (url ? url + '/' : '') + candidates[index];
+    const nextUISourceCode = currentUISourceCode.project().uiSourceCodeForURL(fullURL);
     return nextUISourceCode !== currentUISourceCode ? nextUISourceCode : null;
   }
 
   /**
    * @override
-   * @param {!UI.Context} context
+   * @param {!UI.Context.Context} context
    * @param {string} actionId
    * @return {boolean}
    */
   handleAction(context, actionId) {
-    var sourcesView = UI.context.flavor(Sources.SourcesView);
-    var currentUISourceCode = sourcesView.currentUISourceCode();
-    if (!currentUISourceCode)
+    const sourcesView = self.UI.context.flavor(SourcesView);
+    const currentUISourceCode = sourcesView.currentUISourceCode();
+    if (!currentUISourceCode) {
       return false;
-    var nextUISourceCode = Sources.SourcesView.SwitchFileActionDelegate._nextFile(currentUISourceCode);
-    if (!nextUISourceCode)
+    }
+    const nextUISourceCode = SwitchFileActionDelegate._nextFile(currentUISourceCode);
+    if (!nextUISourceCode) {
       return false;
+    }
     sourcesView.showSourceLocation(nextUISourceCode);
     return true;
   }
-};
-
+}
 
 /**
- * @implements {UI.ActionDelegate}
+ * @implements {UI.ActionDelegate.ActionDelegate}
  * @unrestricted
  */
-Sources.SourcesView.CloseAllActionDelegate = class {
+export class ActionDelegate {
   /**
    * @override
-   * @param {!UI.Context} context
+   * @param {!UI.Context.Context} context
    * @param {string} actionId
    * @return {boolean}
    */
   handleAction(context, actionId) {
-    var sourcesView = UI.context.flavor(Sources.SourcesView);
-    if (!sourcesView)
+    const sourcesView = self.UI.context.flavor(SourcesView);
+    if (!sourcesView) {
       return false;
-    sourcesView._editorContainer.closeAllFiles();
-    return true;
+    }
+
+    switch (actionId) {
+      case 'sources.close-all':
+        sourcesView._editorContainer.closeAllFiles();
+        return true;
+      case 'sources.jump-to-previous-location':
+        sourcesView._onJumpToPreviousLocation();
+        return true;
+      case 'sources.jump-to-next-location':
+        sourcesView._onJumpToNextLocation();
+        return true;
+      case 'sources.close-editor-tab':
+        return sourcesView._onCloseEditorTab();
+      case 'sources.go-to-line':
+        sourcesView._showGoToLineQuickOpen();
+        return true;
+      case 'sources.go-to-member':
+        sourcesView._showOutlineQuickOpen();
+        return true;
+      case 'sources.save':
+        sourcesView._save();
+        return true;
+      case 'sources.save-all':
+        sourcesView._saveAll();
+        return true;
+    }
+
+    return false;
   }
-};
+}

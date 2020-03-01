@@ -10,9 +10,12 @@
   "dependencies": [
     "common",
     "ui",
-    "console_model"
+    "sdk"
   ],
-  "scripts": [
+  "scripts": [],
+  "modules": [
+    "console_counters.js",
+    "console_counters-legacy.js",
     "WarningErrorCounter.js"
   ],
   "resources": [

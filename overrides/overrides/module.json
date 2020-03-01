@@ -58,6 +58,68 @@
                     "value": "trailing"
                 }
             ]
+        },
+        {
+            "type": "setting",
+            "category": "Appearance",
+            "title": "Disable paused state overlay",
+            "settingName": "disablePausedStateOverlay",
+            "settingType": "boolean",
+            "defaultValue": false
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Allow scrolling past end of file",
+            "settingName": "allowScrollPastEof",
+            "settingType": "boolean",
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Allow scrolling past end of file"
+                },
+                {
+                    "value": false,
+                    "title": "Disallow scrolling past end of file"
+                }
+            ]
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Code folding",
+            "settingName": "textEditorCodeFolding",
+            "settingType": "boolean",
+            "defaultValue": false,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable code folding"
+                },
+                {
+                    "value": false,
+                    "title": "Disable code folding"
+                }
+            ]
+        },
+        {
+            "type": "setting",
+            "category": "Sources",
+            "title": "Autocompletion",
+            "settingName": "textEditorAutocompletion",
+            "settingType": "boolean",
+            "defaultValue": true,
+            "options": [
+                {
+                    "value": true,
+                    "title": "Enable autocompletion"
+                },
+                {
+                    "value": false,
+                    "title": "Disable autocompletion"
+                }
+            ]
         }
 	]
 }

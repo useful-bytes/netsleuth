@@ -27,31 +27,40 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Common from '../common/common.js';  // eslint-disable-line no-unused-vars
+import * as UI from '../ui/ui.js';
+
+import {SourceFrameImpl} from './SourceFrame.js';
+
 /**
  * @unrestricted
  */
-SourceFrame.ResourceSourceFrame = class extends SourceFrame.SourceFrame {
+export class ResourceSourceFrame extends SourceFrameImpl {
   /**
-   * @param {!Common.ContentProvider} resource
+   * @param {!Common.ContentProvider.ContentProvider} resource
+   * @param {boolean=} autoPrettyPrint
+   * @param {!UI.TextEditor.Options=} codeMirrorOptions
    */
-  constructor(resource) {
-    super(resource.requestContent.bind(resource));
+  constructor(resource, autoPrettyPrint, codeMirrorOptions) {
+    super(async () => {
+      let content = (await resource.requestContent()).content || '';
+      if (await resource.contentEncoded()) {
+        content = window.atob(content);
+      }
+      return {content, isEncoded: false};
+    }, codeMirrorOptions);
     this._resource = resource;
+    this.setCanPrettyPrint(this._resource.contentType().isDocumentOrScriptOrStyleSheet(), autoPrettyPrint);
   }
 
   /**
-   * @param {!Common.ContentProvider} resource
+   * @param {!Common.ContentProvider.ContentProvider} resource
    * @param {string} highlighterType
-   * @return {!UI.SearchableView}
+   * @param {boolean=} autoPrettyPrint
+   * @return {!UI.Widget.Widget}
    */
-  static createSearchableView(resource, highlighterType) {
-    var sourceFrame = new SourceFrame.ResourceSourceFrame(resource);
-    sourceFrame.setHighlighterType(highlighterType);
-    var searchableView = new UI.SearchableView(sourceFrame);
-    searchableView.setPlaceholder(Common.UIString('Find'));
-    sourceFrame.show(searchableView.element);
-    sourceFrame.setSearchableView(searchableView);
-    return searchableView;
+  static createSearchableView(resource, highlighterType, autoPrettyPrint) {
+    return new SearchableContainer(resource, highlighterType, autoPrettyPrint);
   }
 
   get resource() {
@@ -60,7 +69,7 @@ SourceFrame.ResourceSourceFrame = class extends SourceFrame.SourceFrame {
 
   /**
    * @override
-   * @param {!UI.ContextMenu} contextMenu
+   * @param {!UI.ContextMenu.ContextMenu} contextMenu
    * @param {number} lineNumber
    * @param {number} columnNumber
    * @return {!Promise}
@@ -69,4 +78,39 @@ SourceFrame.ResourceSourceFrame = class extends SourceFrame.SourceFrame {
     contextMenu.appendApplicableItems(this._resource);
     return Promise.resolve();
   }
-};
+}
+
+export class SearchableContainer extends UI.Widget.VBox {
+  /**
+   * @param {!Common.ContentProvider.ContentProvider} resource
+   * @param {string} highlighterType
+   * @param {boolean=} autoPrettyPrint
+   * @return {!UI.Widget.Widget}
+   */
+  constructor(resource, highlighterType, autoPrettyPrint) {
+    super(true);
+    this.registerRequiredCSS('source_frame/resourceSourceFrame.css');
+    const sourceFrame = new ResourceSourceFrame(resource, autoPrettyPrint);
+    this._sourceFrame = sourceFrame;
+    sourceFrame.setHighlighterType(highlighterType);
+    const searchableView = new UI.SearchableView.SearchableView(sourceFrame);
+    searchableView.element.classList.add('searchable-view');
+    searchableView.setPlaceholder(ls`Find`);
+    sourceFrame.show(searchableView.element);
+    sourceFrame.setSearchableView(searchableView);
+    searchableView.show(this.contentElement);
+
+    const toolbar = new UI.Toolbar.Toolbar('toolbar', this.contentElement);
+    sourceFrame.toolbarItems().then(items => {
+      items.map(item => toolbar.appendToolbarItem(item));
+    });
+  }
+
+  /**
+   * @param {number} lineNumber
+   * @param {number=} columnNumber
+   */
+  async revealPosition(lineNumber, columnNumber) {
+    this._sourceFrame.revealPosition(lineNumber, columnNumber, true);
+  }
+}

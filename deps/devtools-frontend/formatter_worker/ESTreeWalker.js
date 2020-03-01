@@ -1,10 +1,14 @@
 // Copyright (c) 2014 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
+
+/** @type {!Object} */
+const SkipSubTreeObject = {};
+
 /**
  * @unrestricted
  */
-FormatterWorker.ESTreeWalker = class {
+export class ESTreeWalker {
   /**
    * @param {function(!ESTree.Node):(!Object|undefined)} beforeVisit
    * @param {function(!ESTree.Node)=} afterVisit
@@ -13,6 +17,13 @@ FormatterWorker.ESTreeWalker = class {
     this._beforeVisit = beforeVisit;
     this._afterVisit = afterVisit || new Function();
     this._walkNulls = false;
+  }
+
+  /**
+   * @return {!Object}
+   */
+  static get SkipSubtree() {
+    return SkipSubTreeObject;
   }
 
   /**
@@ -35,41 +46,43 @@ FormatterWorker.ESTreeWalker = class {
    */
   _innerWalk(node, parent) {
     if (!node && parent && this._walkNulls) {
-      var result = /** @type {!Object} */ ({raw: 'null', value: null});
+      const result = /** @type {!Object} */ ({raw: 'null', value: null});
       result.type = 'Literal';
       node = /** @type {!ESTree.Node} */ (result);
     }
 
-    if (!node)
+    if (!node) {
       return;
+    }
     node.parent = parent;
 
-    if (this._beforeVisit.call(null, node) === FormatterWorker.ESTreeWalker.SkipSubtree) {
+    if (this._beforeVisit.call(null, node) === ESTreeWalker.SkipSubtree) {
       this._afterVisit.call(null, node);
       return;
     }
 
-    var walkOrder = FormatterWorker.ESTreeWalker._walkOrder[node.type];
+    const walkOrder = _walkOrder[node.type];
     if (!walkOrder) {
       console.error('Walk order not defined for ' + node.type);
       return;
     }
 
     if (node.type === 'TemplateLiteral') {
-      var templateLiteral = /** @type {!ESTree.TemplateLiteralNode} */ (node);
-      var expressionsLength = templateLiteral.expressions.length;
-      for (var i = 0; i < expressionsLength; ++i) {
+      const templateLiteral = /** @type {!ESTree.TemplateLiteralNode} */ (node);
+      const expressionsLength = templateLiteral.expressions.length;
+      for (let i = 0; i < expressionsLength; ++i) {
         this._innerWalk(templateLiteral.quasis[i], templateLiteral);
         this._innerWalk(templateLiteral.expressions[i], templateLiteral);
       }
       this._innerWalk(templateLiteral.quasis[expressionsLength], templateLiteral);
     } else {
-      for (var i = 0; i < walkOrder.length; ++i) {
-        var entity = node[walkOrder[i]];
-        if (Array.isArray(entity))
+      for (let i = 0; i < walkOrder.length; ++i) {
+        const entity = node[walkOrder[i]];
+        if (Array.isArray(entity)) {
           this._walkArray(entity, node);
-        else
+        } else {
           this._innerWalk(entity, node);
+        }
       }
     }
 
@@ -81,20 +94,20 @@ FormatterWorker.ESTreeWalker = class {
    * @param {?ESTree.Node} parentNode
    */
   _walkArray(nodeArray, parentNode) {
-    for (var i = 0; i < nodeArray.length; ++i)
+    for (let i = 0; i < nodeArray.length; ++i) {
       this._innerWalk(nodeArray[i], parentNode);
+    }
   }
-};
-
-/** @typedef {!Object} FormatterWorker.ESTreeWalker.SkipSubtree */
-FormatterWorker.ESTreeWalker.SkipSubtree = {};
+}
 
 /** @enum {!Array.<string>} */
-FormatterWorker.ESTreeWalker._walkOrder = {
+const _walkOrder = {
   'AwaitExpression': ['arguments'],
   'ArrayExpression': ['elements'],
+  'ArrayPattern': ['elements'],
   'ArrowFunctionExpression': ['params', 'body'],
   'AssignmentExpression': ['left', 'right'],
+  'AssignmentPattern': ['left', 'right'],
   'BinaryExpression': ['left', 'right'],
   'BlockStatement': ['body'],
   'BreakStatement': ['label'],
@@ -115,6 +128,11 @@ FormatterWorker.ESTreeWalker._walkOrder = {
   'FunctionDeclaration': ['id', 'params', 'body'],
   'FunctionExpression': ['id', 'params', 'body'],
   'Identifier': [],
+  'ImportDeclaration': ['specifiers', 'source'],
+  'ImportExpression': ['source'],
+  'ExportAllDeclaration': ['source'],
+  'ExportDefaultDeclaration': ['declaration'],
+  'ExportNamedDeclaration': ['specifiers', 'source', 'declaration'],
   'IfStatement': ['test', 'consequent', 'alternate'],
   'LabeledStatement': ['label', 'body'],
   'Literal': [],
@@ -127,8 +145,10 @@ FormatterWorker.ESTreeWalker._walkOrder = {
   'ParenthesizedExpression': ['expression'],
   'Program': ['body'],
   'Property': ['key', 'value'],
+  'RestElement': ['argument'],
   'ReturnStatement': ['argument'],
   'SequenceExpression': ['expressions'],
+  'SpreadElement': ['argument'],
   'Super': [],
   'SwitchCase': ['test', 'consequent'],
   'SwitchStatement': ['discriminant', 'cases'],

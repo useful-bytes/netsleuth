@@ -26,34 +26,55 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Common from '../common/common.js';
+import * as Host from '../host/host.js';
+import * as UI from '../ui/ui.js';
+import * as Workspace from '../workspace/workspace.js';
+
 /**
  * @unrestricted
  */
-SourceFrame.ImageView = class extends UI.SimpleView {
+export class ImageView extends UI.View.SimpleView {
   /**
    * @param {string} mimeType
-   * @param {!Common.ContentProvider} contentProvider
+   * @param {!Common.ContentProvider.ContentProvider} contentProvider
    */
   constructor(mimeType, contentProvider) {
-    super(Common.UIString('Image'));
+    super(Common.UIString.UIString('Image'));
     this.registerRequiredCSS('source_frame/imageView.css');
+    this.element.tabIndex = 0;
     this.element.classList.add('image-view');
     this._url = contentProvider.contentURL();
-    this._parsedURL = new Common.ParsedURL(this._url);
+    this._parsedURL = new Common.ParsedURL.ParsedURL(this._url);
     this._mimeType = mimeType;
     this._contentProvider = contentProvider;
-    this._sizeLabel = new UI.ToolbarText();
-    this._dimensionsLabel = new UI.ToolbarText();
-    this._mimeTypeLabel = new UI.ToolbarText(mimeType);
+    this._uiSourceCode = contentProvider instanceof Workspace.UISourceCode.UISourceCode ?
+        /** @type {!Workspace.UISourceCode.UISourceCode} */ (contentProvider) :
+        null;
+    if (this._uiSourceCode) {
+      this._uiSourceCode.addEventListener(
+          Workspace.UISourceCode.Events.WorkingCopyCommitted, this._workingCopyCommitted, this);
+      new UI.DropTarget.DropTarget(
+          this.element, [UI.DropTarget.Type.ImageFile, UI.DropTarget.Type.URI],
+          Common.UIString.UIString('Drop image file here'), this._handleDrop.bind(this));
+    }
+    this._sizeLabel = new UI.Toolbar.ToolbarText();
+    this._dimensionsLabel = new UI.Toolbar.ToolbarText();
+    this._mimeTypeLabel = new UI.Toolbar.ToolbarText(mimeType);
+    this._container = this.element.createChild('div', 'image');
+    this._imagePreviewElement = this._container.createChild('img', 'resource-image-view');
+    this._imagePreviewElement.addEventListener('contextmenu', this._contextMenu.bind(this), true);
+    this._imagePreviewElement.alt = ls`Image from ${this._url}`;
   }
 
   /**
    * @override
-   * @return {!Array<!UI.ToolbarItem>}
+   * @return {!Promise<!Array<!UI.Toolbar.ToolbarItem>>}
    */
-  syncToolbarItems() {
+  async toolbarItems() {
     return [
-      this._sizeLabel, new UI.ToolbarSeparator(), this._dimensionsLabel, new UI.ToolbarSeparator(), this._mimeTypeLabel
+      this._sizeLabel, new UI.Toolbar.ToolbarSeparator(), this._dimensionsLabel, new UI.Toolbar.ToolbarSeparator(),
+      this._mimeTypeLabel
     ];
   }
 
@@ -61,78 +82,111 @@ SourceFrame.ImageView = class extends UI.SimpleView {
    * @override
    */
   wasShown() {
-    this._createContentIfNeeded();
-  }
-
-  _createContentIfNeeded() {
-    if (this._container)
-      return;
-
-    this._container = this.element.createChild('div', 'image');
-    var imagePreviewElement = this._container.createChild('img', 'resource-image-view');
-    imagePreviewElement.addEventListener('contextmenu', this._contextMenu.bind(this), true);
-
-    this._contentProvider.requestContent().then(onContentAvailable.bind(this));
-
-    /**
-     * @param {?string} content
-     * @this {SourceFrame.ImageView}
-     */
-    function onContentAvailable(content) {
-      var imageSrc = Common.ContentProvider.contentAsDataURL(content, this._mimeType, true);
-      if (imageSrc === null)
-        imageSrc = this._url;
-      imagePreviewElement.src = imageSrc;
-      this._sizeLabel.setText(Number.bytesToString(this._base64ToSize(content)));
-      this._dimensionsLabel.setText(
-          Common.UIString('%d × %d', imagePreviewElement.naturalWidth, imagePreviewElement.naturalHeight));
-    }
-    this._imagePreviewElement = imagePreviewElement;
+    this._updateContentIfNeeded();
   }
 
   /**
-   * @param {?string} content
-   * @return {number}
+   * @override
    */
-  _base64ToSize(content) {
-    if (!content || !content.length)
-      return 0;
-    var size = (content.length || 0) * 3 / 4;
-    if (content.length > 0 && content[content.length - 1] === '=')
-      size--;
-    if (content.length > 1 && content[content.length - 2] === '=')
-      size--;
-    return size;
+  disposeView() {
+    if (this._uiSourceCode) {
+      this._uiSourceCode.removeEventListener(
+          Workspace.UISourceCode.Events.WorkingCopyCommitted, this._workingCopyCommitted, this);
+    }
+  }
+
+  _workingCopyCommitted() {
+    this._updateContentIfNeeded();
+  }
+
+  async _updateContentIfNeeded() {
+    const {content} = await this._contentProvider.requestContent();
+    if (this._cachedContent === content) {
+      return;
+    }
+
+    const contentEncoded = await this._contentProvider.contentEncoded();
+    this._cachedContent = content;
+    let imageSrc = Common.ContentProvider.contentAsDataURL(content, this._mimeType, contentEncoded);
+    if (content === null) {
+      imageSrc = this._url;
+    }
+    const loadPromise = new Promise(x => this._imagePreviewElement.onload = x);
+    this._imagePreviewElement.src = imageSrc;
+    const size = content && !contentEncoded ? content.length : base64ToSize(content);
+    this._sizeLabel.setText(Number.bytesToString(size));
+    await loadPromise;
+    this._dimensionsLabel.setText(Common.UIString.UIString(
+        '%d × %d', this._imagePreviewElement.naturalWidth, this._imagePreviewElement.naturalHeight));
   }
 
   _contextMenu(event) {
-    var contextMenu = new UI.ContextMenu(event);
-    if (!this._parsedURL.isDataURL())
-      contextMenu.appendItem(Common.UIString('Copy image URL'), this._copyImageURL.bind(this));
-    if (this._imagePreviewElement.src)
-      contextMenu.appendItem(Common.UIString('Copy image as data URI'), this._copyImageAsDataURL.bind(this));
+    const contextMenu = new UI.ContextMenu.ContextMenu(event);
+    if (!this._parsedURL.isDataURL()) {
+      contextMenu.clipboardSection().appendItem(
+          Common.UIString.UIString('Copy image URL'), this._copyImageURL.bind(this));
+    }
+    if (this._imagePreviewElement.src) {
+      contextMenu.clipboardSection().appendItem(
+          Common.UIString.UIString('Copy image as data URI'), this._copyImageAsDataURL.bind(this));
+    }
 
-    contextMenu.appendItem(Common.UIString('Open image in new tab'), this._openInNewTab.bind(this));
-    contextMenu.appendItem(Common.UIString('Save\u2026'), this._saveImage.bind(this));
+    contextMenu.clipboardSection().appendItem(
+        Common.UIString.UIString('Open image in new tab'), this._openInNewTab.bind(this));
+    contextMenu.clipboardSection().appendItem(Common.UIString.UIString('Save\u2026'), this._saveImage.bind(this));
     contextMenu.show();
   }
 
   _copyImageAsDataURL() {
-    InspectorFrontendHost.copyText(this._imagePreviewElement.src);
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.copyText(this._imagePreviewElement.src);
   }
 
   _copyImageURL() {
-    InspectorFrontendHost.copyText(this._url);
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.copyText(this._url);
   }
 
   _saveImage() {
-    var link = createElement('a');
+    const link = createElement('a');
     link.download = this._parsedURL.displayName;
     link.href = this._url;
     link.click();
   }
 
   _openInNewTab() {
-    InspectorFrontendHost.openInNewTab(this._url);
+    Host.InspectorFrontendHost.InspectorFrontendHostInstance.openInNewTab(this._url);
   }
-};
+
+  /**
+   * @param {!DataTransfer} dataTransfer
+   */
+  async _handleDrop(dataTransfer) {
+    const items = dataTransfer.items;
+    if (!items.length || items[0].kind !== 'file') {
+      return;
+    }
+
+    const entry = items[0].webkitGetAsEntry();
+    const encoded = !entry.name.endsWith('.svg');
+    entry.file(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        let result;
+        try {
+          result = /** @type {?string} */ (reader.result);
+        } catch (e) {
+          result = null;
+          console.error('Can\'t read file: ' + e);
+        }
+        if (typeof result !== 'string') {
+          return;
+        }
+        this._uiSourceCode.setContent(encoded ? btoa(result) : result, encoded);
+      };
+      if (encoded) {
+        reader.readAsBinaryString(file);
+      } else {
+        reader.readAsText(file);
+      }
+    });
+  }
+}

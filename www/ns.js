@@ -69,24 +69,44 @@ function hostid(name) {
 if (navigator.vendor != 'Google Inc.') $('#notchrome').show();
 
 if (!localStorage.nsinit) {
-	localStorage['Inspector.drawerSplitViewState'] = '{"horizontal":{"size":0,"showMode":"Both"}}';
-	localStorage.experiments = '{}';
-	localStorage.inspectorVersion = '25';
-	localStorage['network.group-by-frame'] = 'false';
-	localStorage.networkLogColumns = '{"name":{"visible":true,"title":"Name"},"method":{"visible":true,"title":"Method"},"status":{"visible":true,"title":"Status"},"protocol":{"visible":true,"title":"Protocol"},"scheme":{"visible":false,"title":"Scheme"},"domain":{"visible":false,"title":"Domain"},"remoteaddress":{"visible":false,"title":"Remote Address"},"type":{"visible":false,"title":"Type"},"initiator":{"visible":true,"title":"Initiator"},"cookies":{"visible":false,"title":"Cookies"},"setcookies":{"visible":false,"title":"Set Cookies"},"size":{"visible":true,"title":"Size"},"time":{"visible":true,"title":"Time"},"priority":{"visible":false,"title":"Priority"},"connectionid":{"visible":false,"title":"Connection ID"},"cache-control":{"visible":false,"title":"Cache-Control"},"connection":{"visible":false,"title":"Connection"},"content-encoding":{"visible":false,"title":"Content-Encoding"},"content-length":{"visible":false,"title":"Content-Length"},"etag":{"visible":false,"title":"ETag"},"keep-alive":{"visible":false,"title":"Keep-Alive"},"last-modified":{"visible":false,"title":"Last-Modified"},"server":{"visible":false,"title":"Server"},"vary":{"visible":false,"title":"Vary"},"waterfall":{"visible":false,"title":""}}';
-	localStorage.networkLogLargeRows = 'true';
-	localStorage.networkLogShowOverview = 'true';
-	localStorage.networkPanelSplitViewState = '{"vertical":{"size":0}}';
-	localStorage.networkPanelSplitViewWaterfall = '{"vertical":{"size":0}}';
-	localStorage['panel-selectedTab'] = '"network"';
+	localStorage['networkLogColumns'] = '"{"name":{"visible":true,"title":"Name"},"method":{"visible":true,"title":"Method"},"status":{"visible":true,"title":"Status"},"protocol":{"visible":true,"title":"Protocol"},"scheme":{"visible":false,"title":"Scheme"},"domain":{"visible":false,"title":"Domain"},"remoteaddress":{"visible":false,"title":"Remote Address"},"type":{"visible":false,"title":"Type"},"initiator":{"visible":true,"title":"Initiator"},"cookies":{"visible":false,"title":"Cookies"},"setcookies":{"visible":false,"title":"Set Cookies"},"size":{"visible":true,"title":"Size"},"time":{"visible":true,"title":"Time"},"priority":{"visible":false,"title":"Priority"},"connectionid":{"visible":false,"title":"Connection ID"},"cache-control":{"visible":false,"title":"Cache-Control"},"connection":{"visible":false,"title":"Connection"},"content-encoding":{"visible":false,"title":"Content-Encoding"},"content-length":{"visible":false,"title":"Content-Length"},"etag":{"visible":false,"title":"ETag"},"keep-alive":{"visible":false,"title":"Keep-Alive"},"last-modified":{"visible":false,"title":"Last-Modified"},"server":{"visible":false,"title":"Server"},"vary":{"visible":false,"title":"Vary"},"waterfall":{"visible":false,"title":""}}';
+	localStorage['networkShowSettingsToolbar'] = 'false';
+	localStorage['networkLogLargeRows'] = 'true';
+	localStorage['nsinit'] = 'true';
+	localStorage['networkResourceTypeFilters'] = '{"all":true}';
 	localStorage['request-info-formData-category-expanded'] = 'true';
-	localStorage['request-info-general-category-expanded'] = 'true';
+	localStorage['network.group-by-frame'] = 'false';
+	localStorage['sourcesPanelSplitViewState'] = '{"vertical":{"size":0,"showMode":"Both"}}';
+	localStorage['consoleHistory'] = '["help"]';
 	localStorage['request-info-queryString-category-expanded'] = 'true';
-	localStorage['request-info-requestHeaders-category-expanded'] = 'true';
-	localStorage['request-info-requestPayload-category-expanded'] = 'true';
+	localStorage['sourcesPanelNavigatorSplitViewState'] = '{"vertical":{"size":0,"showMode":"Both"}}';
+	localStorage['networkBlockedPatterns'] = '[]';
+	localStorage['networkPanelSidebarState'] = '{"vertical":{"size":0,"showMode":"OnlyMain"}}';
+	localStorage['drawer-view-tabOrder'] = '{"console-view":10,"network.config":20,"network.blocked-urls":30}';
+	localStorage['inspectorVersion'] = '28';
 	localStorage['request-info-responseHeaders-category-expanded'] = 'true';
-	localStorage.resourceViewTab = '"headers"';
-	localStorage.nsinit = true;
+	localStorage['request-info-requestHeaders-category-expanded'] = 'true';
+	localStorage['request-info-general-category-expanded'] = 'true';
+	localStorage['console.sidebarSelectedFilter'] = '"message"';
+	localStorage['drawer-view-closeableTabs'] = '{"network.blocked-urls":true,"network.config":true}';
+	localStorage['uiTheme'] = '"systemPreferred"';
+	localStorage['consoleShowSettingsToolbar'] = 'false';
+	localStorage['messageLevelFilters'] = '{"verbose":true,"info":true,"warning":true,"error":true}';
+	localStorage['drawer-view-selectedTab'] = '"console-view"';
+	localStorage['console.sidebar.width'] = '{"vertical":{"size":0,"showMode":"OnlyMain"}}';
+	localStorage['screencastEnabled'] = 'false';
+	localStorage['Inspector.drawerSplitViewState'] = '{"horizontal":{"size":0,"showMode":"Both"}}';
+	localStorage['releaseNoteVersionSeen'] = '28';
+	localStorage['networkPanelSplitViewState'] = '{"vertical":{"size":0}}';
+	localStorage['consolePins'] = '[]';
+	localStorage['networkShowIssuesOnly'] = 'false';
+	localStorage['request-info-requestPayload-category-expanded'] = 'true';
+	localStorage['resourceWebSocketFrameSplitViewState'] = '{"horizontal":{"size":110}}';
+	localStorage['panel-selectedTab'] = '"network"';
+	localStorage['resourceViewTab'] = '"headers"';
+	localStorage['networkLogShowOverview'] = 'true';
+	localStorage['cacheDisabled'] = 'false';
+	localStorage['networkPanelSplitViewWaterfall'] = '{"vertical":{"size":0}}';
 }
 
 

@@ -23,13 +23,20 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as Common from '../common/common.js';
+import * as ProtocolModule from '../protocol/protocol.js';
+
+import {DebuggerModel, Location} from './DebuggerModel.js';  // eslint-disable-line no-unused-vars
+import {ResourceTreeModel} from './ResourceTreeModel.js';
+import {ExecutionContext} from './RuntimeModel.js';  // eslint-disable-line no-unused-vars
+
 /**
- * @implements {Common.ContentProvider}
+ * @implements {Common.ContentProvider.ContentProvider}
  * @unrestricted
  */
-SDK.Script = class {
+export class Script {
   /**
-   * @param {!SDK.DebuggerModel} debuggerModel
+   * @param {!DebuggerModel} debuggerModel
    * @param {string} scriptId
    * @param {string} sourceURL
    * @param {number} startLine
@@ -43,10 +50,11 @@ SDK.Script = class {
    * @param {string|undefined} sourceMapURL
    * @param {boolean} hasSourceURL
    * @param {number} length
+   * @param {?Protocol.Runtime.StackTrace} originStackTrace
    */
   constructor(
       debuggerModel, scriptId, sourceURL, startLine, startColumn, endLine, endColumn, executionContextId, hash,
-      isContentScript, isLiveEdit, sourceMapURL, hasSourceURL, length) {
+      isContentScript, isLiveEdit, sourceMapURL, hasSourceURL, length, originStackTrace) {
     this.debuggerModel = debuggerModel;
     this.scriptId = scriptId;
     this.sourceURL = sourceURL;
@@ -64,6 +72,8 @@ SDK.Script = class {
     this.contentLength = length;
     this._originalContentProvider = null;
     this._originalSource = null;
+    this.originStackTrace = originStackTrace;
+    this._lineMap = null;
   }
 
   /**
@@ -71,19 +81,22 @@ SDK.Script = class {
    * @return {string}
    */
   static _trimSourceURLComment(source) {
-    var sourceURLIndex = source.lastIndexOf('//# sourceURL=');
+    let sourceURLIndex = source.lastIndexOf('//# sourceURL=');
     if (sourceURLIndex === -1) {
       sourceURLIndex = source.lastIndexOf('//@ sourceURL=');
-      if (sourceURLIndex === -1)
+      if (sourceURLIndex === -1) {
         return source;
+      }
     }
-    var sourceURLLineIndex = source.lastIndexOf('\n', sourceURLIndex);
-    if (sourceURLLineIndex === -1)
+    const sourceURLLineIndex = source.lastIndexOf('\n', sourceURLIndex);
+    if (sourceURLLineIndex === -1) {
       return source;
-    var sourceURLLine = source.substr(sourceURLLineIndex + 1).split('\n', 1)[0];
-    if (sourceURLLine.search(SDK.Script.sourceURLRegex) === -1)
+    }
+    const sourceURLLine = source.substr(sourceURLLineIndex + 1);
+    if (!sourceURLLine.match(sourceURLRegex)) {
       return source;
-    return source.substr(0, sourceURLLineIndex) + source.substr(sourceURLLineIndex + sourceURLLine.length + 1);
+    }
+    return source.substr(0, sourceURLLineIndex);
   }
 
   /**
@@ -94,7 +107,14 @@ SDK.Script = class {
   }
 
   /**
-   * @return {?SDK.ExecutionContext}
+   * @return {boolean}
+   */
+  isWasmDisassembly() {
+    return !!this._lineMap && !this.sourceMapURL;
+  }
+
+  /**
+   * @return {?ExecutionContext}
    */
   executionContext() {
     return this.debuggerModel.runtimeModel().executionContext(this.executionContextId);
@@ -117,36 +137,90 @@ SDK.Script = class {
 
   /**
    * @override
-   * @return {!Common.ResourceType}
+   * @return {!Common.ResourceType.ResourceType}
    */
   contentType() {
-    return Common.resourceTypes.Script;
+    return Common.ResourceType.resourceTypes.Script;
   }
 
   /**
    * @override
-   * @return {!Promise<?string>}
+   * @return {!Promise<boolean>}
    */
-  async requestContent() {
-    if (this._source)
-      return this._source;
-    if (!this.scriptId)
-      return '';
-    var source = await this.debuggerModel.target().debuggerAgent().getScriptSource(this.scriptId);
-    this._source = source ? SDK.Script._trimSourceURLComment(source) : '';
-    if (this._originalSource === null)
-      this._originalSource = this._source;
-    return this._source;
+  contentEncoded() {
+    return Promise.resolve(false);
   }
 
   /**
-   * @return {!Common.ContentProvider}
+   * @override
+   * @return {!Promise<!Common.ContentProvider.DeferredContent>}
+   */
+  async requestContent() {
+    if (this._source) {
+      return {content: this._source, isEncoded: false};
+    }
+    if (!this.scriptId) {
+      return {error: ls`Script removed or deleted.`, isEncoded: false};
+    }
+
+    try {
+      const sourceOrBytecode =
+          await this.debuggerModel.target().debuggerAgent().invoke_getScriptSource({scriptId: this.scriptId});
+      const source = sourceOrBytecode.scriptSource;
+      if (source) {
+        if (this.hasSourceURL) {
+          this._source = Script._trimSourceURLComment(source);
+        } else {
+          this._source = source;
+        }
+      } else {
+        this._source = '';
+        if (sourceOrBytecode.bytecode) {
+          const worker = new Common.Worker.WorkerWrapper('wasmparser_worker_entrypoint');
+          const promise = new Promise(function(resolve, reject) {
+            worker.onmessage = resolve;
+            worker.onerror = reject;
+          });
+          worker.postMessage({method: 'disassemble', params: {content: sourceOrBytecode.bytecode}});
+
+          const result = await promise;
+          this._source = result.data.source;
+          this._lineMap = result.data.offsets;
+          this.endLine = this._lineMap.length;
+        }
+      }
+
+      if (this._originalSource === null) {
+        this._originalSource = this._source;
+      }
+      return {content: this._source, isEncoded: false};
+    } catch (err) {
+      return {error: ls`Unable to fetch script source.`, isEncoded: false};
+    }
+  }
+
+  /**
+   * @return {!Promise<!ArrayBuffer>}
+   */
+  async getWasmBytecode() {
+    const base64 = await this.debuggerModel.target().debuggerAgent().getWasmBytecode(this.scriptId);
+    const response = await fetch(`data:application/wasm;base64,${base64}`);
+    return response.arrayBuffer();
+  }
+
+  /**
+   * @return {!Common.ContentProvider.ContentProvider}
    */
   originalContentProvider() {
     if (!this._originalContentProvider) {
-      var lazyContent = () => this.requestContent().then(() => this._originalSource);
+      const lazyContent = () => this.requestContent().then(() => {
+        return {
+          content: this._originalSource,
+          isEncoded: false,
+        };
+      });
       this._originalContentProvider =
-          new Common.StaticContentProvider(this.contentURL(), this.contentType(), lazyContent);
+          new Common.StaticContentProvider.StaticContentProvider(this.contentURL(), this.contentType(), lazyContent);
     }
     return this._originalContentProvider;
   }
@@ -159,10 +233,11 @@ SDK.Script = class {
    * @return {!Promise<!Array<!Common.ContentProvider.SearchMatch>>}
    */
   async searchInContent(query, caseSensitive, isRegex) {
-    if (!this.scriptId)
+    if (!this.scriptId) {
       return [];
+    }
 
-    var matches =
+    const matches =
         await this.debuggerModel.target().debuggerAgent().searchInContent(this.scriptId, query, caseSensitive, isRegex);
     return (matches || []).map(match => new Common.ContentProvider.SearchMatch(match.lineNumber, match.lineContent));
   }
@@ -172,17 +247,18 @@ SDK.Script = class {
    * @return {string}
    */
   _appendSourceURLCommentIfNeeded(source) {
-    if (!this.hasSourceURL)
+    if (!this.hasSourceURL) {
       return source;
+    }
     return source + '\n //# sourceURL=' + this.sourceURL;
   }
 
   /**
    * @param {string} newSource
-   * @param {function(?Protocol.Error, !Protocol.Runtime.ExceptionDetails=, !Array.<!Protocol.Debugger.CallFrame>=, !Protocol.Runtime.StackTrace=, boolean=)} callback
+   * @param {function(?ProtocolModule.InspectorBackend.ProtocolError, !Protocol.Runtime.ExceptionDetails=, !Array.<!Protocol.Debugger.CallFrame>=, !Protocol.Runtime.StackTrace=, !Protocol.Runtime.StackTraceId=, boolean=)} callback
    */
   async editSource(newSource, callback) {
-    newSource = SDK.Script._trimSourceURLComment(newSource);
+    newSource = Script._trimSourceURLComment(newSource);
     // We append correct sourceURL to script for consistency only. It's not actually needed for things to work correctly.
     newSource = this._appendSourceURLCommentIfNeeded(newSource);
 
@@ -192,32 +268,77 @@ SDK.Script = class {
     }
 
     await this.requestContent();
-    var response = await this.debuggerModel.target().debuggerAgent().invoke_setScriptSource(
+    if (this._source === newSource) {
+      callback(null);
+      return;
+    }
+    const response = await this.debuggerModel.target().debuggerAgent().invoke_setScriptSource(
         {scriptId: this.scriptId, scriptSource: newSource});
 
-    if (!response[Protocol.Error] && !response.exceptionDetails)
+    if (!response[ProtocolModule.InspectorBackend.ProtocolError] && !response.exceptionDetails) {
       this._source = newSource;
+    }
 
-    var needsStepIn = !!response.stackChanged;
+    const needsStepIn = !!response.stackChanged;
     callback(
-        response[Protocol.Error], response.exceptionDetails, response.callFrames, response.asyncStackTrace,
-        needsStepIn);
+        response[ProtocolModule.InspectorBackend.ProtocolError], response.exceptionDetails, response.callFrames,
+        response.asyncStackTrace, response.asyncStackTraceId, needsStepIn);
   }
 
   /**
    * @param {number} lineNumber
    * @param {number=} columnNumber
-   * @return {!SDK.DebuggerModel.Location}
+   * @return {?Location}
    */
   rawLocation(lineNumber, columnNumber) {
-    return new SDK.DebuggerModel.Location(this.debuggerModel, this.scriptId, lineNumber, columnNumber || 0);
+    if (this.containsLocation(lineNumber, columnNumber)) {
+      return new Location(this.debuggerModel, this.scriptId, lineNumber, columnNumber);
+    }
+    return null;
+  }
+
+  /**
+   * @param {number} lineNumber
+   * @return {?Location}
+   */
+  wasmByteLocation(lineNumber) {
+    if (lineNumber < this._lineMap.length) {
+      return new Location(this.debuggerModel, this.scriptId, 0, this._lineMap[lineNumber]);
+    }
+    return null;
+  }
+
+  /**
+   * @param {number} byteOffset
+   * @return {number}
+   */
+  wasmDisassemblyLine(byteOffset) {
+    let line = 0;
+    // TODO: Implement binary search if necessary for large wasm modules
+    while (line < this._lineMap.length && byteOffset > this._lineMap[line]) {
+      line++;
+    }
+    return line;
+  }
+
+  /**
+   *
+   * @param {!Location} location
+   * @return {!Array.<number>}
+   */
+  toRelativeLocation(location) {
+    console.assert(
+        location.scriptId === this.scriptId, '`toRelativeLocation` must be used with location of the same script');
+    const relativeLineNumber = location.lineNumber - this.lineOffset;
+    const relativeColumnNumber = (location.columnNumber || 0) - (relativeLineNumber === 0 ? this.columnOffset : 0);
+    return [relativeLineNumber, relativeColumnNumber];
   }
 
   /**
    * @return {boolean}
    */
   isInlineScript() {
-    var startsAtZero = !this.lineOffset && !this.columnOffset;
+    const startsAtZero = !this.lineOffset && !this.columnOffset;
     return !!this.sourceURL && !startsAtZero;
   }
 
@@ -240,13 +361,46 @@ SDK.Script = class {
    * @return {!Promise<boolean>}
    */
   async setBlackboxedRanges(positions) {
-    var response = await this.debuggerModel.target().debuggerAgent().invoke_setBlackboxedRanges(
+    const response = await this.debuggerModel.target().debuggerAgent().invoke_setBlackboxedRanges(
         {scriptId: this.scriptId, positions});
-    var error = response[Protocol.Error];
-    if (error)
-      console.error(error);
-    return !error;
+    return !response[ProtocolModule.InspectorBackend.ProtocolError];
   }
-};
 
-SDK.Script.sourceURLRegex = /^[\040\t]*\/\/[@#] sourceURL=\s*(\S*?)\s*$/m;
+  containsLocation(lineNumber, columnNumber) {
+    const afterStart =
+        (lineNumber === this.lineOffset && columnNumber >= this.columnOffset) || lineNumber > this.lineOffset;
+    const beforeEnd = lineNumber < this.endLine || (lineNumber === this.endLine && columnNumber <= this.endColumn);
+    return afterStart && beforeEnd;
+  }
+
+  /**
+   * @return {string}
+   */
+  get frameId() {
+    if (typeof this[frameIdSymbol] !== 'string') {
+      this[frameIdSymbol] = frameIdForScript(this);
+    }
+    return this[frameIdSymbol];
+  }
+}
+
+const frameIdSymbol = Symbol('frameid');
+
+/**
+ * @param {!Script} script
+ * @return {string}
+ */
+function frameIdForScript(script) {
+  const executionContext = script.executionContext();
+  if (executionContext) {
+    return executionContext.frameId || '';
+  }
+  // This is to overcome compilation cache which doesn't get reset.
+  const resourceTreeModel = script.debuggerModel.target().model(ResourceTreeModel);
+  if (!resourceTreeModel || !resourceTreeModel.mainFrame) {
+    return '';
+  }
+  return resourceTreeModel.mainFrame.id;
+}
+
+export const sourceURLRegex = /^[\040\t]*\/\/[@#] sourceURL=\s*(\S*?)\s*$/;

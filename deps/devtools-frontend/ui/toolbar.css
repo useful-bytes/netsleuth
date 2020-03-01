@@ -25,10 +25,6 @@
     overflow: visible;
 }
 
-.toolbar-shadow.wrappable-reverse {
-    flex-direction: row-reverse;
-}
-
 .toolbar-shadow.toolbar-grow-vertical {
     height: initial;
 }
@@ -49,13 +45,26 @@
     padding: 0;
     height: 26px;
     border: none;
+    white-space: pre;
+}
+
+.toolbar-item,
+.toolbar-item .devtools-link {
     color: #5a5a5a;
+}
+
+select.toolbar-item:disabled {
+    opacity: 0.5;
 }
 
 .toolbar-dropdown-arrow {
     background-color: #6D6D6D;
     pointer-events: none;
     flex: none;
+}
+
+select.toolbar-item:disabled + .toolbar-dropdown-arrow {
+    opacity: 0.5;
 }
 
 /* Toolbar item */
@@ -81,6 +90,7 @@
 .toolbar-has-dropdown {
     justify-content: space-between;
     padding: 0 3px 0 5px;
+    border: 1px solid transparent;
 }
 
 .toolbar-has-dropdown .toolbar-text {
@@ -89,18 +99,17 @@
     flex: auto;
     overflow: hidden;
     text-align: right;
-    color: #333 !important;
 }
 
-.toolbar-button .toolbar-dropdown-arrow {
-    background-color: #333 !important;
+.toolbar-button.dark-text .toolbar-dropdown-arrow {
+    background-color: #333;
 }
 
 .toolbar-has-glyph .toolbar-text {
     margin-left: -4px;
 }
 
-.toolbar-button:not(.toolbar-has-glyph):not(.toolbar-has-dropdown):not(.largeicon-menu) {
+.toolbar-button:not(.toolbar-has-glyph):not(.toolbar-has-dropdown):not(.largeicon-menu):not(.toolbar-button-secondary) {
     font-weight: bold;
 }
 
@@ -111,8 +120,8 @@
     cursor: pointer;
 }
 
-:not(.toolbar-render-as-links) .toolbar-button:not(.toolbar-has-glyph):not(.toolbar-has-dropdown):not(.largeicon-menu).hover {
-    background-color: #f3f3f3;
+.toolbar-toggled-gray:not(.toolbar-render-as-links) .toolbar-button:not(.toolbar-has-glyph):not(.toolbar-has-dropdown):not(.largeicon-menu):hover {
+    background-color: var(--toolbar-bg-color);
 }
 
 .toolbar-glyph {
@@ -126,46 +135,46 @@
     opacity: 0.5;
 }
 
-:not(.toolbar-render-as-links) .toolbar-button:enabled.hover:not(:active) .toolbar-glyph {
+.toolbar-button.dark-text .toolbar-text{
+    color: #333 !important;
+}
+
+:not(.toolbar-render-as-links) .toolbar-button:enabled:hover:not(:active) .toolbar-glyph {
     background-color: #333;
 }
 
-:not(.toolbar-render-as-links) .toolbar-button:enabled.hover:not(:active) .toolbar-text {
+:not(.toolbar-render-as-links) .toolbar-button:enabled:hover:not(:active) .toolbar-text {
     color: #333;
 }
 
 .toolbar-button.toolbar-state-on .toolbar-glyph,
-.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled.hover:not(:active),
-.-theme-selection-color {
-    background-color: hsl(218, 81%, 59%);
+.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:hover:not(:active) {
+    background-color: var(--accent-color);
 }
 
-.toolbar-button.toolbar-state-on .toolbar-text,
-.-theme-selection-color {
-    color: hsl(218, 81%, 59%);
+.toolbar-button.toolbar-state-on .toolbar-text {
+    color: var(--accent-color);
 }
 
-.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled.hover .toolbar-glyph {
+.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:hover .toolbar-glyph {
     background-color: white;
 }
 
-.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled.hover .toolbar-text {
+.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:hover .toolbar-text {
     color: white;
 }
 
-.toolbar-button.toolbar-state-on:enabled.hover:not(:active) .toolbar-glyph,
-.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:active.hover,
-.-theme-selection-color {
-    background-color: hsl(218, 96%, 54%);
+.toolbar-button.toolbar-state-on:enabled:hover:not(:active) .toolbar-glyph,
+.toolbar-blue-on-hover .toolbar-button:not(.toolbar-state-on):enabled:active:hover {
+    background-color: var(--accent-color);
 }
 
-.toolbar-button.toolbar-state-on:enabled.hover:not(:active) .toolbar-text,
-.-theme-selection-color {
-    color: hsl(218, 96%, 54%);
+.toolbar-button.toolbar-state-on:enabled:hover:not(:active) .toolbar-text {
+    color: var(--accent-color);
 }
 
 .toolbar-toggled-gray .toolbar-button.toolbar-state-on {
-    background-color: #f3f3f3 !important;
+    background-color: var(--toolbar-bg-color) !important;
 }
 
 .toolbar-button.toolbar-state-on.toolbar-toggle-with-red-color .toolbar-glyph,
@@ -185,7 +194,7 @@
     padding: 0 5px 0 2px;
 }
 
-.toolbar-item.checkbox.hover {
+.toolbar-item.checkbox:hover {
     color: #333;
 }
 
@@ -200,7 +209,7 @@
 select.toolbar-item {
     min-width: 38px;
     -webkit-appearance: none;
-    border: 0;
+    border: 1px solid transparent;
     border-radius: 0;
     padding: 0 13px 0 5px;
     margin-right: -10px;
@@ -223,18 +232,21 @@ select.toolbar-item[data-keyboard-focus="true"]:focus > * {
 
 .toolbar-input {
     width: 120px;
-    height: 20px;
-    padding: 3px;
+    height: 19px;
+    padding: 4px 3px 3px 3px;
     margin: 1px 3px;
     background-color: white;
-    border: solid 1px #d8d8d8;
-    border-radius: 2px;
+    border: 1px solid transparent ;
     min-width: 35px;
 }
 
+.toolbar-input:hover {
+    box-shadow: var(--focus-ring-inactive-shadow);
+}
+
 .toolbar-input.focused,
-.toolbar-input.hover {
-    border: solid 1px rgb(202, 202, 202);
+.toolbar-input:not(.toolbar-input-empty) {
+    box-shadow: var(--focus-ring-active-shadow);
 }
 
 .toolbar-input > input {
@@ -250,11 +262,22 @@ select.toolbar-item[data-keyboard-focus="true"]:focus > * {
 }
 
 .toolbar-input-clear-button:hover {
-    opacity: 1;
+    opacity: .99;
 }
 
 .toolbar-input-empty .toolbar-input-clear-button {
     display: none;
+}
+
+.toolbar-prompt-proxy {
+    flex: 1;
+}
+
+.toolbar-input-prompt {
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    cursor: auto;
 }
 
 /* Separator */
@@ -302,4 +325,78 @@ select.toolbar-item[data-keyboard-focus="true"]:focus > * {
     margin-top: -1px;
     width: 28px;
     left: -2px;
+}
+
+input[is=history-input] {
+    border: 1px solid transparent;
+    line-height: 16px;
+    padding: 1px;
+}
+
+input[is=history-input]:hover {
+    box-shadow: var(--focus-ring-inactive-shadow);
+}
+
+input[is=history-input]:focus,
+input[is=history-input]:not(:placeholder-shown) {
+    box-shadow: var(--focus-ring-active-shadow);
+}
+
+.toolbar-item.warning {
+    background: hsl(0, 100%, 95%);
+}
+
+@media (forced-colors: active) {
+    select.toolbar-item:disabled,
+    select.toolbar-item:disabled + .toolbar-dropdown-arrow {
+        opacity: 1;
+        background-color: Graytext;
+    }
+    :not(.toolbar-render-as-links) .toolbar-button:enabled:hover .toolbar-glyph,
+    :not(.toolbar-render-as-links) .toolbar-button:enabled:focus .toolbar-glyph,
+    :not(.toolbar-render-as-links) .toolbar-button:enabled:hover:not(:active) .toolbar-glyph,
+    .toolbar-button:enabled:hover [is=ui-icon].icon-mask,
+    .toolbar-button:enabled:focus [is=ui-icon].icon-mask {
+        background-color: HighlightText;
+    }
+    :not(.toolbar-render-as-links) .toolbar-button:enabled:hover:not(:active) .toolbar-text,
+    :not(.toolbar-render-as-links) .toolbar-button:enabled:focus:not(:active) .toolbar-text {
+        color: HighlightText;
+    }
+    .toolbar-button:enabled.hover:not(:active) .toolbar-glyph, .toolbar-button.toolbar-state-on .toolbar-glyph,
+    .toolbar-button:hover:enabled,
+    .toolbar-button:focus,
+    .toolbar-toggled-gray:not(.toolbar-render-as-links) .toolbar-button:not(.toolbar-has-glyph):not(.toolbar-has-dropdown):not(.largeicon-menu):hover {
+        forced-color-adjust: none;
+        background-color: Highlight;
+    }
+    .toolbar-button:disabled {
+        opacity: 1;
+    }
+    :not(.toolbar-render-as-links) .toolbar-button:disabled .toolbar-glyph,
+    .toolbar-button:disabled [is=ui-icon].icon-mask {
+        background-color: GrayText;
+        color: GrayText;
+    }
+    .toolbar-item,
+    .toolbar-text {
+        color: ButtonText;
+    }
+    .toolbar-input {
+        forced-color-adjust: none;
+        background: Canvas;
+        box-shadow: var(--focus-ring-inactive-shadow);
+    }
+    .toolbar-input.focused,
+    .toolbar-input:not(.toolbar-input-empty) {
+        forced-color-adjust: none;
+        background: Canvas;
+        box-shadow: var(--focus-ring-active-shadow);
+    }
+    .toolbar-input:hover {
+        box-shadow: var(--focus-ring-active-shadow);
+    }
+    .toolbar-item .devtools-link {
+        color: LinkText;
+    }
 }

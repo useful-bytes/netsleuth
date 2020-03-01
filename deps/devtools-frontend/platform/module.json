@@ -1,7 +1,10 @@
 {
     "dependencies": [
     ],
-    "scripts": [
-        "utilities.js"
+    "scripts": [],
+    "modules": [
+        "platform.js",
+        "utilities.js",
+        "string-utilities.js"
     ]
 }

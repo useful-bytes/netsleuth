@@ -31,14 +31,49 @@
 /**
  * @unrestricted
  */
-Host.UserMetrics = class {
+import {InspectorFrontendHostInstance} from './InspectorFrontendHost.js';
+
+class UserMetricEvent extends Event {
+  /**
+   *
+   * @param {string} type
+   * @param {!Object} init
+   * @param {!Object} detail
+   */
+  constructor(type, init, detail = {}) {
+    super(type, init);
+
+    this.detail = detail;
+  }
+}
+
+/**
+ * @param {string} name
+ * @param {!Object} detail
+ * @param {!HTMLElement | !Window} target
+ */
+function fireEvent(name, detail = {}, target = window) {
+  const evt = new UserMetricEvent(name, {bubbles: true, cancelable: true}, detail);
+  target.dispatchEvent(evt);
+}
+
+export class UserMetrics {
+  constructor() {
+    this._panelChangedSinceLaunch = false;
+    this._firedLaunchHistogram = false;
+    this._launchPanelName = '';
+  }
+
   /**
    * @param {string} panelName
    */
   panelShown(panelName) {
-    var code = Host.UserMetrics._PanelCodes[panelName] || 0;
-    var size = Object.keys(Host.UserMetrics._PanelCodes).length + 1;
-    InspectorFrontendHost.recordEnumeratedHistogram('DevTools.PanelShown', code, size);
+    const code = PanelCodes[panelName] || 0;
+    const size = Object.keys(PanelCodes).length + 1;
+    InspectorFrontendHostInstance.recordEnumeratedHistogram('DevTools.PanelShown', code, size);
+    fireEvent('DevTools.PanelShown', {value: code});
+    // Store that the user has changed the panel so we know launch histograms should not be fired.
+    this._panelChangedSinceLaunch = true;
   }
 
   /**
@@ -49,27 +84,77 @@ Host.UserMetrics = class {
   }
 
   /**
-   * @param {!Host.UserMetrics.Action} action
+   * @param {!Action} action
    */
   actionTaken(action) {
-    var size = Object.keys(Host.UserMetrics.Action).length + 1;
-    InspectorFrontendHost.recordEnumeratedHistogram('DevTools.ActionTaken', action, size);
+    const size = Object.keys(Action).length + 1;
+    InspectorFrontendHostInstance.recordEnumeratedHistogram('DevTools.ActionTaken', action, size);
+    fireEvent('DevTools.ActionTaken', {value: action});
   }
-};
+
+  /**
+   * @param {string} panelName
+   * @param {string} histogramName
+   * @suppressGlobalPropertiesCheck
+   */
+  panelLoaded(panelName, histogramName) {
+    if (this._firedLaunchHistogram || panelName !== this._launchPanelName) {
+      return;
+    }
+
+    this._firedLaunchHistogram = true;
+    // Use rAF and setTimeout to ensure the marker is fired after layout and rendering.
+    // This will give the most accurate representation of the tool being ready for a user.
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        // Mark the load time so that we can pinpoint it more easily in a trace.
+        performance.mark(histogramName);
+        // If the user has switched panel before we finished loading, ignore the histogram,
+        // since the launch timings will have been affected and are no longer valid.
+        if (this._panelChangedSinceLaunch) {
+          return;
+        }
+        // This fires the event for the appropriate launch histogram.
+        // The duration is measured as the time elapsed since the time origin of the document.
+        InspectorFrontendHostInstance.recordPerformanceHistogram(histogramName, performance.now());
+      }, 0);
+    });
+  }
+
+  /**
+   * @param {?string} panelName
+   */
+  setLaunchPanel(panelName) {
+    // Store the panel name that we should use for the launch histogram.
+    // Other calls to panelLoaded will be ignored if the name does not match the one set here.
+    this._launchPanelName = panelName;
+  }
+
+  /**
+   * @param {string} actionId
+   */
+  keyboardShortcutFired(actionId) {
+    const size = Object.keys(KeyboardShortcutAction).length + 1;
+    const action = KeyboardShortcutAction[actionId] || KeyboardShortcutAction.OtherShortcut;
+    InspectorFrontendHostInstance.recordEnumeratedHistogram('DevTools.KeyboardShortcutFired', action, size);
+    fireEvent('DevTools.KeyboardShortcutFired', {value: action});
+  }
+}
 
 // Codes below are used to collect UMA histograms in the Chromium port.
 // Do not change the values below, additional actions are needed on the Chromium side
 // in order to add more codes.
 
 /** @enum {number} */
-Host.UserMetrics.Action = {
+export const Action = {
   WindowDocked: 1,
   WindowUndocked: 2,
   ScriptsBreakpointSet: 3,
   TimelineStarted: 4,
   ProfilesCPUProfileTaken: 5,
   ProfilesHeapProfileTaken: 6,
-  AuditsStarted: 7,
+  // Keep key around because length of object is important. See Host.UserMetrics.actionTaken.
+  'LegacyAuditsStarted-deprecated': 7,
   ConsoleEvaluated: 8,
   FileSavedInWorkspace: 9,
   DeviceModeEnabled: 10,
@@ -91,21 +176,27 @@ Host.UserMetrics.Action = {
   ChangeInspectedNodeInElementsPanel: 26,
   StyleRuleCopied: 27,
   CoverageStarted: 28,
-  Audits2Started: 29,
-  Audits2Finished: 30
+  LighthouseStarted: 29,
+  LighthouseFinished: 30,
+  ShowedThirdPartyBadges: 31,
+  LighthouseViewTrace: 32,
+  FilmStripStartedRecording: 33,
+  CoverageReportFiltered: 34,
+  CoverageStartedPerBlock: 35,
 };
 
-Host.UserMetrics._PanelCodes = {
+export const PanelCodes = {
   elements: 1,
   resources: 2,
   network: 3,
   sources: 4,
   timeline: 5,
   heap_profiler: 6,
-  audits: 7,
+  // Keep key around because length of object is important. See Host.UserMetrics.panelShown.
+  'legacy-audits-deprecated': 7,
   console: 8,
   layers: 9,
-  'drawer-console': 10,
+  'drawer-console-view': 10,
   'drawer-animations': 11,
   'drawer-network.config': 12,
   'drawer-rendering': 13,
@@ -113,8 +204,43 @@ Host.UserMetrics._PanelCodes = {
   'drawer-sources.search': 15,
   security: 16,
   js_profiler: 17,
-  audits2: 18,
+  lighthouse: 18,
+  'drawer-coverage': 19,
+  'drawer-protocol-monitor': 20,
+  'drawer-remote-devices': 21,
+  'drawer-web-audio': 22,
+  'drawer-changes.changes': 23,
+  'drawer-performance.monitor': 24,
+  'drawer-release-note': 25,
+  'drawer-live_heap_profile': 26,
+  'drawer-sources.quick': 27,
+  'drawer-network.blocked-urls': 28,
 };
 
-/** @type {!Host.UserMetrics} */
-Host.userMetrics = new Host.UserMetrics();
+/** @enum {number} */
+export const KeyboardShortcutAction = {
+  OtherShortcut: 0,
+  'commandMenu.show': 1,
+  'console.clear': 2,
+  'console.show': 3,
+  'debugger.step': 4,
+  'debugger.step-into': 5,
+  'debugger.step-out': 6,
+  'debugger.step-over': 7,
+  'debugger.toggle-breakpoint': 8,
+  'debugger.toggle-breakpoint-enabled': 9,
+  'debugger.toggle-pause': 10,
+  'elements.edit-as-html': 11,
+  'elements.hide-element': 12,
+  'elements.redo': 13,
+  'elements.toggle-element-search': 14,
+  'elements.undo': 15,
+  'main.search-in-panel.find': 16,
+  'main.toggle-drawer': 17,
+  'network.hide-request-details': 18,
+  'network.search': 19,
+  'network.toggle-recording': 20,
+  'quickOpen.show': 21,
+  'settings.show': 22,
+  'sources.search': 23,
+};

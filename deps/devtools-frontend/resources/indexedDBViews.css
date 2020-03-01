@@ -28,20 +28,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-.indexed-db-database-view {
-    -webkit-user-select: text;
-    margin-top: 5px;
-}
-
 .indexed-db-data-view .data-view-toolbar {
     position: relative;
     background-color: #eee;
     border-bottom: 1px solid #ccc;
-}
-
-.indexed-db-data-view .data-view-toolbar .key-input {
-    margin: auto 0;
-    width: 200px;
 }
 
 .indexed-db-data-view .data-grid {
@@ -60,16 +50,17 @@
     border-bottom: 1px solid #aaa;
 }
 
+.indexed-db-data-view .data-grid:focus .data-container tr.selected {
+    background-color: #cdddf5;
+    color: inherit;
+}
+
 .indexed-db-data-view .section,
 .indexed-db-data-view .section > .header,
 .indexed-db-data-view .section > .header .title {
     margin: 0;
     min-height: inherit;
     line-height: inherit;
-}
-
-.indexed-db-data-view .primitive-value {
-    padding-top: 1px;
 }
 
 .indexed-db-data-view .data-grid .data-container td .section .header .title {
@@ -82,4 +73,23 @@
     color: rgb(196, 26, 22);
     white-space: pre-wrap;
     unicode-bidi: -webkit-isolate;
+}
+
+.source-code.indexed-db-key-path {
+    font-size: unset !important;
+}
+
+.resources-toolbar {
+    padding-right: 10px;
+}
+
+.object-store-summary-bar {
+    flex: 0 0 27px;
+    line-height: 27px;
+    padding-left: 5px;
+    background-color: #eee;
+    border-top: 1px solid #ccc;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
 }

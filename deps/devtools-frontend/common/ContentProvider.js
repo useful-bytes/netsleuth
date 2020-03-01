@@ -27,40 +27,50 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+import {ResourceType} from './ResourceType.js';  // eslint-disable-line no-unused-vars
+
 /**
  * @interface
  */
-Common.ContentProvider = function() {};
-
-Common.ContentProvider.prototype = {
+export class ContentProvider {
   /**
    * @return {string}
    */
-  contentURL() {},
+  contentURL() {
+  }
 
   /**
-   * @return {!Common.ResourceType}
+   * @return {!ResourceType}
    */
-  contentType() {},
+  contentType() {
+  }
 
   /**
-   * @return {!Promise<?string>}
+   * @return {!Promise<boolean>}
    */
-  requestContent() {},
+  contentEncoded() {
+  }
+
+  /**
+   * @return {!Promise<!DeferredContent>}
+   */
+  requestContent() {
+  }
 
   /**
    * @param {string} query
    * @param {boolean} caseSensitive
    * @param {boolean} isRegex
-   * @return {!Promise<!Array<!Common.ContentProvider.SearchMatch>>}
+   * @return {!Promise<!Array<!SearchMatch>>}
    */
   searchInContent(query, caseSensitive, isRegex) {}
-};
+}
 
 /**
  * @unrestricted
  */
-Common.ContentProvider.SearchMatch = class {
+export class SearchMatch {
   /**
    * @param {number} lineNumber
    * @param {string} lineContent
@@ -69,25 +79,26 @@ Common.ContentProvider.SearchMatch = class {
     this.lineNumber = lineNumber;
     this.lineContent = lineContent;
   }
-};
+}
 
 /**
  * @param {string} content
  * @param {string} query
  * @param {boolean} caseSensitive
  * @param {boolean} isRegex
- * @return {!Array.<!Common.ContentProvider.SearchMatch>}
+ * @return {!Array.<!SearchMatch>}
  */
-Common.ContentProvider.performSearchInContent = function(content, query, caseSensitive, isRegex) {
-  var regex = createSearchRegex(query, caseSensitive, isRegex);
+export const performSearchInContent = function(content, query, caseSensitive, isRegex) {
+  const regex = createSearchRegex(query, caseSensitive, isRegex);
 
-  var text = new TextUtils.Text(content);
-  var result = [];
-  for (var i = 0; i < text.lineCount(); ++i) {
-    var lineContent = text.lineAt(i);
+  const text = new TextUtils.Text(content);
+  const result = [];
+  for (let i = 0; i < text.lineCount(); ++i) {
+    const lineContent = text.lineAt(i);
     regex.lastIndex = 0;
-    if (regex.exec(lineContent))
-      result.push(new Common.ContentProvider.SearchMatch(i, lineContent));
+    if (regex.exec(lineContent)) {
+      result.push(new SearchMatch(i, lineContent));
+    }
   }
   return result;
 };
@@ -99,11 +110,23 @@ Common.ContentProvider.performSearchInContent = function(content, query, caseSen
  * @param {?string=} charset
  * @return {?string}
  */
-Common.ContentProvider.contentAsDataURL = function(content, mimeType, contentEncoded, charset) {
+export const contentAsDataURL = function(content, mimeType, contentEncoded, charset) {
   const maxDataUrlSize = 1024 * 1024;
-  if (content === null || content.length > maxDataUrlSize)
+  if (content === undefined || content === null || content.length > maxDataUrlSize) {
     return null;
+  }
 
   return 'data:' + mimeType + (charset ? ';charset=' + charset : '') + (contentEncoded ? ';base64' : '') + ',' +
       content;
 };
+
+/**
+ * @typedef {{
+ *    content: string,
+ *    isEncoded: boolean,
+ * }|{
+ *    error: string,
+ *    isEncoded: boolean,
+ * }}
+ */
+export let DeferredContent;

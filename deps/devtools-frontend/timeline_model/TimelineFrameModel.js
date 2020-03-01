@@ -28,10 +28,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import * as SDK from '../sdk/sdk.js';
+
+import {RecordType, TimelineData} from './TimelineModel.js';
+import {TracingLayerTree} from './TracingLayerTree.js';
+
 /**
  * @unrestricted
  */
-TimelineModel.TimelineFrameModel = class {
+export class TimelineFrameModel {
   /**
    * @param {function(!SDK.TracingModel.Event):string} categoryMapper
    */
@@ -41,38 +46,17 @@ TimelineModel.TimelineFrameModel = class {
   }
 
   /**
-   * @return {!Array.<!TimelineModel.TimelineFrame>}
+   * @param {number=} startTime
+   * @param {number=} endTime
+   * @return {!Array<!TimelineFrame>}
    */
-  frames() {
-    return this._frames;
-  }
-
-  /**
-   * @param {number} startTime
-   * @param {number} endTime
-   * @return {!Array.<!TimelineModel.TimelineFrame>}
-   */
-  filteredFrames(startTime, endTime) {
-    /**
-     * @param {number} value
-     * @param {!TimelineModel.TimelineFrame} object
-     * @return {number}
-     */
-    function compareStartTime(value, object) {
-      return value - object.startTime;
+  frames(startTime, endTime) {
+    if (!startTime && !endTime) {
+      return this._frames;
     }
-    /**
-     * @param {number} value
-     * @param {!TimelineModel.TimelineFrame} object
-     * @return {number}
-     */
-    function compareEndTime(value, object) {
-      return value - object.endTime;
-    }
-    var frames = this._frames;
-    var firstFrame = frames.lowerBound(startTime, compareEndTime);
-    var lastFrame = frames.lowerBound(endTime, compareStartTime);
-    return frames.slice(firstFrame, lastFrame);
+    const firstFrame = this._frames.lowerBound(startTime || 0, (time, frame) => time - frame.endTime);
+    const lastFrame = this._frames.lowerBound(endTime || Infinity, (time, frame) => time - frame.startTime);
+    return this._frames.slice(firstFrame, lastFrame);
   }
 
   /**
@@ -80,29 +64,33 @@ TimelineModel.TimelineFrameModel = class {
    * @return {boolean}
    */
   hasRasterTile(rasterTask) {
-    var data = rasterTask.args['tileData'];
-    if (!data)
+    const data = rasterTask.args['tileData'];
+    if (!data) {
       return false;
-    var frameId = data['sourceFrameNumber'];
-    var frame = frameId && this._frameById[frameId];
-    if (!frame || !frame.layerTree)
+    }
+    const frameId = data['sourceFrameNumber'];
+    const frame = frameId && this._frameById[frameId];
+    if (!frame || !frame.layerTree) {
       return false;
+    }
     return true;
   }
 
   /**
    * @param {!SDK.TracingModel.Event} rasterTask
-   * @return Promise<?{rect: !Protocol.DOM.Rect, snapshot: !SDK.PaintProfilerSnapshot}>}
+   * @return Promise<?{rect: !Protocol.DOM.Rect, snapshot: !SDK.PaintProfiler.PaintProfilerSnapshot}>}
    */
   rasterTilePromise(rasterTask) {
-    if (!this._target)
+    if (!this._target) {
       return Promise.resolve(null);
-    var data = rasterTask.args['tileData'];
-    var frameId = data['sourceFrameNumber'];
-    var tileId = data['tileId'] && data['tileId']['id_ref'];
-    var frame = frameId && this._frameById[frameId];
-    if (!frame || !frame.layerTree || !tileId)
+    }
+    const data = rasterTask.args['tileData'];
+    const frameId = data['sourceFrameNumber'];
+    const tileId = data['tileId'] && data['tileId']['id_ref'];
+    const frame = frameId && this._frameById[frameId];
+    if (!frame || !frame.layerTree || !tileId) {
       return Promise.resolve(null);
+    }
 
     return frame.layerTree.layerTreePromise().then(layerTree => layerTree && layerTree.pictureForRasterTile(tileId));
   }
@@ -121,7 +109,7 @@ TimelineModel.TimelineFrameModel = class {
     this._framePendingActivation = null;
     this._lastTaskBeginTime = null;
     this._target = null;
-    this._sessionId = null;
+    this._layerTreeId = null;
     this._currentTaskTimeByCategory = {};
   }
 
@@ -129,8 +117,9 @@ TimelineModel.TimelineFrameModel = class {
    * @param {number} startTime
    */
   handleBeginFrame(startTime) {
-    if (!this._lastFrame)
+    if (!this._lastFrame) {
       this._startFrame(startTime);
+    }
     this._lastBeginFrame = startTime;
   }
 
@@ -147,13 +136,14 @@ TimelineModel.TimelineFrameModel = class {
     // - only show frames that either did not wait for the main thread frame or had one committed.
     if (this._mainFrameCommitted || !this._mainFrameRequested) {
       if (this._lastNeedsBeginFrame) {
-        var idleTimeEnd = this._framePendingActivation ? this._framePendingActivation.triggerTime :
-                                                         (this._lastBeginFrame || this._lastNeedsBeginFrame);
+        const idleTimeEnd = this._framePendingActivation ? this._framePendingActivation.triggerTime :
+                                                           (this._lastBeginFrame || this._lastNeedsBeginFrame);
         if (idleTimeEnd > this._lastFrame.startTime) {
           this._lastFrame.idle = true;
           this._startFrame(idleTimeEnd);
-          if (this._framePendingActivation)
+          if (this._framePendingActivation) {
             this._commitPendingFrame();
+          }
           this._lastBeginFrame = null;
         }
         this._lastNeedsBeginFrame = null;
@@ -164,21 +154,25 @@ TimelineModel.TimelineFrameModel = class {
   }
 
   handleActivateLayerTree() {
-    if (!this._lastFrame)
+    if (!this._lastFrame) {
       return;
-    if (this._framePendingActivation && !this._lastNeedsBeginFrame)
+    }
+    if (this._framePendingActivation && !this._lastNeedsBeginFrame) {
       this._commitPendingFrame();
+    }
   }
 
   handleRequestMainThreadFrame() {
-    if (!this._lastFrame)
+    if (!this._lastFrame) {
       return;
+    }
     this._mainFrameRequested = true;
   }
 
   handleCompositeLayers() {
-    if (!this._framePendingCommit)
+    if (!this._framePendingCommit) {
       return;
+    }
     this._framePendingActivation = this._framePendingCommit;
     this._framePendingCommit = null;
     this._mainFrameRequested = false;
@@ -186,7 +180,7 @@ TimelineModel.TimelineFrameModel = class {
   }
 
   /**
-   * @param {!TimelineModel.TracingFrameLayerTree} layerTree
+   * @param {!TracingFrameLayerTree} layerTree
    */
   handleLayerTreeSnapshot(layerTree) {
     this._lastLayerTree = layerTree;
@@ -197,36 +191,40 @@ TimelineModel.TimelineFrameModel = class {
    * @param {boolean} needsBeginFrame
    */
   handleNeedFrameChanged(startTime, needsBeginFrame) {
-    if (needsBeginFrame)
+    if (needsBeginFrame) {
       this._lastNeedsBeginFrame = startTime;
+    }
   }
 
   /**
    * @param {number} startTime
    */
   _startFrame(startTime) {
-    if (this._lastFrame)
+    if (this._lastFrame) {
       this._flushFrame(this._lastFrame, startTime);
-    this._lastFrame = new TimelineModel.TimelineFrame(startTime, startTime - this._minimumRecordTime);
+    }
+    this._lastFrame = new TimelineFrame(startTime, startTime - this._minimumRecordTime);
   }
 
   /**
-   * @param {!TimelineModel.TimelineFrame} frame
+   * @param {!TimelineFrame} frame
    * @param {number} endTime
    */
   _flushFrame(frame, endTime) {
     frame._setLayerTree(this._lastLayerTree);
     frame._setEndTime(endTime);
-    if (this._lastLayerTree)
+    if (this._lastLayerTree) {
       this._lastLayerTree._setPaints(frame._paints);
+    }
     if (this._frames.length &&
         (frame.startTime !== this._frames.peekLast().endTime || frame.startTime > frame.endTime)) {
       console.assert(
           false, `Inconsistent frame time for frame ${this._frames.length} (${frame.startTime} - ${frame.endTime})`);
     }
     this._frames.push(frame);
-    if (typeof frame._mainFrameId === 'number')
+    if (typeof frame._mainFrameId === 'number') {
       this._frameById[frame._mainFrameId] = frame;
+    }
   }
 
   _commitPendingFrame() {
@@ -237,42 +235,46 @@ TimelineModel.TimelineFrameModel = class {
   }
 
   /**
-   * @param {?SDK.Target} target
+   * @param {?SDK.SDKModel.Target} target
    * @param {!Array.<!SDK.TracingModel.Event>} events
-   * @param {string} sessionId
+   * @param {!Array<!{thread: !SDK.TracingModel.Thread, time: number}>} threadData
    */
-  addTraceEvents(target, events, sessionId) {
+  addTraceEvents(target, events, threadData) {
     this._target = target;
-    this._sessionId = sessionId;
-    for (var i = 0; i < events.length; ++i)
+    let j = 0;
+    this._currentProcessMainThread = threadData.length && threadData[0].thread || null;
+    for (let i = 0; i < events.length; ++i) {
+      while (j + 1 < threadData.length && threadData[j + 1].time <= events[i].startTime) {
+        this._currentProcessMainThread = threadData[++j].thread;
+      }
       this._addTraceEvent(events[i]);
+    }
+    this._currentProcessMainThread = null;
   }
 
   /**
    * @param {!SDK.TracingModel.Event} event
    */
   _addTraceEvent(event) {
-    var eventNames = TimelineModel.TimelineModel.RecordType;
-    if (event.startTime && event.startTime < this._minimumRecordTime)
+    const eventNames = RecordType;
+    if (event.startTime && event.startTime < this._minimumRecordTime) {
       this._minimumRecordTime = event.startTime;
+    }
 
     if (event.name === eventNames.SetLayerTreeId) {
-      var sessionId = event.args['sessionId'] || event.args['data']['sessionId'];
-      if (this._sessionId === sessionId)
-        this._layerTreeId = event.args['layerTreeId'] || event.args['data']['layerTreeId'];
-    } else if (event.name === eventNames.TracingStartedInPage) {
-      this._mainThread = event.thread;
+      this._layerTreeId = event.args['layerTreeId'] || event.args['data']['layerTreeId'];
     } else if (
         event.phase === SDK.TracingModel.Phase.SnapshotObject && event.name === eventNames.LayerTreeHostImplSnapshot &&
         parseInt(event.id, 0) === this._layerTreeId) {
-      var snapshot = /** @type {!SDK.TracingModel.ObjectSnapshot} */ (event);
-      this.handleLayerTreeSnapshot(new TimelineModel.TracingFrameLayerTree(this._target, snapshot));
+      const snapshot = /** @type {!SDK.TracingModel.ObjectSnapshot} */ (event);
+      this.handleLayerTreeSnapshot(new TracingFrameLayerTree(this._target, snapshot));
     } else {
       this._processCompositorEvents(event);
-      if (event.thread === this._mainThread)
+      if (event.thread === this._currentProcessMainThread) {
         this._addMainThreadTraceEvent(event);
-      else if (this._lastFrame && event.selfTime && !SDK.TracingModel.isTopLevelEvent(event))
+      } else if (this._lastFrame && event.selfTime && !SDK.TracingModel.TracingModel.isTopLevelEvent(event)) {
         this._lastFrame._addTimeForCategory(this._categoryMapper(event), event.selfTime);
+      }
     }
   }
 
@@ -280,37 +282,39 @@ TimelineModel.TimelineFrameModel = class {
    * @param {!SDK.TracingModel.Event} event
    */
   _processCompositorEvents(event) {
-    var eventNames = TimelineModel.TimelineModel.RecordType;
+    const eventNames = RecordType;
 
-    if (event.args['layerTreeId'] !== this._layerTreeId)
+    if (event.args['layerTreeId'] !== this._layerTreeId) {
       return;
+    }
 
-    var timestamp = event.startTime;
-    if (event.name === eventNames.BeginFrame)
+    const timestamp = event.startTime;
+    if (event.name === eventNames.BeginFrame) {
       this.handleBeginFrame(timestamp);
-    else if (event.name === eventNames.DrawFrame)
+    } else if (event.name === eventNames.DrawFrame) {
       this.handleDrawFrame(timestamp);
-    else if (event.name === eventNames.ActivateLayerTree)
+    } else if (event.name === eventNames.ActivateLayerTree) {
       this.handleActivateLayerTree();
-    else if (event.name === eventNames.RequestMainThreadFrame)
+    } else if (event.name === eventNames.RequestMainThreadFrame) {
       this.handleRequestMainThreadFrame();
-    else if (event.name === eventNames.NeedsBeginFrameChanged)
+    } else if (event.name === eventNames.NeedsBeginFrameChanged) {
       this.handleNeedFrameChanged(timestamp, event.args['data'] && event.args['data']['needsBeginFrame']);
+    }
   }
 
   /**
    * @param {!SDK.TracingModel.Event} event
    */
   _addMainThreadTraceEvent(event) {
-    var eventNames = TimelineModel.TimelineModel.RecordType;
+    const eventNames = RecordType;
 
-    if (SDK.TracingModel.isTopLevelEvent(event)) {
+    if (SDK.TracingModel.TracingModel.isTopLevelEvent(event)) {
       this._currentTaskTimeByCategory = {};
       this._lastTaskBeginTime = event.startTime;
     }
-    if (!this._framePendingCommit && TimelineModel.TimelineFrameModel._mainFrameMarkers.indexOf(event.name) >= 0) {
+    if (!this._framePendingCommit && TimelineFrameModel._mainFrameMarkers.indexOf(event.name) >= 0) {
       this._framePendingCommit =
-          new TimelineModel.PendingFrame(this._lastTaskBeginTime || event.startTime, this._currentTaskTimeByCategory);
+          new PendingFrame(this._lastTaskBeginTime || event.startTime, this._currentTaskTimeByCategory);
     }
     if (!this._framePendingCommit) {
       this._addTimeForCategory(this._currentTaskTimeByCategory, event);
@@ -318,13 +322,16 @@ TimelineModel.TimelineFrameModel = class {
     }
     this._addTimeForCategory(this._framePendingCommit.timeByCategory, event);
 
-    if (event.name === eventNames.BeginMainThreadFrame && event.args['data'] && event.args['data']['frameId'])
+    if (event.name === eventNames.BeginMainThreadFrame && event.args['data'] && event.args['data']['frameId']) {
       this._framePendingCommit.mainFrameId = event.args['data']['frameId'];
-    if (event.name === eventNames.Paint && event.args['data']['layerId'] &&
-        TimelineModel.TimelineData.forEvent(event).picture && this._target)
-      this._framePendingCommit.paints.push(new TimelineModel.LayerPaintEvent(event, this._target));
-    if (event.name === eventNames.CompositeLayers && event.args['layerTreeId'] === this._layerTreeId)
+    }
+    if (event.name === eventNames.Paint && event.args['data']['layerId'] && TimelineData.forEvent(event).picture &&
+        this._target) {
+      this._framePendingCommit.paints.push(new LayerPaintEvent(event, this._target));
+    }
+    if (event.name === eventNames.CompositeLayers && event.args['layerTreeId'] === this._layerTreeId) {
       this.handleCompositeLayers();
+    }
   }
 
   /**
@@ -332,46 +339,47 @@ TimelineModel.TimelineFrameModel = class {
    * @param {!SDK.TracingModel.Event} event
    */
   _addTimeForCategory(timeByCategory, event) {
-    if (!event.selfTime)
+    if (!event.selfTime) {
       return;
-    var categoryName = this._categoryMapper(event);
+    }
+    const categoryName = this._categoryMapper(event);
     timeByCategory[categoryName] = (timeByCategory[categoryName] || 0) + event.selfTime;
   }
-};
+}
 
-TimelineModel.TimelineFrameModel._mainFrameMarkers = [
-  TimelineModel.TimelineModel.RecordType.ScheduleStyleRecalculation,
-  TimelineModel.TimelineModel.RecordType.InvalidateLayout, TimelineModel.TimelineModel.RecordType.BeginMainThreadFrame,
-  TimelineModel.TimelineModel.RecordType.ScrollLayer
+TimelineFrameModel._mainFrameMarkers = [
+  RecordType.ScheduleStyleRecalculation, RecordType.InvalidateLayout, RecordType.BeginMainThreadFrame,
+  RecordType.ScrollLayer
 ];
 
 /**
  * @unrestricted
  */
-TimelineModel.TracingFrameLayerTree = class {
+export class TracingFrameLayerTree {
   /**
-   * @param {!SDK.Target} target
+   * @param {!SDK.SDKModel.Target} target
    * @param {!SDK.TracingModel.ObjectSnapshot} snapshot
    */
   constructor(target, snapshot) {
     this._target = target;
     this._snapshot = snapshot;
-    /** @type {!Array<!TimelineModel.LayerPaintEvent>|undefined} */
+    /** @type {!Array<!LayerPaintEvent>|undefined} */
     this._paints;
   }
 
   /**
-   * @return {!Promise<?TimelineModel.TracingLayerTree>}
+   * @return {!Promise<?TracingLayerTree>}
    */
   async layerTreePromise() {
-    var result = await this._snapshot.objectPromise();
-    if (!result)
+    const result = await this._snapshot.objectPromise();
+    if (!result) {
       return null;
-    var viewport = result['device_viewport_size'];
-    var tiles = result['active_tiles'];
-    var rootLayer = result['active_tree']['root_layer'];
-    var layers = result['active_tree']['layers'];
-    var layerTree = new TimelineModel.TracingLayerTree(this._target);
+    }
+    const viewport = result['device_viewport_size'];
+    const tiles = result['active_tiles'];
+    const rootLayer = result['active_tree']['root_layer'];
+    const layers = result['active_tree']['layers'];
+    const layerTree = new TracingLayerTree(this._target);
     layerTree.setViewportSize(viewport);
     layerTree.setTiles(tiles);
 
@@ -380,24 +388,24 @@ TimelineModel.TracingFrameLayerTree = class {
   }
 
   /**
-   * @return {!Array<!TimelineModel.LayerPaintEvent>}
+   * @return {!Array<!LayerPaintEvent>}
    */
   paints() {
     return this._paints || [];
   }
 
   /**
-   * @param {!Array<!TimelineModel.LayerPaintEvent>} paints
+   * @param {!Array<!LayerPaintEvent>} paints
    */
   _setPaints(paints) {
     this._paints = paints;
   }
-};
+}
 
 /**
  * @unrestricted
  */
-TimelineModel.TimelineFrame = class {
+export class TimelineFrame {
   /**
    * @param {number} startTime
    * @param {number} startTimeOffset
@@ -410,9 +418,9 @@ TimelineModel.TimelineFrame = class {
     this.timeByCategory = {};
     this.cpuTime = 0;
     this.idle = false;
-    /** @type {?TimelineModel.TracingFrameLayerTree} */
+    /** @type {?TracingFrameLayerTree} */
     this.layerTree = null;
-    /** @type {!Array.<!TimelineModel.LayerPaintEvent>} */
+    /** @type {!Array.<!LayerPaintEvent>} */
     this._paints = [];
     /** @type {number|undefined} */
     this._mainFrameId = undefined;
@@ -434,7 +442,7 @@ TimelineModel.TimelineFrame = class {
   }
 
   /**
-   * @param {?TimelineModel.TracingFrameLayerTree} layerTree
+   * @param {?TracingFrameLayerTree} layerTree
    */
   _setLayerTree(layerTree) {
     this.layerTree = layerTree;
@@ -444,8 +452,9 @@ TimelineModel.TimelineFrame = class {
    * @param {!Object} timeByCategory
    */
   _addTimeForCategories(timeByCategory) {
-    for (var category in timeByCategory)
+    for (const category in timeByCategory) {
       this._addTimeForCategory(category, timeByCategory[category]);
+    }
   }
 
   /**
@@ -456,15 +465,15 @@ TimelineModel.TimelineFrame = class {
     this.timeByCategory[category] = (this.timeByCategory[category] || 0) + time;
     this.cpuTime += time;
   }
-};
+}
 
 /**
  * @unrestricted
  */
-TimelineModel.LayerPaintEvent = class {
+export class LayerPaintEvent {
   /**
    * @param {!SDK.TracingModel.Event} event
-   * @param {?SDK.Target} target
+   * @param {?SDK.SDKModel.Target} target
    */
   constructor(event, target) {
     this._event = event;
@@ -489,34 +498,36 @@ TimelineModel.LayerPaintEvent = class {
    * @return {!Promise<?{rect: !Array<number>, serializedPicture: string}>}
    */
   picturePromise() {
-    var picture = TimelineModel.TimelineData.forEvent(this._event).picture;
+    const picture = TimelineData.forEvent(this._event).picture;
     return picture.objectPromise().then(result => {
-      if (!result)
+      if (!result) {
         return null;
-      var rect = result['params'] && result['params']['layer_rect'];
-      var picture = result['skp64'];
+      }
+      const rect = result['params'] && result['params']['layer_rect'];
+      const picture = result['skp64'];
       return rect && picture ? {rect: rect, serializedPicture: picture} : null;
     });
   }
 
   /**
-   * @return !Promise<?{rect: !Array<number>, snapshot: !SDK.PaintProfilerSnapshot}>}
+   * @return !Promise<?{rect: !Array<number>, snapshot: !SDK.PaintProfiler.PaintProfilerSnapshot}>}
    */
   snapshotPromise() {
-    var paintProfilerModel = this._target && this._target.model(SDK.PaintProfilerModel);
+    const paintProfilerModel = this._target && this._target.model(SDK.PaintProfiler.PaintProfilerModel);
     return this.picturePromise().then(picture => {
-      if (!picture || !paintProfilerModel)
+      if (!picture || !paintProfilerModel) {
         return null;
+      }
       return paintProfilerModel.loadSnapshot(picture.serializedPicture)
           .then(snapshot => snapshot ? {rect: picture.rect, snapshot: snapshot} : null);
     });
   }
-};
+}
 
 /**
  * @unrestricted
  */
-TimelineModel.PendingFrame = class {
+export class PendingFrame {
   /**
    * @param {number} triggerTime
    * @param {!Object.<string, number>} timeByCategory
@@ -524,10 +535,10 @@ TimelineModel.PendingFrame = class {
   constructor(triggerTime, timeByCategory) {
     /** @type {!Object.<string, number>} */
     this.timeByCategory = timeByCategory;
-    /** @type {!Array.<!TimelineModel.LayerPaintEvent>} */
+    /** @type {!Array.<!LayerPaintEvent>} */
     this.paints = [];
     /** @type {number|undefined} */
     this.mainFrameId = undefined;
     this.triggerTime = triggerTime;
   }
-};
+}
