@@ -358,9 +358,10 @@ function GatewayServer(opts) {
 		for (var id in host.wsconn) {
 			var info = host.wsconn[id];
 			if (info.ws) info.ws.close();
-			else info.socket.close();
+			else if (info.socket) info.socket.close();
 			delete self.ws[id];
 		}
+		host.wsconn = null;
 
 		self.removeHost(host);
 	}
