@@ -132,12 +132,12 @@ export class NetworkLogView extends UI.Widget.VBox {
     this._textFilterUI.addEventListener(UI.FilterBar.FilterUI.Events.FilterChanged, this._filterChanged, this);
     filterBar.addFilter(this._textFilterUI);
 
-    this._dataURLFilterUI = new UI.FilterBar.CheckboxFilterUI(
-        'hide-data-url', Common.UIString.UIString('Hide data URLs'), true, this._networkHideDataURLSetting);
-    this._dataURLFilterUI.addEventListener(
-        UI.FilterBar.FilterUI.Events.FilterChanged, this._filterChanged.bind(this), this);
-    this._dataURLFilterUI.element().title = ls`Hides data: and blob: URLs`;
-    filterBar.addFilter(this._dataURLFilterUI);
+    // this._dataURLFilterUI = new UI.FilterBar.CheckboxFilterUI(
+    //     'hide-data-url', Common.UIString.UIString('Hide data URLs'), true, this._networkHideDataURLSetting);
+    // this._dataURLFilterUI.addEventListener(
+    //     UI.FilterBar.FilterUI.Events.FilterChanged, this._filterChanged.bind(this), this);
+    // this._dataURLFilterUI.element().title = ls`Hides data: and blob: URLs`;
+    // filterBar.addFilter(this._dataURLFilterUI);
 
     const filterItems =
         Object.values(Common.ResourceType.resourceCategories)
@@ -149,12 +149,12 @@ export class NetworkLogView extends UI.Widget.VBox {
         UI.FilterBar.FilterUI.Events.FilterChanged, this._filterChanged.bind(this), this);
     filterBar.addFilter(this._resourceCategoryFilterUI);
 
-    this._onlyIssuesFilterUI = new UI.FilterBar.CheckboxFilterUI(
-        'only-show-issues', ls`Has blocked cookies`, true, this._networkShowIssuesOnlySetting);
-    this._onlyIssuesFilterUI.addEventListener(
-        UI.FilterBar.FilterUI.Events.FilterChanged, this._filterChanged.bind(this), this);
-    this._onlyIssuesFilterUI.element().title = ls`Only show requests with blocked response cookies`;
-    filterBar.addFilter(this._onlyIssuesFilterUI);
+    // this._onlyIssuesFilterUI = new UI.FilterBar.CheckboxFilterUI(
+    //     'only-show-issues', ls`Has blocked cookies`, true, this._networkShowIssuesOnlySetting);
+    // this._onlyIssuesFilterUI.addEventListener(
+    //     UI.FilterBar.FilterUI.Events.FilterChanged, this._filterChanged.bind(this), this);
+    // this._onlyIssuesFilterUI.element().title = ls`Only show requests with blocked response cookies`;
+    // filterBar.addFilter(this._onlyIssuesFilterUI);
 
 
     this._filterParser = new TextUtils.TextUtils.FilterParser(_searchKeys);
@@ -1218,8 +1218,8 @@ export class NetworkLogView extends UI.Widget.VBox {
    */
   setTextFilterValue(filterString) {
     this._textFilterUI.setValue(filterString);
-    this._dataURLFilterUI.setChecked(false);
-    this._onlyIssuesFilterUI.setChecked(false);
+    // this._dataURLFilterUI.setChecked(false);
+    // this._onlyIssuesFilterUI.setChecked(false);
     this._resourceCategoryFilterUI.reset();
   }
 
@@ -1560,12 +1560,12 @@ export class NetworkLogView extends UI.Widget.VBox {
     if (!this._resourceCategoryFilterUI.accept(categoryName)) {
       return false;
     }
-    if (this._dataURLFilterUI.checked() && (request.parsedURL.isDataURL() || request.parsedURL.isBlobURL())) {
-      return false;
-    }
-    if (this._onlyIssuesFilterUI.checked() && !SDK.IssuesModel.IssuesModel.hasIssues(request)) {
-      return false;
-    }
+    // if (this._dataURLFilterUI.checked() && (request.parsedURL.isDataURL() || request.parsedURL.isBlobURL())) {
+    //   return false;
+    // }
+    // if (this._onlyIssuesFilterUI.checked() && !SDK.IssuesModel.IssuesModel.hasIssues(request)) {
+    //   return false;
+    // }
     if (request.statusText === 'Service Worker Fallback Required') {
       return false;
     }
