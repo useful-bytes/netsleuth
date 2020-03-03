@@ -268,6 +268,8 @@ server.app.get('/ipc/gateways', isLocal, function(req, res) {
 	for (var gw in config.gateways) {
 		arr.push(gws[gw] = {
 			name: gw,
+			loggedIn: !!config.gateways[gw].token,
+			username: config.gateways[gw].username,
 			domains: null,
 			regions: null,
 			defaultRegion: config.gateways[gw].defaultRegion
@@ -297,6 +299,11 @@ server.app.get('/ipc/gateways', isLocal, function(req, res) {
 			gateways: arr
 		});
 	}
+});
+
+server.app.get('/logged-in', function(req, res) {
+	reload();
+	res.redirect('/');
 });
 
 var cache = {};

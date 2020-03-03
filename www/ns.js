@@ -334,7 +334,11 @@ $('#acadd').click(function() {
 				$('#actarget').val('http://localhost:80');
 				aclose();
 			} else {
-				res.json().then(function(err) {
+				if (res.status == 402) {
+					$('#adddlg').addClass('disabled');
+					$('#paydlg').show();
+				}
+				else res.json().then(function(err) {
 					alert(err.message);
 				}).catch(function(err) {
 					alert('Unexpected error.');
@@ -395,14 +399,26 @@ $('#dok').click(function() {
 	});
 });
 
+
+$('#payclose,#paycancel').click(payclose);
+function payclose() {
+	$('#adddlg').removeClass('disabled');
+	$('#paydlg').hide();
+}
+
+$('#paylearn').click(function() {
+	location.assign('https://netsleuth.io/gateway');
+});
+
 var gateways = {}, domains = {};
 function updateGateways() {
 	fetch('/ipc/gateways').then(function(res) {
 		res.json().then(function(cfg) {
-			var $gw = $('#acgateway');
+			var $gw = $('#acgateway'), hasLogin = false;
 			$gw.empty();
 			cfg.gateways.forEach(function(gw) {
 				gateways[gw.name] = gw;
+				if (gw.loggedIn) hasLogin = true;
 				(gw.domains || [gw.name]).forEach(function(dom) {
 					domains[dom] = gw;
 					var opt = $('<option>').attr('value', dom).text('.' + dom);
@@ -411,6 +427,9 @@ function updateGateways() {
 				});
 			});
 			$gw.trigger('change');
+
+			$('.loggedin').vis(hasLogin);
+			$('.loggedout').vis(!hasLogin);
 		});
 	});
 }

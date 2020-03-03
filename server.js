@@ -1427,6 +1427,17 @@ function InspectionServer(opts) {
 		} else res.sendStatus(404);
 	});
 
+	app.get('/login', function(req, res) {
+		require('./lib/browser-login').login({
+			gateway: req.query.gateway || 'netsleuth.io',
+			openBrowser: false,
+			finished: 'http://localhost:' + opts.port + '/logged-in'
+		}, function(err, opts) {
+			if (err) res.status(500).send(err.stack);
+			else res.redirect(opts.dest);
+		});
+	});
+
 	var httpServer = this.http = http.createServer(app),
 		ws = this.ws = new WebSocket.Server({
 			noServer: true,

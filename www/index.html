@@ -25,7 +25,7 @@
 <h3>Adding your first target</h3>
 <p>There are several ways to get started:</p>
 <ul>
-<li>Run a node.js script with <code class="term">snode</code> instead of <code class="term">node</code> to make the process inspectable</li>
+<li><a href="https://netsleuth.io/docs/snode" target=_blank>Run a node.js script with <code class="term">snode</code></a> instead of <code class="term">node</code> to make the process inspectable</li>
 <li><a href="https://netsleuth.io/docs/api" target=_blank>Use the API to integrate your node.js project</a></li>
 <li>Use the <a href="https://netsleuth.io/docs/cli" target=_blank>CLI</a> to add a target.
 	<ul>
@@ -35,6 +35,7 @@
 </li>
 <li>Click the <b>+</b> button on this page to add a target</li>
 </ul>
+<p class="loggedout">In order to use the public gateway service, you'll need to <a href="/login">login</a> first.</p>
 </div>
 </div>
 <div id="adddlg" class="dialog">
@@ -79,6 +80,7 @@
 			<div class="row acauth"><label for="acauthp">Password: </label><input id="acauthp"></div>
 		</div>
 		<div class="row atprox"><input type="checkbox" id="atproxhostsfile" class="notemp"><label for="atproxhostsfile" class="notempl"> Add hostname to system HOSTS file</label></div>
+		<div class="row atpub"><p class="loggedout danger">You must <a href="/login">log in</a> to the gateway service before you can add a public host.</p></div>
 		<div class="row"><button id="acadd">Add</button></div>
 	</div>
 
@@ -107,6 +109,14 @@
 
 	<div class="row"><button id="dok">Delete</button> <button id="dcancel">Cancel</button></div>
 </div>
+
+<div id="paydlg" class="dialog atab">
+	<div id="payclose" class="closebtn">×</div>
+	<h3>Public gateway subscription required</h3>
+	<p>In order to add targets with a publicly accessible URL, you must have an active subscription to the netsleuth public gateway service.</p>
+	<div class="row"><button id="paylearn">Learn more…</button> <button id="paycancel">Cancel</button></div>
+</div>
+
 <script src="/jq/jquery.min.js"></script>
 <script src="ns.js"></script>
 </body>
