@@ -166,7 +166,7 @@ server.app.post('/ipc/reload', isLocal, function(req, res) {
 
 server.app.post('/ipc/add', isLocal, function(req, res) {
 
-	if (req.body.local || (config.gateways[req.body.gateway] && config.gateways[req.body.gateway].token)) {
+	if (req.body.local || (config.gateways && config.gateways[req.body.gateway] && config.gateways[req.body.gateway].token)) {
 		
 		setupHost(req.body, function(err, result) {
 			if (err) res.status(err.status || 500).send({ message: err.message });
@@ -308,7 +308,7 @@ function getGatewayInfo(gw, type, cb) {
 		var headers = {
 			'User-Agent': ua
 		};
-		if (config.gateways[gw] && config.gateways[gw].token) headers.Authorization = 'Bearer ' + config.gateways[gw].token;
+		if (config.gateways && config.gateways[gw] && config.gateways[gw].token) headers.Authorization = 'Bearer ' + config.gateways[gw].token;
 		request({
 			url: 'https://' + gw + '/gateway/' + type,
 			headers: headers,
@@ -363,7 +363,7 @@ function registerProjectHost(project, inspect) {
 
 var regionSearch = {};
 function region(gw, cb) {
-	if (config.gateways[gw] && config.gateways[gw].defaultRegion) cb(null, config.gateways[gw].defaultRegion);
+	if (config.gateways && config.gateways[gw] && config.gateways[gw].defaultRegion) cb(null, config.gateways[gw].defaultRegion);
 	else if (regionSearch[gw]) regionSearch[gw].push(searched);
 	else findBestRegion({ gateway: gw }, searched);
 
@@ -423,6 +423,7 @@ function findBestRegion(opts, cb) {
 
 					if (results[0].ms !== null && opts.save !== false) {
 						reload();
+						if (!config.gateways) config.gateways = {};
 						if (!config.gateways[opts.gateway]) config.gateways[opts.gateway] = {};
 						config.gateways[opts.gateway].defaultRegion = results[0].id;
 						rcfile.save(config);
@@ -446,7 +447,7 @@ function sum(total, val) {
 	return total + val;
 }
 
-if (!config.gateways['netsleuth.io'] || !config.gateways['netsleuth.io'].defaultRegion) findBestRegion({ gateway: 'netsleuth.io' }, function(err, results) {
+if (!config.gateways || !config.gateways['netsleuth.io'] || !config.gateways['netsleuth.io'].defaultRegion) findBestRegion({ gateway: 'netsleuth.io' }, function(err, results) {
 	if (err) console.error('No default region set', err);
 	else if (results[0].ms == null) console.error('No default region set; unable to find best');
 	else console.log('Set default region to ' + results[0].id);
