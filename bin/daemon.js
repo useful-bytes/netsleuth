@@ -17,7 +17,7 @@ var fs = require('fs'),
 if (!process.stdout.isTTY) {
 	process.on('uncaughtException', function(err) {
 		server.http.close();
-		dialog.err('The Network Sleuth inspection server has crashed due to an uncaught exception.\n\n' + err.stack, 'Network Sleuth');
+		dialog.err('The Network Sleuth inspection server has crashed due to an uncaught exception.\n\n' + err.stack, 'netsleuth');
 		process.exit(1);
 	});
 }
@@ -71,6 +71,69 @@ function addHost(host, cb) {
 
 }
 
+function setupHost(host, cb) {
+	addHost(host, function(err, inspector, ip) {
+
+		if (err) ierr(err);
+		else {
+
+			var lastErr, timeout = setTimeout(function() {
+				var msg = 'Timed out waiting for host to come online.';
+				if (lastErr) msg += ' Last error: ' + lastErr.message;
+				ierr(new Error(msg));
+			}, 15000);
+
+
+			inspector.on('error', ierr);
+			inspector.on('temp-error', problem);
+
+			inspector.on('hostname', function(hostname) {
+				clearTimeout(timeout);
+				inspector.removeListener('error', ierr);
+				inspector.removeListener('temp-error', problem);
+
+				if (ip) {
+					host.ip = ip;
+					inspector.opts.ip = ip;
+					host.host = hostname;
+				}
+				
+				if (!host.temp) {
+					reload();
+					config.hosts[hostname] = host;
+					rcfile.save(config);
+				}
+
+				if (host.local) {
+					if (host.hostsfile) {
+						hosts.add(ip, hostname, function(err) {
+							cb(null, { host: hostname, hostsUpdated: !err });
+						});
+					} else cb(null, { host: hostname });
+				}
+				else cb(null, { host: hostname });
+			});
+			
+		}
+
+		function problem(err) {
+			console.error('insp problem', err);
+			lastErr = err;
+		}
+
+		function ierr(err) {
+			clearTimeout(timeout);
+			console.error('ierr', err);
+			if (inspector) {
+				inspector.removeListener('error', ierr);
+				inspector.close();
+			}
+			cb(err);
+			if (host.host) server.remove(host.host);
+		}
+	});
+}
+
 function reload() {
 	config = rcfile.get();
 	server.opts.gateways = config.gateways;
@@ -104,65 +167,10 @@ server.app.post('/ipc/reload', isLocal, function(req, res) {
 server.app.post('/ipc/add', isLocal, function(req, res) {
 
 	if (req.body.local || (config.gateways[req.body.gateway] && config.gateways[req.body.gateway].token)) {
-		addHost(req.body, function(err, inspector, ip) {
-
-			if (err) ierr(err);
-			else {
-
-				var lastErr, timeout = setTimeout(function() {
-					var msg = 'Timed out waiting for host to come online.';
-					if (lastErr) msg += ' Last error: ' + lastErr.message;
-					ierr(new Error(msg));
-				}, 15000);
-
-
-				inspector.on('error', ierr);
-				inspector.on('temp-error', problem);
-
-				inspector.on('hostname', function(host) {
-					clearTimeout(timeout);
-					inspector.removeListener('error', ierr);
-					inspector.removeListener('temp-error', problem);
-
-					if (ip) {
-						req.body.ip = ip;
-						inspector.opts.ip = ip;
-						host = req.body.host;
-					}
-					
-					if (!req.body.temp) {
-						reload();
-						config.hosts[host] = req.body;
-						rcfile.save(config);
-					}
-
-					if (req.body.local) {
-						if (req.body.hostsfile) {
-							hosts.add(ip, host, function(err) {
-								res.send({ host: host, hostsUpdated: !err });
-							});
-						} else res.send({ host: host });
-					}
-					else res.send({ host: host });
-				});
-				
-			}
-
-			function problem(err) {
-				console.error('insp problem', err);
-				lastErr = err;
-			}
-
-			function ierr(err) {
-				clearTimeout(timeout);
-				console.error('ierr', err);
-				if (inspector) {
-					inspector.removeListener('error', ierr);
-					inspector.close();
-				}
-				res.status(err.status || 500).send({ message: err.message });
-				if (req.body.host) server.remove(req.body.host);
-			}
+		
+		setupHost(req.body, function(err, result) {
+			if (err) res.status(err.status || 500).send({ message: err.message });
+			else res.send(result);
 		});
 
 	} else {
@@ -198,11 +206,12 @@ server.app.post('/ipc/project', isLocal, function(req, res) {
 	
 	var project = req.body || {}
 
-	var gw = project.gateway || 'netsleuth.io';
+	var gw = project.gateway = project.gateway || 'netsleuth.io';
 	if (!config.gateways || !config.gateways[gw]) {
 		browserLogin.login({
 			gateway: gw,
-			google: project.googleAuth,
+			googleAuth: project.googleAuth,
+			welcomeMessage: project.welcomeMessage,
 			welcome: true
 		}, function(err, username) {
 			if (err) res.sendStatus(500);
@@ -220,7 +229,7 @@ server.app.post('/ipc/project', isLocal, function(req, res) {
 				if (inspect.local) {
 					from = project.project + ':L:' + inspect.target;
 				} else {
-					from = project.project + ':' + inspect.hostname;
+					from = project.project + ':' + inspect.host;
 				}
 				var host = hostFrom[from];
 				if (host) {
@@ -321,52 +330,47 @@ function registerProjectHost(project, inspect) {
 
 	if (inspect.local) {
 		var from = project.project + ':L:' + inspect.target;
-		var host = hostFrom[from] = {
+		var host = hostFrom[from] = Object.assign(inspect, {
 			local: true,
-			from: from,
-			target: inspect.target,
-			insecure: inspect.insecure,
-			gcFreqMs: inspect.gcFreqMs,
-			gcFreqCount: inspect.gcFreqCount,
-			gcMinLifetime: inspect.gcMinLifetime,
-			reqMaxSize: inspect.reqMaxSize,
-			resMaxSize: inspect.resMaxSize
-		};
-		addHost(host, function(err, inspector, ip) {
+			from: from
+		});
+		setupHost(host, function(err) {
 			if (err) return console.error('unable to add local inspector', err);
-			host.host = ip;
-			config.hosts[ip] = host;
-			rcfile.save(config);
 		});
 	} else {
-		if (!inspect.hostname) return console.error('missing hostname', inspect);
-		var hostname = inspect.hostname.replace('{user}', username());
+		if (!inspect.host) return console.error('missing hostname', inspect);
+		var hostname = inspect.host.replace('{user}', username());
 		if (hostname.indexOf('.') == -1) hostname += '.' + project.gateway;
 
-		gw.reserve(hostname, inspect.store, true, {}, function(err, res, hostname) {
-			if (err) console.error(err);
-			else if (hostname) {
-				config.hosts = config.hosts || {};
-				var from = project.project + ':' + inspect.hostname;
-				var host = hostFrom[from] = config.hosts[hostname] = {
-					from: from,
-					host: hostname,
-					gateway: project.gateway,
-					target: inspect.target,
-					insecure: inspect.insecure,
-					gcFreqMs: inspect.gcFreqMs,
-					gcFreqCount: inspect.gcFreqCount,
-					gcMinLifetime: inspect.gcMinLifetime,
-					reqMaxSize: inspect.reqMaxSize,
-					resMaxSize: inspect.resMaxSize
-				};
-				rcfile.save(config);
+		region(project.gateway, function(err, defaultRegion) {
+			if (err) return console.error(err);
 
-				addHost(host, function(err, inspector) {
-					
-				});
-			}
+			var from = project.project + ':' + inspect.host;
+			var host = hostFrom[from] = Object.assign(inspect, {
+				host: hostname,
+				from: from,
+				gateway: project.gateway || 'netsleuth.io'
+			});
+
+			setupHost(host, function(err) {
+				if (err) return console.error(err);
+			});
+
+
 		});
+	}
+}
+
+var regionSearch = {};
+function region(gw, cb) {
+	if (config.gateways[gw] && config.gateways[gw].defaultRegion) cb(null, config.gateways[gw].defaultRegion);
+	else if (regionSearch[gw]) regionSearch[gw].push(searched);
+	else findBestRegion({ gateway: gw }, searched);
+
+	function searched(err, results) {
+		if (err) return cb(err);
+		if (results[0] && results[0].ms) cb(null, results[0].id);
+		else cb(new Error('Unable to automatically find the best default region.  Run `netsleuth regions best` to try again.'));
 	}
 }
 
@@ -377,8 +381,10 @@ function findBestRegion(opts, cb) {
 	} catch (ex) {
 		return cb(ex);
 	}
+	regionSearch[opts.gateway] = [];
+
 	getGatewayInfo(opts.gateway, 'regions', function(err, regions) {		
-		if (err) return cb(err);
+		if (err) return _cb(err);
 
 		var results = regions.map(ping),
 			complete = 0;
@@ -417,15 +423,23 @@ function findBestRegion(opts, cb) {
 
 					if (results[0].ms !== null && opts.save !== false) {
 						reload();
+						if (!config.gateways[opts.gateway]) config.gateways[opts.gateway] = {};
 						config.gateways[opts.gateway].defaultRegion = results[0].id;
 						rcfile.save(config);
 					}
-					cb(null, results);
+					_cb(null, results);
 				}
 			}
 		}
 
 	});
+
+	function _cb(err, results) {
+		cb(err, results);
+		for (var i = 0; i < regionSearch[opts.gateway].length; i++) regionSearch[opts.gatways][i](err, results);
+
+		delete regionSearch[opts.gateway];
+	}
 }
 
 function sum(total, val) {
