@@ -1,7 +1,10 @@
 {
   "name": "netsleuth",
-  "version": "0.0.23",
+  "version": "1.0.0",
   "description": "Use Chrome's Network Inspector with anything",
+  "keywords": ["http", "proxy", "debugger", "inspector"],
+  "homepage": "https://netsleuth.io",
+  "repository": "https://github.com/useful-bytes/netsleuth",
   "main": "index.js",
   "scripts": {
     "postinstall": "node bin/postinstall.js",
@@ -12,7 +15,7 @@
     "netsleuth": "./bin/netsleuth.js"
   },
   "author": "daguej",
-  "license": "Proprietary",
+  "license": "AGPL",
   "dependencies": {
     "ansi-colors": "^4.1.1",
     "body-parser": "^1.19.0",
