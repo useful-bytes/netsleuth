@@ -206,8 +206,8 @@ var yargs = exports.yargs = require('yargs')
 			boolean: true,
 			describe: 'Show version number'
 		})
-		// .help(false)
-	}),
+	})
+	.help(false),
 	argv = yargs.argv;
 
 if (require.main != module || argv._[0] == 'profile') return;

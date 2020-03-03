@@ -131,7 +131,7 @@ exports.yargs = function(yargs) {
 
 	})
 	.demand(1)
-	.help();
+	.help(true);
 };
 
 exports.exec = function(argv) {

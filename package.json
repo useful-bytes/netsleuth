@@ -15,23 +15,23 @@
   "license": "Proprietary",
   "dependencies": {
     "ansi-colors": "^4.1.1",
-    "body-parser": "^1.18.0",
+    "body-parser": "^1.19.0",
     "clipboardy": "^1.1.4",
     "cliui": "^3.2.0",
     "content-type-parser": "^1.0.1",
     "dialog": "^0.3.1",
-    "express": "^4.15.3",
+    "express": "^4.17.1",
     "hosts-so-easy": "^1.2.8",
-    "jquery": "^3.2.1",
+    "jquery": "^3.4.1",
     "jsondiffpatch": "^0.3.11",
     "mime-types": "^2.1.22",
     "node-notifier": "^5.4.0",
     "opn": "^5.1.0",
-    "request": "^2.81.0",
+    "request": "^2.88.2",
     "sudo-prompt": "^9.1.1",
     "tough-cookie": "^3.0.1",
     "ws": "^7.2.1",
-    "yargs": "^8.0.2"
+    "yargs": "^15.1.0"
   },
   "optionalDependencies": {
     "chrome-cookies-secure": "^1.3.1",
