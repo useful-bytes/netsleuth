@@ -338,12 +338,14 @@ $('#acadd').click(function() {
 					$('#adddlg').addClass('disabled');
 					$('#paydlg').show();
 				}
-				else res.json().then(function(err) {
+				else return res.json().then(function(err) {
 					alert(err.message);
-				}).catch(function(err) {
-					alert('Unexpected error.');
 				});
 			}
+		}).catch(function(err) {
+			done();
+			console.error(err);
+			alert('Unexpected error: ' + (err && err.message));
 		});
 	}
 	function done() {

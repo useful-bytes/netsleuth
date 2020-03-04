@@ -100,6 +100,7 @@ function setupHost(host, cb) {
 				
 				if (!host.temp) {
 					reload();
+					if (!config.hosts) config.hosts = {};
 					config.hosts[hostname] = host;
 					rcfile.save(config);
 				}
