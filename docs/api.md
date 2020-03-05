@@ -1,7 +1,12 @@
 API
 ---
 
-Using netsleuth's node.js API, you can integrate netsleuth in to your project's development environment for your team's convenience. If your project is not a node.js project, **TODO**. All developers also can use the [CLI](/docs/cli) to manage their netsleuth configuration.
+Using netsleuth's node.js API, you can integrate netsleuth in to your project's development environment for your team's convenience.
+
+- node.js projects use this API for direct integration.
+- If your project is not a node.js project, you can integrate netsleuth into your project's dev environment using the `netsleuth project` command -- see the [project config docs](/docs/project).
+
+All developers can use the [CLI](/docs/cli) to manage their netsleuth configuration.
 
 ### `netsleuth.attach([options][, readyCb])` {#attach}
 
