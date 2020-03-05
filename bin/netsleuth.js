@@ -780,6 +780,40 @@ var yargs = require('yargs')
 		});
 
 	})
+	.command('project [path]', 'Run project autoconfiguration', function(yargs) {
+		yargs.usage('Usage: $0 project [path]\n\nThis will look for a .sleuthrc project configuration file in the current directory (or path, if provided) and send it to the netsleuth daemon for processing.  See https://netsleuth.io/docs/project for more info.')
+	}, function(argv) {
+		var dir = argv.path || process.cwd();
+		try {
+			var proj = JSON.parse(fs.readFileSync(path.join(dir, '.sleuthrc'), 'utf-8'));
+
+			if (!proj || !proj.project) throw new Error('Not a valid .sleuthrc file.');
+
+			var pconfig = Object.assign({}, config, proj.config),
+				pdaemon = new Daemon(pconfig);
+
+			pdaemon.autoStart = true;
+			pdaemon.start(function(err, alreadyRunning, host, version) {
+				if (err) {
+					console.error(err);
+					process.exit(1);
+				} else {
+					daemon.initProject(proj, function(err) {
+						if (err) {
+							console.error('Unable to initialize netsleuth project', err);
+							process.exit(1);
+						} else {
+							console.log('Success');
+							process.exit(0);
+						}
+					});
+				}
+			});
+		} catch (ex) {
+			console.error('Failed to read project file.  ' + ex.message);
+			process.exit(1);
+		}
+	})
 	.epilog('Run $0 <command> --help for details about each command, or visit https://netsleuth.io/docs/cli.')
 	.demandCommand()
 	.version()
