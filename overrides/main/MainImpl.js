@@ -361,7 +361,7 @@ export class MainImpl {
 
 
     var chromeVersion = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
-    if (chromeVersion[2] && chromeVersion[2] < 80) self.Common.console.warn('Warning: Chrome ≥ 80 is required.  You are using v' + chromeVersion[2] + '.  Some features may not work correctly.');
+    if (chromeVersion && chromeVersion[2] && chromeVersion[2] < 80) self.Common.console.warn('Warning: Chrome ≥ 80 is required.  You are using v' + chromeVersion[2] + '.  Some features may not work correctly.');
 
 
     MainImpl.timeEnd('Main._initializeTarget');
