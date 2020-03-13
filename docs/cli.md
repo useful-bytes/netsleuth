@@ -29,9 +29,11 @@ Commands:
   logout                       Log out of the public gateway
   register                     Create new account on the public gateway
   team                         Manage your team on the public gateway
+  regions                      List available gateway regions
   start                        Start the inspection server daemon
   stop                         Stop the inspection server daemon
   restart                      Stop and restart the inspection server daemon
+  project [path]               Run project autoconfiguration
 
 Options:
   --version  Show version number                                       [boolean]
@@ -61,26 +63,28 @@ Adds a new inspection target to your local inspection server.
   If not specified, the hostname is autoassigned.
 
 Options:
-  --version      Show version number                                   [boolean]
-  --help         Show help                                             [boolean]
-  --reserve, -r  Also reserve the hostname so no one else can take it even if
-                 you are offline.  (Only applicable for public gateway.)
+  --version          Show version number                               [boolean]
+  --help             Show help                                         [boolean]
+  --store, -s        Enable the gateway's offline storage mode.  (See help for
+                     `netsleuth reserve`.)                             [boolean]
+  --local, -l        Add target in local gateway mode.  In this mode, requests
+                     are made to a proxy running on your machine and forwarded
+                     to the target.                                    [boolean]
+  --add-host, -h     Add an entry to your HOSTS file for this hostname pointing
+                     to 127.0.0.1.  netsleuth will sudo for you.       [boolean]
+  --ca, -c           Location of the CA or self-signed certificate to use when
+                     validating HTTPS certificates presented by the target.
+  --insecure         Do not validate HTTPS certificates presented by the target.
                                                                        [boolean]
-  --store, -s    If reserving the hostname, enable offline storage mode.  (See
-                 help for netsleuth reserve.)                          [boolean]
-  --local, -l    Add target in local gateway mode.  In this mode, requests are
-                 made to a proxy running on your machine and forwarded to the
-                 target.                                               [boolean]
-  --ca, -a       Location of the CA or self-signed certificate to use when
-                 validating HTTPS certificates presented by the target.
-  --insecure     Do not validate HTTPS certificates presented by the target.
-                                                                       [boolean]
-  --gateway, -g  Use this gateway server (if it cannot be inferred from
-                 hostname)
-  --auth, -A     Basic auth username:password that the gateway should require
-                 before forwarding requests
-  --tmp, -t      Add temporarily -- do not save this target configuration to
-                 disk.                                                 [boolean]
+  --gateway, -g      Use this gateway server (if it cannot be inferred from
+                     hostname)
+  --region, -r       Use a gateway server hosted in this region.  Run `netsleuth
+                     regions` to see a list.                   [default: "auto"]
+  --auth, -a         Basic auth username:password that the gateway should
+                     require before forwarding requests
+  --host-header, -H  Override the HTTP Host header sent to the target with this.
+  --temp, -t         Add temporarily -- do not save this target configuration to
+                     disk.                                             [boolean]
 
 Examples:
   netsleuth inspect http://localhost:3000 myapp.netsleuth.io
@@ -89,6 +93,8 @@ Examples:
 ```
 
 In order to inspect a target in public mode, you must have an active [public gateway](/gateway) subscription. Inspecting in `local` mode has no additional requirements – the proxy server runs on your machine.
+
+If set, the `auth` option causes the gateway to check for an `Authorization: Basic …` header and respond with a 401 if the correct username and password was not supplied. The username and password are stored in plaintext; do not reuse credentials.
 
 Note: netsleuth can also inspect outgoing requests made from a node process. It is not necessary to run any CLI commands for this functionality; see the [API docs](api) for more info.
 
@@ -104,44 +110,14 @@ Usage: netsleuth rm [options] <target|hostname>...
 You need only specify *either* the target or hostname of an inspection target.
 
 Options:
-  --version        Show version number                                 [boolean]
-  --help           Show help                                           [boolean]
-  --unreserve, -u  Also cancel the hostname reservation (if applicable)[boolean]
+  --version               Show version number                          [boolean]
+  --help                  Show help                                    [boolean]
+  --keep-reservation, -R  Keeps your reservation of this hostname active on the
+                          public gateway                               [boolean]
 
 Examples:
   netsleuth rm a.netsleuth.io b.netsleuth.io
 ```
-
-### `reserve` {#reserve}
-
-```term
-Reserves a hostname on the public gateway.
-Usage: netsleuth reserve [options] <hostname>...
-<hostname>
-  A hostname to reserve.  Reserved hostnames are unavailable for other users to
-  take even if you are offline.  Can be a fully-qualified DNS name or a hostname
-  that will be concatenated with the default gateway, ".netsleuth.io".
-
-Options:
-  --version      Show version number                                   [boolean]
-  --help         Show help                                             [boolean]
-  --store, -s    Enable request storage mode.  When enabled and you are offline,
-                 the gateway will store incoming requests *except* GET, HEAD,
-                 and OPTIONS requests.  Stored requests are delivered when the
-                 target comes back online.                             [boolean]
-  --similar, -m  If the requested hostname is not available, automatically
-                 reserve a similar name.                               [boolean]
-  --auth, -A     Basic auth username:password that the gateway should require
-                 before forwarding requests.  Note: these credentials are not
-                 stored in a secure fashion.
-
-Examples:
-  netsleuth reserve myapp.netsleuth.io
-```
-
-You can read more about how the [public gateway works here](/gateway).
-
-If set, the `auth` option causes the gateway to check for an `Authorization: Basic …` header and respond with a 401 if the correct username and password was not supplied. The username and password are stored in plaintext; do not reuse credentials.
 
 ### `unreserve` {#unreserve}
 
@@ -224,6 +200,24 @@ Commands:
   rm <email..>        Remove team members
 ```
 
+### `regions` {#regions}
+
+```term
+Usage: netsleuth regions [options]
+
+Commands:
+  netsleuth regions best                 Find the best region to use as your
+                                         default
+  netsleuth regions default [region]     Get or set the default region for a
+                                         gateway
+
+Options:
+  --version      Show version number                                   [boolean]
+  --help         Show help                                             [boolean]
+  --gateway, -g  Get region list from this gateway service.
+                                                       [default: "netsleuth.io"]
+```
+
 ### `start` {#start}
 
 netsleuth runs a background daemon that forwards incoming requests to your targets. This starts the daemon if it is not already running. If you use [`netsleuth.init()`](/docs/api#init) or [`netsleuth.attach()`](/docs/api#attach) in your project, the daemon will be started automatically for you when you start your project.
@@ -247,6 +241,34 @@ Options:
   --version   Show version number                                      [boolean]
   --help      Show help                                                [boolean]
   --host, -h  Stop the server running on this host.
+```
+
+### `restart` {#restart}
+
+This gracefully restarts the daemon process.
+
+```term
+Usage: netsleuth start [options]
+
+Options:
+  --version  Show version number                                       [boolean]
+  --help     Show help                                                 [boolean]
+```
+
+### `project` {#project}
+
+Runs [project autoconfiguration](https://netsleuth.io/docs/project).
+
+```term
+Usage: netsleuth project [path]
+
+This will look for a .sleuthrc project configuration file in the current
+directory (or path, if provided) and send it to the netsleuth daemon for
+processing.  See https://netsleuth.io/docs/project for more info.
+
+Options:
+  --version  Show version number                                       [boolean]
+  --help     Show help                                                 [boolean]
 ```
 
 Configuration Options
