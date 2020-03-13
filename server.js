@@ -23,6 +23,7 @@ var http = require('http'),
 	MessageBody = require('./message-body'),
 	GatewayServer = require('./gateway'),
 	rawRespond = require('./lib/raw-respond'),
+	insensitize = require('./lib/insensitize'),
 	SessionCLI = require('./session-cli'),
 	version = require('./package.json').version;
 
@@ -33,6 +34,7 @@ var app = express();
 var wsid = 0;
 
 var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend'),
+	DEVTOOLS_CASE_SENSITIVE = !fs.existsSync(DEVTOOLS + '/InSPECtOR.HtML'),
 	COMMA = /, */;
 
 exports = module.exports = InspectionServer;
@@ -1371,7 +1373,9 @@ function InspectionServer(opts) {
 	});
 
 	app.use('/inspect', express.static(path.join(__dirname, 'overrides')));
-	app.use('/inspect', express.static(DEVTOOLS));
+	var dtStatic = express.static(DEVTOOLS);
+	if (DEVTOOLS_CASE_SENSITIVE) app.use('/inspect', insensitize(DEVTOOLS, dtStatic));
+	else app.use('/inspect', dtStatic);
 	app.use('/jq', express.static(path.dirname(require.resolve('jquery'))));
 	app.use(express.static(__dirname + '/www'));
 
