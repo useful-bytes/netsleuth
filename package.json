@@ -1,8 +1,13 @@
 {
   "name": "netsleuth",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Use Chrome's Network Inspector with anything",
-  "keywords": ["http", "proxy", "debugger", "inspector"],
+  "keywords": [
+    "http",
+    "proxy",
+    "debugger",
+    "inspector"
+  ],
   "homepage": "https://netsleuth.io",
   "repository": "https://github.com/useful-bytes/netsleuth",
   "main": "index.js",
@@ -21,6 +26,7 @@
     "body-parser": "^1.19.0",
     "clipboardy": "^1.1.4",
     "cliui": "^3.2.0",
+    "command-exists": "^1.2.8",
     "content-type-parser": "^1.0.1",
     "dialog": "^0.3.1",
     "express": "^4.17.1",

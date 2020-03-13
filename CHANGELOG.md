@@ -1,5 +1,10 @@
 Changelog
 =========
+1.0.4 2020-03-12
+----------------
+- Add support for authbind on unix platforms to enable listening on privileged ports (< 1024)
+- Automatic installation of authbind binaries on Mac OS
+
 1.0.3 2020-03-12
 ----------------
 - Fix DevTools GUI on case-sensitive filesystems

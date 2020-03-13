@@ -17,7 +17,7 @@ var fs = require('fs'),
 if (!process.stdout.isTTY) {
 	process.on('uncaughtException', function(err) {
 		server.http.close();
-		dialog.err('The Network Sleuth inspection server has crashed due to an uncaught exception.\n\n' + err.stack, 'netsleuth');
+		dialog.err('The netsleuth daemon has crashed due to an uncaught exception.\n\n' + err.stack, 'netsleuth');
 		process.exit(1);
 	});
 }

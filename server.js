@@ -1660,7 +1660,7 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 			var ip = InspectionServer.nextLocal();
 		} catch (ex) {
 			if (cb) cb(ex);
-			else self.emit('error', ex);
+			else throw ex;
 			return;
 		}
 		console.log('trying', ip);
@@ -1670,7 +1670,7 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 			if (err.code == 'EADDRINUSE') tryListen();
 			else {
 				if (cb) cb(err);
-				else self.emit('error', err);
+				else throw err;
 			}
 		}
 		function onlistening() {
