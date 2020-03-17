@@ -783,6 +783,10 @@ var yargs = require('yargs')
 	.command('setup', 'Run netsleuth system setup', function(yargs) {
 		yargs
 		.usage('Usage: sudo $0 restart [options]')
+		.option('uninstall', {
+			boolean: true,
+			describe: 'Remove netsleuth\'s system modifications'
+		})
 		.epilog('System setup is automatically run during netsleuth\'s installation.  You only need to run this command if setup did not complete.');
 
 	}, function(argv) {
@@ -790,8 +794,8 @@ var yargs = require('yargs')
 		if (process.platform == 'win32') {
 			console.log('It is not necessary to run this command on Windows.');
 		}
-		else if (process.getuid() == 0) require('./authbind');
-		else require('sudo-prompt').exec('node ' + path.join(__dirname, 'authbind.js'), { name: 'netsleuth setup'}, function(err, stdout, stderr) {
+		else if (process.getuid() == 0) require('./authbind')[argv.uninstall ? 'uninstall' : 'install']();
+		else require('sudo-prompt').exec('node ' + path.join(__dirname, 'authbind.js' + (argv.uninstall ? ' uninstall' : '')), { name: 'netsleuth setup'}, function(err, stdout, stderr) {
 			if (err) console.error('Setup failed.', err);
 			if (stderr) console.error(stderr);
 		});
