@@ -780,6 +780,23 @@ var yargs = require('yargs')
 		});
 
 	})
+	.command('setup', 'Run netsleuth system setup', function(yargs) {
+		yargs
+		.usage('Usage: sudo $0 restart [options]')
+		.epilog('System setup is automatically run during netsleuth\'s installation.  You only need to run this command if setup did not complete.');
+
+	}, function(argv) {
+
+		if (process.platform == 'win32') {
+			console.log('It is not necessary to run this command on Windows.');
+		}
+		else if (process.getuid() == 0) require('./authbind');
+		else require('sudo-prompt').exec('node ' + path.join(__dirname, 'authbind.js'), { name: 'netsleuth setup'}, function(err, stdout, stderr) {
+			if (err) console.error('Setup failed.', err);
+			if (stderr) console.error(stderr);
+		});
+
+	})
 	.command('project [path]', 'Run project autoconfiguration', function(yargs) {
 		yargs.usage('Usage: $0 project [path]\n\nThis will look for a .sleuthrc project configuration file in the current directory (or path, if provided) and send it to the netsleuth daemon for processing.  See https://netsleuth.io/docs/project for more info.')
 	}, function(argv) {
