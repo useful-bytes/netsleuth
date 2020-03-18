@@ -76,7 +76,7 @@ function install() {
 		authorize(80);
 		authorize(443);
 		if (!require('command-exists').sync('authbind')) {
-			console.error('Warning: authbind is not installed on your system.  netsleuth will be unable to listen on privileged ports (like HTTP\'s 80/443).  Please use your system\'s package manager to install authbind.  Learn more at https://netsleuth.io/docs/authbind');
+			console.error('Warning: authbind is not installed on your system.  netsleuth will be unable to listen on privileged ports (like HTTP\'s 80/443).  Please use your system\'s package manager to install authbind.  Learn more at https://netsleuth.io/docs/privileged-ports');
 		}
 	}
 }

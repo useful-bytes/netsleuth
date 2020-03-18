@@ -1,5 +1,11 @@
 Changelog
 =========
+1.0.5 2020-03-17
+----------------
+- Multiple bugfixes for local proxy mode
+- Improve authbind support on Linux
+- Automatic Mac loopback config
+
 1.0.4 2020-03-12
 ----------------
 - Add support for authbind on unix platforms to enable listening on privileged ports (< 1024)

@@ -34,7 +34,7 @@ try {
 				if (!authbindConfigured) state.push('configured');
 
 				console.error('netsleuth: authbind in not ' + state.join(' and ') + ' on your system, which is required for netsleuth to listen for connections on privileged ports (like HTTP\'s 80/443).');
-				console.error('Learn more at https://netsleuth.io/docs/authbind');
+				console.error('Learn more at https://netsleuth.io/docs/privileged-ports');
 
 				if (process.platform == 'darwin' || !authbindConfigured) {
 					if (process.platform == 'darwin') console.error('netsleuth will now attempt to sudo to install and configure authbind...');
