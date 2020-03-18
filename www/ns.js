@@ -23,8 +23,8 @@ function connect() {
 		} else if (msg.m == 'new') {
 			addHost(msg);
 		} else if (msg.m == 'rm') {
-			$('#t-' + hostid(msg.host)).remove();
-			delete hosts[hostid(msg.host)];
+			$(document.getElementById('t-' + msg.host)).remove();
+			delete hosts[msg.host];
 		}
 		listUpdated();
 	}
@@ -37,7 +37,7 @@ function listUpdated() {
 }
 
 function addHost(h) {
-	var li = $('<li>').attr('id', 't-' + hostid(h.host)),
+	var li = $('<li>').attr('id', 't-' + h.host),
 		a = $('<a>').attr({
 			href: '/inspect/' + h.host,
 			target: '_blank'
@@ -53,18 +53,13 @@ function addHost(h) {
 	$('<button>').addClass('rm').text('×').appendTo(a);
 
 	li.appendTo(list);
-	hosts[hostid(h.host)] = h;
+	hosts[h.host] = h;
 }
 
 function badIcon() {
 	$(this).attr('src', '/img/netsleuth.svg');
 }
 
-var space = /\s/g,
-	dot = /\./g;
-function hostid(name) {
-	return name.replace(space, '-').replace(dot, '_');
-}
 
 if (navigator.vendor != 'Google Inc.') $('#notchrome').show();
 

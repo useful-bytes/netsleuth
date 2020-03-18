@@ -79,6 +79,7 @@ function Inspector(server, opts) {
 	if (opts.host) {
 		if (opts.host.indexOf('://') == -1) this.host = url.parse('https://' + opts.host);
 		else this.host = url.parse(opts.host);
+		if (opts.gateway && opts.gateway._local && opts.host[0] == '*') this.host.host = opts.host;
 	}
 	if (opts.target) {
 		if (opts.target.substr(0, 2) == '//') this.target = url.parse('same:' + opts.target);
@@ -157,7 +158,10 @@ function Inspector(server, opts) {
 	function handleMsg(msg) {
 		//console.log('<', msg);
 		switch (msg.m) {
-			case 'r':
+			case 'r':			
+				var dhost = self.host.host;
+				if (dhost[0] == '*' && msg.headers.host) dhost = msg.headers.host;
+
 				msg.headers.host = self.target.host;
 
 				var proto = self.target.protocol;
@@ -324,7 +328,7 @@ function Inspector(server, opts) {
 							wallTime: Date.now() / 1000,
 							response: {
 								protocol: proto,
-								url: msg.proto + '://' + self.host.host + msg.url,
+								url: msg.proto + '://' + dhost + msg.url,
 								status: res.statusCode,
 								statusText: res.statusMessage,
 								headers: res.headers,
@@ -456,7 +460,7 @@ function Inspector(server, opts) {
 						timestamp: Date.now() / 1000,
 						wallTime: Date.now() / 1000,
 						request: {
-							url: msg.proto + '://' + self.host.host + msg.url,
+							url: msg.proto + '://' + dhost + msg.url,
 							method: msg.method,
 							headers: msg.headers,
 							postData: info.reqBody ? '' : undefined
@@ -1037,9 +1041,7 @@ function Inspector(server, opts) {
 				return;
 			}
 
-			if (!self.host) {
-				self.host = url.parse('https://' + body.host);
-			}
+			self.host = url.parse('https://' + body.host);
 
 			self.gatewayUrl = 'wss://' + body.host + '/.well-known/netsleuth';
 
@@ -1534,7 +1536,7 @@ InspectionServer.prototype.inspect = function(opts) {
 };
 
 InspectionServer.prototype.newRemoteInspector = function(inspector) {
-	this.inspectors[inspector.host.hostname] = inspector;
+	this.inspectors[inspector.host.host] = inspector;
 
 	var href = inspector.target.href;
 	if (href && href.substr(0, 5) == 'same:') href = href.substr(5);
@@ -1632,8 +1634,20 @@ InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
 
 	if (!opts || !opts.target) throw new Error('Must specify target host for outgoing inspection');
 
+	if (opts.host) {
+		var p = opts.host.indexOf(':');
+		if (p >= 0) {
+			opts.port = parseInt(opts.host.substr(p+1), 10) || 80;
+			opts.host = opts.host.substr(0, p);
+			if (!opts.host || opts.host == '*') opts.host = '*' + ':' + opts.port;
+		}
+		if (opts.host[0] == '*') opts.ip = '0.0.0.0';
+		console.log(opts);
+	}
+
 	var ip = opts.ip;
 	if (!ip && ipish.test(opts.host)) ip = opts.host;
+
 
 	if (ip) {
 		function onerror(err) {

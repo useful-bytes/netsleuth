@@ -462,6 +462,15 @@ function GatewayServer(opts) {
 		if (!hostname) {
 			return respond(res, 400, 'Bad Request (missing host header)', 'Client did not supply the Host header, which well-behaved clients MUST supply.');
 		}
+
+		if (!host) {
+			var p = hostname.indexOf(':');
+			if (p > 0) {
+				var port = hostname.substr(p+1);
+				host = self.hosts['*:' + port];
+			}
+		}
+
 		if (self.apps[hostname]) return self.apps[hostname](req, res);
 
 		if (self.opts.handleRequest) {

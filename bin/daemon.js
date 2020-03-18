@@ -194,7 +194,7 @@ server.app.post('/ipc/rm', isLocal, function(req, res) {
 			server.remove(host);
 			delete config.hosts[host];
 
-			if (!host.local && !req.body.keepReservation) gw.unreserve(host, function(err) {
+			if (!insp.gateway._local && !req.body.keepReservation) gw.unreserve(host, function(err) {
 				if (err) console.error('error unreserving host', host);
 			});
 		});
