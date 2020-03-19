@@ -1381,6 +1381,13 @@ function InspectionServer(opts) {
 	app.use('/jq', express.static(path.dirname(require.resolve('jquery'))));
 	app.use(express.static(__dirname + '/www'));
 
+	app.get('/img/elevate.png', function(req, res) {
+		res.set('Cache-Control', 'public, max-age=31536000');
+		if (process.platform == 'win32') res.sendFile(__dirname + '/www/img/elevate.win.png');
+		else if (process.platform == 'darwin') res.sendFile(__dirname + '/www/img/elevate.darwin.png');
+		else res.sendFile(__dirname + '/www/img/elevate.unix.png');
+	});
+
 
 	app.get('/inspect/:host', function(req, res, next) {
 		if (self.inspectors[req.params.host]) res.sendFile(DEVTOOLS + '/inspector.html');
@@ -1444,7 +1451,7 @@ function InspectionServer(opts) {
 		});
 	});
 
-	var httpServer = this.http = http.createServer(app),
+	var httpServer = this.http = http.createServer(onrequest),
 		ws = this.ws = new WebSocket.Server({
 			noServer: true,
 			verifyClient: function(info, cb) {
@@ -1462,6 +1469,10 @@ function InspectionServer(opts) {
 			}
 		});
 
+	function onrequest(req, res) {
+		if (req.url[0] == '/') app(req, res);
+		else rawRespond(req.socket, 501, 'Not Implemented', 'HTTP proxy coming soon');
+	}
 
 	function onupgrade(req, socket, head) {
 		socket.on('error', function(err) {

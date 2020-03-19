@@ -7,7 +7,22 @@ var hosts = {};
 function connect() {
 	ws = new WebSocket('ws://' + location.host + '/targets');
 	ws.onopen = function() {
-		$('#disc').hide();	
+		$('#disc').hide();
+
+		fetch('/ipc/setup').then(function(res) {
+			res.json().then(function(status) {
+				$('#syssetupwait').hide();
+				$('#syssetupgo').attr('disabled', false);
+				$('#syssetuplist li').hide();
+				$('#syssetup').vis(!status.ok);
+				if (!status.authbindInstalled) {
+					if (status.pkg) $('#syssetupautoab').show();
+					else $('#syssetupmanualab').show();
+				}
+				if (!status.authbindConfigured) $('#syssetupabconfig').show();
+				if (!status.loopbackConfigured) $('#syssetuplbconfig').show();
+			});
+		});
 	};
 	ws.onclose = function() {
 		setTimeout(connect, 5000);
@@ -446,4 +461,31 @@ $('#acgateway').on('change', function() {
 	} else {
 		$('<option>').attr('value', '').text('(default)').appendTo($r);
 	}
+});
+
+$('#syssetupgo').click(function() {
+	var btn = $('#syssetupgo').attr('disabled', true),
+		spinner = $('#syssetupwait').show();
+	fetch('/ipc/setup', {
+		method: 'POST'
+	}).then(function(res) {
+		return res.json().then(function(result) {
+			if (result.err) {
+				alert(result.err);
+				btn.attr('disabled', false);
+				spinner.hide();
+			} else {
+				if (ws) {
+					ws.onclose = null;
+					ws.close();
+					list.empty();
+				}
+				setTimeout(connect, 2000);
+			}
+		}).catch(function(err) {
+			alert('Unexpected error.  ' + err.message);
+			btn.attr('disabled', false);
+			spinner.hide();
+		});
+	});
 });

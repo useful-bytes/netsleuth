@@ -794,10 +794,51 @@ var yargs = require('yargs')
 		if (process.platform == 'win32') {
 			console.log('It is not necessary to run this command on Windows.');
 		}
-		else if (process.getuid() == 0) require('./authbind')[argv.uninstall ? 'uninstall' : 'install']();
-		else require('sudo-prompt').exec('node ' + path.join(__dirname, 'authbind.js' + (argv.uninstall ? ' uninstall' : '')), { name: 'netsleuth setup'}, function(err, stdout, stderr) {
-			if (err) console.error('Setup failed.', err);
-			if (stderr) console.error(stderr);
+
+		var systemSetup = require('../lib/system-setup');
+		
+		if (argv.status) systemSetup.getStatus(function(err, status) {
+			if (err) {
+				console.error(err.message);
+				process.exit(1);
+			}
+			if (status.ok) console.log('System setup is complete.');
+			else {
+				console.log('System setup is not complete.');
+				systemSetup.printStatus(status);
+			}
+		});
+		else if (argv.uninstall) systemSetup.uninstall(function(err) {
+			if (err) {
+				console.error(err.message);
+				process.exit(1);
+			} else {
+				console.log('Success.  Uninstalled.');
+			}
+		});
+		else systemSetup.install(function(err) {
+			if (err) {
+				console.error(err.message);
+				process.exit(1);
+			} else {
+				systemSetup.getStatus(function(err, status) {
+					if (err) {
+						console.error('Setup completed successfully, but there was an error while verifying installation:', err.message);
+						process.exit(1);
+					}
+
+					if (status.ok) console.log('Success.  Setup complete.');
+					else {
+						console.log('Setup is still incomplete.  You may need to manually complete these steps:');
+						systemSetup.printStatus(status);
+					}
+
+					daemon.restart(function() {
+						
+					});
+
+				});
+			}
 		});
 
 	})

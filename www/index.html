@@ -16,6 +16,17 @@
 <noscript class="err">JavaScript must be enabled.</noscript>
 <div id="notchrome" class="err" style="display:none;">The inspector only works in Chrome.  Please open this page in Chrome.</div>
 <div id="disc" class="err"><p>The connection to the netsleuth daemon was closed.</p><p>Attempting to reconnect...</p></div>
+<div id="syssetup" class="warn">
+<h4>⚠️ System setup incomplete</h4>
+<p>Additional system configuration is required to allow netsleuth to listen for connections on <a href="https://netsleuth.io/docs/privileged-ports" target=_blank>privileged ports</a>.</p>
+<ul id="syssetuplist">
+	<li id="syssetupautoab">netsleuth will install <a href="https://en.wikipedia.org/wiki/Authbind">authbind</a> for you</li>
+	<li id="syssetupmanualab">You must manually install <a href="https://en.wikipedia.org/wiki/Authbind">authbind</a> on your system.</li>
+	<li id="syssetupabconfig">netsleuth will configure authbind to allow you to listen on ports 80 and 443.</li>
+	<li id="syssetuplbconfig">netsleuth will configure your loopback interface to allow you to use 127.0.0.x</li>
+</ul>
+<button id="syssetupgo"><img src="/img/elevate.png" width=16 height=16 title="Elevated privileges required"> Complete system setup</button> <span id="syssetupwait"><img src="/img/loading.svg" width=24 height=24> Installing...</span>
+</div>
 <ul id="targets">
 
 </ul>
@@ -79,7 +90,7 @@
 			<div class="row acauth"><label for="acauthu">Username: </label><input id="acauthu"></div>
 			<div class="row acauth"><label for="acauthp">Password: </label><input id="acauthp"></div>
 		</div>
-		<div class="row atprox"><input type="checkbox" id="atproxhostsfile" class="notemp"><label for="atproxhostsfile" class="notempl"> Add hostname to system HOSTS file</label></div>
+		<div class="row atprox"><input type="checkbox" id="atproxhostsfile" class="notemp"><label for="atproxhostsfile" class="notempl"> <img src="/img/elevate.png" width=16 height=16 title="Elevated privileges required"> Add hostname to system HOSTS file</label></div>
 		<div class="row atpub"><p class="loggedout danger">You must <a href="/login">log in</a> to the gateway service before you can add a public host.</p></div>
 		<div class="row"><button id="acadd">Add</button></div>
 	</div>

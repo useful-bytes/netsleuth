@@ -6,53 +6,22 @@ var path = require('path'),
 try {
 	var rcfile = require('../lib/rcfile'),
 		Daemon = require('../lib/daemon'),
-		commandExists = require('command-exists');
+		systemSetup = require('../lib/system-setup');
 
 	var config = rcfile.get(),
 		daemon = new Daemon(config);
 
 
-	if (process.platform != 'win32' && !config.noAuthbind && !process.env.NS_NOAUTHBIND) {
-		// On unix platforms, we require a way to listen on privileged ports (only root can bind to ports <1024)
-		var authbindConfigured = false,
-			authbindInstalled = commandExists.sync('authbind');
-
-		try {
-			fs.accessSync('/etc/authbind/byport/80', fs.constants.X_OK);
-			authbindConfigured = true;
-		} catch (ex) { }
-
-
-
-		if (!authbindInstalled || !authbindConfigured) {
-			if (process.getuid() == 0) {
-				require('./authbind');
-				restart();
-			} else {
-				var state = [];
-				if (!authbindInstalled) state.push('installed');
-				if (!authbindConfigured) state.push('configured');
-
-				console.error('netsleuth: authbind in not ' + state.join(' and ') + ' on your system, which is required for netsleuth to listen for connections on privileged ports (like HTTP\'s 80/443).');
-				console.error('Learn more at https://netsleuth.io/docs/privileged-ports');
-
-				if (process.platform == 'darwin' || !authbindConfigured) {
-					if (process.platform == 'darwin') console.error('netsleuth will now attempt to sudo to install and configure authbind...');
-					else {
-						if (!authbindInstalled) console.error('You will have to use your system\'s package manager (eg apt or yum) to install authbind.');
-						console.error('netsleuth will now attempt to sudo to configure authbind...');
-					}
-					require('sudo-prompt').exec('node ' + path.join(__dirname, 'authbind.js'), { name: 'netsleuth setup' }, function(err, stdout, stderr) {
-						if (err) console.error('netsleuth: authbind setup failed.', err);
-						if (stderr) console.error(stderr);
-						restart();
-					});
-				} else restart();
-			}
+	systemSetup.getStatus(function(err, status) {
+		if (err) console.error('warning: netsleuth failed to get current system setup status.', err);
+		else if (!status.ok) {
+			console.error('netsleuth: System setup is incomplete');
+			console.error('Additional system configuration is required to allow netsleuth to listen for connections on privileged ports.  See https://netsleuth.io/docs/privileged-ports');
+			systemSetup.printStatus(status);
+			console.error('\nThe GUI will prompt to complete this configuration for you, or you can run `sudo netsleuth setup`.');
 		}
-		else restart();
-	}
-	else restart();
+		restart();
+	});
 
 
 	function restart() {

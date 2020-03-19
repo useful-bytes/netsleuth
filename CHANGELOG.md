@@ -1,5 +1,9 @@
 Changelog
 =========
+1.0.6 2020-03-18
+----------------
+- Display system setup message in GUI rather than than trying to automatically sudo during npm install.  (In retrospect, this was probably an overaggressive choice given the lack of context.)
+
 1.0.5 2020-03-17
 ----------------
 - Multiple bugfixes for local proxy mode

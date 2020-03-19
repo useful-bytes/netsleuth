@@ -4,6 +4,8 @@ if (process.env.NETSLEUTH_DAEMON_INSPECT) require('../inproc').attach('netsleuth
 
 var fs = require('fs'),
 	os = require('os'),
+	path = require('path'),
+	child_process = require('child_process'),
 	dialog = require('dialog'),
 	request = require('request'),
 	rcfile = require('../lib/rcfile'),
@@ -11,6 +13,7 @@ var fs = require('fs'),
 	browserLogin = require('../lib/browser-login'),
 	hosts = require('../lib/hosts'),
 	serverCert = require('../lib/server-cert'),
+	systemSetup = require('../lib/system-setup'),
 	Server = require('../server'),
 	version = require('../package.json').version;
 
@@ -300,6 +303,20 @@ server.app.get('/ipc/gateways', isLocal, function(req, res) {
 			gateways: arr
 		});
 	}
+});
+
+server.app.get('/ipc/setup', isLocal, function(req, res) {
+	systemSetup.getStatus(function(err, status) {
+		if (err) res.status(500).send(err.message);
+		else res.send(status);
+	});
+});
+
+server.app.post('/ipc/setup', isLocal, function(req, res) {
+	systemSetup.install(function(err) {
+		res.send({ err: err && err.message });
+		if (!err) child_process.exec('node "' + path.join(__dirname, 'netsleuth.js') + '" restart');
+	});
 });
 
 server.app.get('/logged-in', function(req, res) {
