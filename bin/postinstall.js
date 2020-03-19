@@ -34,7 +34,7 @@ try {
 		});
 	}
 } catch (ex) {
-	failed(err);
+	failed(ex);
 }
 
 function failed(err) {
