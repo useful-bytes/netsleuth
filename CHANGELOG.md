@@ -1,5 +1,11 @@
 Changelog
 =========
+1.0.8 2020-03-19
+----------------
+- Prefer the globally installed version of netsleuth when starting the daemon
+- Ensure .sleuthrc file gets the correct ownership and permissions
+- Fix the postinstall script so it handles the various users it might run as
+
 1.0.7 2020-03-19
 ----------------
 - Fix typo in postinstall script

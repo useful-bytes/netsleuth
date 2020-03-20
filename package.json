@@ -1,6 +1,6 @@
 {
   "name": "netsleuth",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Use Chrome's Network Inspector with anything",
   "keywords": [
     "http",
@@ -16,8 +16,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-    "snode": "./bin/snode.js",
-    "netsleuth": "./bin/netsleuth.js"
+    "netsleuth": "./bin/netsleuth.js",
+    "req": "./bin/req.js",
+    "snode": "./bin/snode.js"
   },
   "author": "daguej",
   "license": "AGPL",
