@@ -11,7 +11,9 @@ var argv = require('yargs')
 	})
 	.argv;
 
-var opts = {};
+var opts = {
+	initProject: false
+};
 opts.server = argv.sleuthServer;
 
 // if server is explictly specifed, inproc inspector skips automatic daemon startup
