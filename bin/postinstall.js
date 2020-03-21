@@ -4,11 +4,7 @@ var path = require('path'),
 
 // If anything fails, we ignore it so npm continues on.
 try {
-	var rcfile = require('../lib/rcfile'),
-		Daemon = require('../lib/daemon'),
-		systemSetup = require('../lib/system-setup');
-
-
+	
 	// This script can run in several different permission scenarios:
 	// 1. Regular module installation (npm install netsleuth)
 	//    This script runs as the regular user
@@ -63,6 +59,10 @@ try {
 		console.error('It must be running under your user account to work correctly.');
 		console.error('Please run `netsleuth restart` to ensure the correct version is running.\n');
 	} else {
+
+		var rcfile = require('../lib/rcfile'),
+			Daemon = require('../lib/daemon'),
+			systemSetup = require('../lib/system-setup');
 
 		var config = rcfile.get(),
 			daemon = new Daemon(config);
