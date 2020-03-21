@@ -1,5 +1,10 @@
 Changelog
 =========
+1.0.9 2020-03-20
+----------------
+- Prevent `req` and `snode` from popping up a project init/login window
+- Fix postinstall bug
+
 1.0.8 2020-03-19
 ----------------
 - Prefer the globally installed version of netsleuth when starting the daemon
