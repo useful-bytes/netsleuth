@@ -7,7 +7,6 @@ var http = require('http'),
 	WebSocket = require('ws'),
 	util = require('util'),
 	ResponseBodyForwarder = require('./response-body-forwarder'),
-	joinRaw = require('./join-raw'),
 	resourceType = require('./resource-type'),
 	installHooks = require('./install-hooks'),
 	Daemon = require('./lib/daemon'),
@@ -141,6 +140,7 @@ function attach(opts, readyCb) {
 		var protocol = (options.uri && options.uri.protocol) || options.protocol || '';
 		if (self.agent && self.agent.protocol) protocol = self.agent.protocol || '';
 		self.__protocol = protocol;
+		self.__host = options.host;
 
 		HttpClientRequest.apply(self, args);
 
@@ -167,16 +167,11 @@ function attach(opts, readyCb) {
 				res._readableState.flowing = flowing;
 
 				res.on('end', function() {
-					if (res.complete) {
-						send({
-							method: 'Network.loadingFinished',
-							params: {
-								requestId: id,
-								timestamp: Date.now() / 1000,
-								encodedDataLength: fwd.seen
-							}
-						});
-					}
+					send({
+						m: 'pe',
+						id: self.__reqId,
+						complete: res.complete
+					});
 				});
 
 				var mime = res.headers['content-type'];
@@ -190,41 +185,28 @@ function attach(opts, readyCb) {
 
 				if (!self.__ignore && uconfig.noCache) res.headers['cache-control'] = 'no-store';
 
+				var remote;
+				if (self.socket.remoteFamily == 'IPv6') remote = '[' + self.socket.remoteAddress + ']';
+				else remote = self.socket.remoteAddress;
+
 				send({
-					method: 'Network.responseReceived',
-					params: {
-						requestId: id,
-						loaderId: 'ld',
-						timestamp: Date.now() / 1000,
-						wallTime: Date.now() / 1000,
-						response: {
-							protocol: protocol.substr(0,-1),
-							url: protocol + '//' + self.getHeader('host') + self.path,
-							status: res.statusCode,
-							statusText: res.statusMessage,
-							headers: res.headers,
-							headersText: 'HTTP/' + res.httpVersion + ' ' + res.statusCode + ' ' + res.statusMessage + '\r\n' + joinRaw(res.statusCode, res.statusMessage, res.rawHeaders),
-							mimeType: mime,
-							requestHeaders: self.__headers,
-							requestHeadersText: self._header,
-							remoteIPAddress: self.socket.remoteAddress,
-							remotePort: self.socket.remotePort,
-							connectionId: id
-						},
-						type: resourceType(res.headers['content-type'])
-					}
+					m: 'p',
+					id: self.__reqId,
+					remoteIP: remote,
+					remotePort: self.socket.remotePort,
+					statusCode: res.statusCode,
+					statusMessage: res.statusMessage,
+					headers: res.headers,
+					rawHeaders: res.rawHeaders
 				});
 			});
 
 			self.on('error', function(err) {
-				send({
-					method: 'Network.loadingFailed',
-					params: {
-						requestId: id,
-						timestamp: Date.now() / 1000,
-						type: 'Other',
-						errorText: err.message
-					}
+				if (!self.__blocked) send({
+					m: 'err',
+					id: self.__reqId,
+					t: 'err',
+					msg: err.message
 				});
 
 
@@ -261,7 +243,7 @@ function attach(opts, readyCb) {
 				for (var i = 0; i < uconfig.blockedUrls.length; i++) {
 					if (uconfig.blockedUrls[i].test(url)) {
 						this._hasBody = false;
-						blocked(this);
+						blocked(this, uconfig.blockedUrls[i].src);
 						return this.emit('error', new RequestBlockedError('Request blocked by netsleuth.  URL matches a request blocking pattern set in the inspector GUI.'));
 					}
 				}
@@ -283,7 +265,7 @@ function attach(opts, readyCb) {
 		HttpClientRequest.prototype._storeHeader.call(this, firstLine, headers);
 
 		var self = this;
-		if (!self.__ignore) {//process.nextTick(function() {
+		if (!self.__ignore) {
 
 			var headers = self.__headers = {};
 			var hlines = self._header.split('\r\n');
@@ -294,33 +276,16 @@ function attach(opts, readyCb) {
 			}
 
 			send({
-				method: 'Network.requestWillBeSent',
-				params: {
-					requestId: self.__reqId,
-					nsgroup: self.__nsgroup,
-					loaderId: 'ld',
-					documentURL: 'docurl',
-					timestamp: Date.now() / 1000,
-					wallTime: Date.now() / 1000,
-					request: {
-						url: self.__protocol + '//' + self.getHeader('host') + self.path,
-						method: self.method,
-						headers: headers,
-						postData: ''
-					},
-					initiator: {
-						type: 'script',
-						stack: {
-							callFrames: self.__init
-						},
-						url: 'script-url',
-						lineNumber: 0
-					},
-					type: 'Other'
-				}
+				m: 'ri',
+				id: self.__reqId,
+				proto: self.__protocol.substr(0, self.__protocol.length-1),
+				method: self.method,
+				host: self.__host,
+				url: self.path,
+				headers: headers,
+				stack: self.__init
 			});
 		}
-		//});
 		
 	};
 
@@ -344,6 +309,7 @@ function attach(opts, readyCb) {
 
 	ClientRequest.prototype.end = function(chunk, encoding, cb) {
 		// NOTE: This is a patched ClientRequest method hooked by netsleuth
+
 		var ret = http.OutgoingMessage.prototype.end.call(this, chunk, encoding, cb);
 
 		if (this.__ignore) return ret;
@@ -355,11 +321,10 @@ function attach(opts, readyCb) {
 		if (chunk instanceof Buffer) {
 			sendBin(1, this.__reqNum, chunk);
 		}
-		send({
-			method: 'Network.requestComplete',
-			params: {
-				requestId: this.__reqId
-			}
+
+		if (!this.__blocked) send({
+			m: 'e',
+			id: this.__reqId
 		});
 
 		return ret;
@@ -458,10 +423,28 @@ function attach(opts, readyCb) {
 
 				case 'config':
 					uconfig = msg.config;
-					if (uconfig.blockedUrls) uconfig.blockedUrls = uconfig.blockedUrls.map(function(str) {
-						if (str.substr(0, 4) == 'rex:') return new RegExp(str.substr(4));
-						else return new RegExp(str.replace(rexEscape, '\\$&').replace(wildcard, '.+'));
-					});
+					if (uconfig.blockedUrls) uconfig.blockedUrls = compileBlockRules(uconfig.blockedUrls);
+					break;
+
+				case 'block':
+					uconfig.blockedUrls = compileBlockRules(msg.urls);
+					break;
+
+				case 'ua':
+					uconfig.ua = msg.ua;
+					break;
+
+				case 'throttle':
+					uconfig.throttle = {
+						offline: msg.off,
+						latency: msg.latency,
+						downloadThroughput: msg.down,
+						uploadThroughput: msg.up
+					};
+					break;
+
+				case 'no-cache':
+					uconfig.noCache = msg.val;
 					break;
 			}
 		});
@@ -490,15 +473,20 @@ function attach(opts, readyCb) {
 
 
 
-	function blocked(req) {
+	function blocked(req, rule) {
+		req.__blocked = true;
+		req._send = function() {
+			// blocked request -- do not send
+		}
 		send({
-			method: 'Gateway.blocked',
-			params: {
-				requestId: req.__reqId,
-				method: req.method,
-				headers: { host: req.getHeader('host') },
-				url: req.path
-			}
+			m: 'blocked',
+			id: req.__reqId,
+			proto: req.__protocol.substr(0, req.__protocol.length-1),
+			method: req.method,
+			url: req.path,
+			headers: req._headers,
+			raw: req.rawHeaders,
+			rule: rule
 		});
 	}
 	function send(msg) {
@@ -531,6 +519,16 @@ function attach(opts, readyCb) {
 			}
 		}
 	}
+}
+
+function compileBlockRules(rules) {
+	return rules.map(function(str) {
+		var rex;
+		if (str.substr(0, 4) == 'rex:') rex = new RegExp(str.substr(4));
+		else rex = new RegExp(str.replace(rexEscape, '\\$&').replace(wildcard, '.+'));
+		rex.src = str;
+		return rex;
+	});
 }
 
 function urlToOptions(url) {

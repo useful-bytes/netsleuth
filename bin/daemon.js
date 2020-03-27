@@ -58,19 +58,15 @@ function addHost(host, cb) {
 		});
 	}
 
-	var inspector;
+	var inspector = server.inspect(host);
 
-	if (host.local) {
-		inspector = server.inspectOutgoing(host, cb);
-	} else {
-		inspector = server.inspect(host);
+	inspector.on('error', function(err) {
+		console.log('insp err', host, err);
+	});
 
-		inspector.on('error', function(err) {
-			console.log('insp err', host, err);
-		});
-		
-		if (cb) cb(null, inspector);
-	}
+	inspector.addTarget('main', host);
+	
+	if (cb) cb(null, inspector);
 
 }
 
@@ -90,32 +86,34 @@ function setupHost(host, cb) {
 			inspector.on('error', ierr);
 			inspector.on('temp-error', problem);
 
-			inspector.on('hostname', function(hostname) {
+			inspector.once('hostname', function(hostname, ip) {
 				clearTimeout(timeout);
 				inspector.removeListener('error', ierr);
 				inspector.removeListener('temp-error', problem);
 
 				if (ip) {
 					host.ip = ip;
-					inspector.opts.ip = ip;
-					host.host = hostname;
+					// inspector.opts.ip = ip;
+					// host.host = hostname;
 				}
+
+				host.host = inspector.name;
 				
 				if (!host.temp) {
 					reload();
 					if (!config.hosts) config.hosts = {};
-					config.hosts[hostname] = host;
+					config.hosts[host.host] = host;
 					rcfile.save(config);
 				}
 
 				if (host.local) {
-					if (host.hostsfile) {
-						hosts.add(ip, hostname, function(err) {
-							cb(null, { host: hostname, hostsUpdated: !err });
+					if (host.hostsfile && host.ip) {
+						hosts.add(host.ip, hostname, function(err) {
+							cb(null, { host: host.host, hostsUpdated: !err });
 						});
-					} else cb(null, { host: hostname });
+					} else cb(null, { host: host.host });
 				}
-				else cb(null, { host: hostname });
+				else cb(null, { host: host.host });
 			});
 			
 		}
@@ -197,7 +195,7 @@ server.app.post('/ipc/rm', isLocal, function(req, res) {
 			server.remove(host);
 			delete config.hosts[host];
 
-			if (!insp.gateway._local && !req.body.keepReservation) gw.unreserve(host, function(err) {
+			if (insp.targets.main && insp.targets.main.hosted && !req.body.keepReservation) gw.unreserve(host, function(err) {
 				if (err) console.error('error unreserving host', host);
 			});
 		});

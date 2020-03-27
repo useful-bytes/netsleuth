@@ -149,6 +149,7 @@ function atab(id) {
 	$('#' + id).addClass('active');
 	$('.' + id).show();
 	$('#adddlg input').trigger('change');
+	acsu();
 }
 
 $('#actarget').on('focus', function() {
@@ -167,6 +168,7 @@ $('#actemp').change(function() {
 
 	$('.notemp').attr('disabled', this.checked).trigger('change');
 	$('.notempl').toggleClass('disabled', this.checked);
+	$('#acname').trigger('change');
 
 });
 $('#acstore').change(function() {
@@ -241,6 +243,22 @@ $('#actlscasubjectclear').click(function() {
 	tlspick(false);
 });
 
+var ipish = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+$('#acname').on('change', function() {
+	var name = this.value,
+		c = name.indexOf(':');
+	if (c >= 0) name = name.substr(0, c);
+
+	var ip = !name || ipish.test(name);
+	var ok = !$('#actemp').is(':checked');
+
+	var ck = $('#atproxhostsfile').attr('disabled', !ok || ip);
+	$('label[for="atproxhostsfile"]').toggleClass('disabled', !ok || ip);
+	ck.parent().attr('title' , ip ? 'IP addresses cannot be added to your HOSTS file.' : '');
+	ck[0].checked = ok && !ip;
+	acsu();
+});
+
 $('#actarget').on('change', function() {
 	if (this.value.substr(0, 5) == 'http:') {
 		$('#actls').val('normal').attr('disabled', true).trigger('change');
@@ -249,6 +267,8 @@ $('#actarget').on('change', function() {
 		$('#actls').attr('disabled', false).trigger('change');
 	}
 });
+
+$('#atproxhostsfile').on('change', acsu);
 
 function stringifyNameObject(o) {
 	var r = [];
@@ -262,6 +282,11 @@ function parseTarget() {
 	else u = new URL(u);
 	if (u.protocol != 'http:' && u.protocol != 'https:') throw new Error('Invalid protocol.');
 	return u;
+}
+
+function acsu() {
+	var hf = $('#atproxhostsfile');
+	$('#acaddsu').vis(hf.is(':checked:enabled:visible'));
 }
 
 $('#acadd').click(function() {
@@ -286,7 +311,6 @@ $('#acadd').click(function() {
 	};
 
 	if (atab.active == 'atprox') {
-		if (!opts.host) return alert('Please enter a hostname.');
 		opts.local = true;
 		opts.hostsfile = $('#atproxhostsfile').is(':checked');
 	} else {

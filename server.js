@@ -1,12 +1,9 @@
 var http = require('http'),
 	https = require('https'),
 	fs = require('fs'),
-	url = require('url'),
 	os = require('os'),
 	path = require('path'),
 	util = require('util'),
-	zlib = require('zlib'),
-	stream = require('stream'),
 	crypto = require('crypto'),
 	EventEmitter = require('events'),
 	request = require('request'),
@@ -15,16 +12,16 @@ var http = require('http'),
 	express = require('express'),
 	bodyParser = require('body-parser'),
 	WebSocket = require('ws'),
-	contentTypeParser = require('content-type-parser'),
 	resourceType = require('./resource-type'),
-	joinRaw = require('./join-raw'),
-	InprocInspector = require('./inproc-inspector'),
 	RemoteConsole = require('./remote-console'),
-	MessageBody = require('./message-body'),
-	GatewayServer = require('./gateway'),
+	MessageBody = require('./lib/message-body'),
 	rawRespond = require('./lib/raw-respond'),
 	insensitize = require('./lib/insensitize'),
 	SessionCLI = require('./session-cli'),
+	Target = require('./lib/target'),
+	GatewayTarget = require('./lib/gateway-target'),
+	InprocTarget = require('./lib/inproc-target'),
+	ReverseProxyTarget = require('./lib/reverse-proxy-target'),
 	version = require('./package.json').version;
 
 var argv = require('yargs').argv;
@@ -34,8 +31,7 @@ var app = express();
 var wsid = 0;
 
 var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend'),
-	DEVTOOLS_CASE_SENSITIVE = !fs.existsSync(DEVTOOLS + '/InSPECtOR.HtML'),
-	COMMA = /, */;
+	DEVTOOLS_CASE_SENSITIVE = !fs.existsSync(DEVTOOLS + '/InSPECtOR.HtML');
 
 exports = module.exports = InspectionServer;
 
@@ -49,65 +45,32 @@ function gatewayFromHost(host) {
 	return host.join('.');
 }
 
-function GatewayError(status, message) {
-	Error.call(this, message);
-	this.status = status;
-	delete this.message;
-	this.message = message;
-}
-util.inherits(GatewayError, Error);
-
-Inspector.SERVICE_STATE = {
-	UNINITIALIZED: 0,
-	PREFLIGHT: 1,
-	OPEN: 2,
-	CONNECTING: 3,
-	DISCONNECTED: 4,
-	// Do not auto-reconnect following states
-	ERROR: 5,
-	REDIRECTING: 6,
-	CLOSED: 7,
-};
-
 var thisHid = getHid();
 
+// An Inspector instance maps roughly to an open GUI tab (ie localhost:9000/inspect/something)
+// in that it pairs target(s) to an inspection GUI.
+// The Inspector is responsible for receiving HTTP request/response data from a target,
+// which can be a remote host on the gateway server, a local proxy host (forward or reverse),
+// or another node process on this machine.  This data can be received over a WebSocket, TODO
+// over a interprocess unix domain socket, or by in-process function call.
+// The Inspector does the necesssary translation of various HTTP events into the
+// DevTools Wire Protocol, which is sent over WebSocket to connected GUI pages (the "frontend").
+// An Inspector instance supports multiple targets and zero or more GUI instances may be
+// connected at any time.
 function Inspector(server, opts) {
 	var self = this;
 	EventEmitter.call(this);
 	this.server = server;
 	this.opts = opts;
-	if (opts.host) {
-		if (opts.host.indexOf('://') == -1) this.host = url.parse('https://' + opts.host);
-		else this.host = url.parse(opts.host);
-		if (opts.gateway && opts.gateway._local && opts.host[0] == '*') this.host.host = opts.host;
-	}
-	if (opts.target) {
-		if (opts.target.substr(0, 2) == '//') this.target = url.parse('same:' + opts.target);
-		else if (opts.target.indexOf('://') == -1) this.target = url.parse('same://' + opts.target);
-		else this.target = url.parse(opts.target);
-	} else throw new TypeError('Missing required option: target');
 
-	self.friendlyTarget = self.target.href;
-	if (self.friendlyTarget.substr(0, 5) == 'same:') self.friendlyTarget = self.friendlyTarget.substr(5);
-
-	self.gateway = opts.gateway || gatewayFromHost(this.host.host);
-	if (opts.token) {
-		self.token = opts.token;
-	} else {
-		if (server.opts.gateways && server.opts.gateways[self.gateway]) {
-			self.token = server.opts.gateways[self.gateway].token;
-		}
-	}
 
 	this.id = crypto.randomBytes(33).toString('base64');
+	this.tn = 0;
+	this.targets = {};
 	this.clients = [];
 	this.console = new RemoteConsole(this);
-	this.service = null;
-	this.serviceState = Inspector.SERVICE_STATE.UNINITIALIZED;
-	this.serviceError = null;
 	this.reqn = 0;
 	this.reqs = {};
-	this.ws = {};
 	this.lastGC = Date.now();
 	this.gcFreqMs = opts.gcFreqMs || 1000*60*15;
 	this.gcFreqCount = opts.gcFreqCount || 500;
@@ -117,36 +80,20 @@ function Inspector(server, opts) {
 	this.notify = [];
 	this.tmpDir = opts.tmpDir || path.join(os.tmpdir(), 'netsleuth');
 	fs.mkdir(this.tmpDir, function() {});
+	this.config = {
+		blockedUrls: [],
+		ua: null,
+		throttle: {
+			offline: false
+		},
+		noCache: false
+	};
 
-	var aopts = {};
-	if (opts.hostHeader) aopts.servername = opts.hostHeader;
-
-	this.ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
-
-	this.httpAgent = new http.Agent();
-	this.httpsAgent = new https.Agent(aopts);
-
-	var ready, pinger, pingto;
-
-
-	function send(msg) {
-		//console.log('>', msg);
-		if (self.service._local) self.service.emit('inspector-message', msg);
-		else if (self.service.readyState == WebSocket.OPEN) self.service.send(JSON.stringify(msg));
-	}
-	function sendBin(id, chunk) {
-		if (self.service._local) self.service.emit('res-data', id, chunk);
-		else if (self.service.readyState == WebSocket.OPEN) {
-			var header = Buffer.allocUnsafe(4);
-			header.writeUInt32LE(id, 0, true);
-			self.service.send(Buffer.concat([header, chunk], chunk.length + 4));
-		}
-	}
 
 	function reqGC() {
 		var now = Date.now(), del=0;
 		for (var id in self.reqs) {
-			if (self.reqs[id].date + self.gcMinLifetime < now) {
+			if (!self.reqs[id].ws && self.reqs[id].date + self.gcMinLifetime < now) {
 				delete self.reqs[id];
 				++del;
 			}
@@ -155,936 +102,6 @@ function Inspector(server, opts) {
 
 	self._gctimer = setInterval(reqGC, self.gcFreqMs);
 
-	function handleMsg(msg) {
-		//console.log('<', msg);
-		switch (msg.m) {
-			case 'r':			
-				var dhost = self.host.host;
-				if (dhost[0] == '*' && msg.headers.host) dhost = msg.headers.host;
-
-				msg.headers.host = self.target.host;
-
-				var proto = self.target.protocol;
-				if (proto == 'same:') proto = msg.proto + ':';
-
-				var req = (proto == 'https:' ? https : http).request({
-					host: self.target.hostname,
-					port: parseInt(self.target.port, 10) || (proto == 'https:' ? 443 : 80),
-					method: msg.method,
-					path: msg.url,
-					headers: Object.assign({}, msg.headers, {
-						host: opts.hostHeader ? opts.hostHeader : self.target.host
-					}),
-					agent: (proto == 'https:' ? self.httpsAgent : self.httpAgent),
-					rejectUnauthorized: opts.insecure ? false : true,
-					ca: opts.ca
-				});
-
-				var info = self.reqs[msg.id] = {
-					n: ++self.reqn,
-					date: Date.now(),
-					proto: proto,
-					msg: msg,
-					req: req
-				};
-
-				// do garbage collection on the nextish tick if necessary
-				if (info.n % self.gcFreqCount == 0) setTimeout(reqGC);
-
-				req.on('continue', function() {
-					if (!http.ServerResponse.prototype.writeProcessing) {
-						// old (node < 10) does not support `information` event, so we have to handle `continue`
-						// on node >= 10, the 100 Continue will be sent from the `information` event
-						self.console.debug('Got 100 Continue for ' + msg.url);
-						send({
-							m: 'cont',
-							id: msg.id
-						});
-					}
-				});
-
-				req.on('error', function(err) {
-					if (info.destroy) return;
-
-					console.error(err);
-					if (!msg.replay) {
-						send({
-							m: 'err',
-							id: msg.id,
-							msg: err.message
-						});
-					}
-
-					if (info.complete) {
-
-						self.console.warn('Error after response for ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + ' completed\n' + err.message, 'network');
-
-					} else {
-						
-						if (self.reqs[msg.id]) delete self.reqs[msg.id];
-
-						if (info.reqBody) info.reqBody.destroy();
-						if (info.resBody) info.resBody.destroy();
-
-						self.broadcast({
-							method: 'Network.loadingFailed',
-							params: {
-								requestId: msg.id,
-								timestamp: Date.now() / 1000,
-								type: 'Other',
-								errorText: err.message
-							}
-						});
-
-						self.console.error('Unable to ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + '\n' + err.message, 'network');
-
-					}
-
-				});
-
-				req.on('response', function(res) {
-					if (res.statusCode >= 102 && res.statusCode <= 199) {
-						// node < 10 did not parse informational responses correctly -- it misinterperted them as a regular response.
-						// https://github.com/nodejs/node/issues/9282
-						// if you get here, it means your node's HTTP parser is broken, and there's not much we can do to fix it.
-						// this means we have to kill the response and report a failure.
-						var estr = 'Got an informational response (HTTP ' + res.statusCode + '), but your version of node (v' + process.versions.node + ') does not correctly parse this kind of response.  Upgrade to node v10.0.0 or later to fix.';
-						self.console.error(estr);
-						reqError(msg, 'unhandleable HTTP ' + res.statusCode);
-						send({
-							m: 'err',
-							id: msg.id,
-							msg: estr
-						});
-					}
-
-					var loc = res.headers.location;
-					if (loc) {
-
-						if (loc.substr(0,2) == '//') loc = msg.proto + ':' + loc;
-						var ploc = url.parse(loc);
-
-						if (ploc.host) {
-							ploc.host = self.host.host;
-						}
-
-						var newLoc = url.format(ploc);
-						if (res.headers.location != newLoc) res.headers['x-sleuth-original-location'] = res.headers.location;
-						res.headers.location = newLoc;
-
-					}
-
-					if (proto == 'https:') {
-						if (!res.socket.authorized && !res.socket.authorizationError) res.socket.authorizationError = '(unknown error)';
-						if (!res.socket.authorized && self.insecureError != res.socket.authorizationError) {
-							self.insecureError = res.socket.authorizationError;
-
-							self.console.warn('Warning: connection to https://' + self.target.host + ' is not secure!  Certificate validation failed with error ' + res.socket.authorizationError + '.');
-							self.broadcast({
-								method: 'Gateway.securityState',
-								params: {
-									insecure: true,
-									message: 'TLS error: ' + self.insecureError
-								}
-							});
-						} else if (res.socket.authorized && typeof self.insecureError == 'string') {
-							self.insecureError = null;
-							self.console.info('The certificate for https://' + self.target.host + ' is now validating.');
-							self.broadcast({
-								method: 'Gateway.securityState',
-								params: {
-									insecure: false
-								}
-							});
-						}
-					}
-
-					if (!msg.replay) {
-						send({
-							m: 'res',
-							id: msg.id,
-							sc: res.statusCode,
-							sm: res.statusMessage,
-							headers: res.headers,
-							raw: res.rawHeaders
-						});
-					}
-
-					var mime = res.headers['content-type'];
-					if (mime) {
-						mime = mime.split(';')[0];
-					}
-
-					for (var k in res.headers) {
-						if (Array.isArray(res.headers[k])) res.headers[k] = res.headers[k].join('\n');
-					}
-
-					self.broadcast({
-						method: 'Network.responseReceived',
-						params: {
-							requestId: msg.id,
-							loaderId: 'ld',
-							timestamp: Date.now() / 1000,
-							wallTime: Date.now() / 1000,
-							response: {
-								protocol: proto,
-								url: msg.proto + '://' + dhost + msg.url,
-								status: res.statusCode,
-								statusText: res.statusMessage,
-								headers: res.headers,
-								headersText: 'HTTP/1.1 ' + res.statusCode + ' ' + res.statusMessage + '\r\n' + joinRaw(res.statusCode, res.statusMessage, res.rawHeaders),
-								mimeType: mime,
-								requestHeaders: msg.headers,
-								requestHeadersText: 'GET ' + msg.url + ' HTTP/1.1\r\n' + joinRaw(msg.raw),
-								remoteIPAddress: msg.remoteIP,
-								remotePort: msg.remotePort,
-								connectionId: msg.id
-							},
-							type: resourceType(res.headers['content-type'])
-						}
-					});
-
-					if (res.headers.warning) {
-						self.console.warn('Warning from ' + msg.method + ' ' + msg.url + ': ' + res.headers.warning, 'network', msg.id);
-					}
-
-					info.resBody = new MessageBody(msg.id, res, {
-						maxSize: opts.resMaxSize,
-						kind: 'res',
-						host: msg.headers.host
-					});
-					info.resHeaders = res.headers;
-
-
-					res.on('data', function(chunk) {
-						info.resBody.append(chunk);
-						if (!msg.replay) sendBin(msg.id, chunk);
-						self.broadcast({
-							method: 'Network.dataReceived',
-							params: {
-								requestId: msg.id,
-								timestamp: Date.now() / 1000,
-								dataLength: chunk.length,
-								encodedDataLength: chunk.length
-							}
-						});
-					});
-
-					res.on('close', function() {
-						if (!res.complete) {
-							if (!msg.replay && !res.complete) {
-								send({
-									m: 'err',
-									id: msg.id,
-									msg: 'incomplete response'
-								});
-							}
-							delete self.reqs[msg.id];
-
-							if (info.reqBody) info.reqBody.destroy();
-							if (info.resBody) info.resBody.destroy();
-
-							self.broadcast({
-								method: 'Network.loadingFailed',
-								params: {
-									requestId: msg.id,
-									timestamp: Date.now() / 1000,
-									type: 'Other',
-									errorText: 'incomplete response'
-								}
-							});
-
-							self.console.error('Response for ' + msg.method + ' ' + proto + '//' + self.target.host + msg.url + ' terminated prematurely', 'network');
-						}
-					});
-
-					res.on('end', function() {
-						if (res.complete) {
-							if (!msg.replay) {
-								send({
-									m: 'rese',
-									id: msg.id,
-								});
-							}
-							self.broadcast({
-								method: 'Network.loadingFinished',
-								params: {
-									requestId: msg.id,
-									timestamp: Date.now() / 1000,
-									encodedDataLength: info.resBody.length
-								}
-							});
-							info.complete = true;
-						}
-						info.resBody.end();
-					});
-
-				});
-
-				req.on('information', function(info) {
-					self.console.info('HTTP ' + info.statusCode + ' from ' + msg.url);
-					send({
-						m: 'info',
-						id: msg.id,
-						sc: info.statusCode,
-						sm: info.statusMessage,
-						headers: info.headers,
-						raw: info.rawHeaders
-					});
-				});
-
-
-				if ((msg.headers['content-length'] || msg.headers['transfer-encoding'] == 'chunked') && msg.method != 'HEAD') {
-					info.reqBody = new MessageBody(msg.id, req, {
-						maxSize: opts.reqMaxSize,
-						kind: 'req',
-						host: msg.headers.host
-					});
-					info.reqBody.on('file', function() {
-						self.broadcast({
-							method: 'Gateway.updateRequestBody',
-							params: {
-								id: msg.id,
-								sentToDisk: true
-							}
-						});
-					});
-				}
-				
-				self.broadcast({
-					method: 'Network.requestWillBeSent',
-					params: {
-						requestId: msg.id,
-						loaderId: 'ld',
-						documentURL: 'docurl',
-						timestamp: Date.now() / 1000,
-						wallTime: Date.now() / 1000,
-						request: {
-							url: msg.proto + '://' + dhost + msg.url,
-							method: msg.method,
-							headers: msg.headers,
-							postData: info.reqBody ? '' : undefined
-						},
-						type: 'Other'
-					}
-				});
-
-				send({
-					m: 'ack',
-					id: msg.id
-				});
-
-				for (var i = 0; i < self.notify.length; i++) {
-					var n = self.notify[i];
-					if (n.method == '*' || n.method == msg.method) {
-						if (n.rex.test(msg.url)) {
-							notifier.notify({
-								title: opts.host,
-								message: msg.method + ' ' + msg.url
-							});
-							break;
-						}
-					}
-				}
-
-				break;
-
-			case 'ws':
-
-				var proto = self.target.protocol;
-				if (proto == 'same:') proto = msg.proto + ':';
-				else if (proto == 'https:') proto = 'wss:';
-				else proto = 'ws:';
-
-				var port = parseInt(self.target.port, 10) || (proto == 'wss:' ? 443 : 80);
-				if ((proto == 'http:' && port == 80) || (proto == 'wss:' && port == 443)) port = '';
-				else port = ':' + port;
-
-				var subproto = null;
-				if (msg.headers['sec-websocket-protocol']) subproto = msg.headers['sec-websocket-protocol'].split(COMMA);
-
-				var wsurl = proto + '//' + self.target.hostname + port + msg.url;
-
-				var headers = Object.assign({}, msg.headers);
-				delete headers.host;
-				delete headers.connection;
-				delete headers.upgrade;
-				for (var k in headers) {
-					if (k.substr(0, 14) == 'sec-websocket-') delete headers[k];
-				}
-				headers.Host = opts.hostHeader ? opts.hostHeader : self.target.host;
-
-				var ws = new WebSocket(wsurl, subproto, {
-					headers: headers,
-					rejectUnauthorized: !opts.insecure,
-					ca: opts.ca
-				});
-
-				var info = self.ws[msg.id] = {
-					msg: msg,
-					ws: ws
-				};
-
-				ws.on('close', function() {
-					send({
-						m: 'wsclose',
-						id: msg.id
-					});
-					delete self.ws[msg.id];
-					info.ws = null;
-					self.broadcast({
-						method: 'Network.webSocketClosed',
-						params: {
-							requestId: msg.id,
-							timestamp: Date.now() / 1000
-						}
-					});
-				});
-
-				ws.on('error', function(err) {
-					self.console.error('WebSocket error: ' + err);
-				});
-
-				ws.on('upgrade', function(res) {
-					send({
-						m: 'wsupg',
-						id: msg.id,
-						headers: res.headers
-					});
-					self.broadcast({
-						method: 'Network.webSocketHandshakeResponseReceived',
-						params: {
-							requestId: msg.id,
-							timestamp: Date.now() / 1000,
-							response: {
-								status: res.statusCode,
-								statusText: res.statusMessage,
-								headers: res.headers,
-								headersText: 'TODO',
-								requestHeaders: msg.headers,
-								requestHeadersText: 'TODO'
-							}
-						}
-					});
-				});
-
-				ws.on('open', function() {
-					send({
-						m: 'wsopen',
-						id: msg.id
-					});
-				});
-
-				ws.on('message', function(data) {
-					if (typeof data == 'string') {
-						send({
-							m: 'wsm',
-							id: msg.id,
-							d: data
-						});
-						self.broadcast({
-							method: 'Network.webSocketFrameReceived',
-							params: {
-								requestId: msg.id,
-								timestamp: Date.now() / 1000,
-								response: {
-									opcode: 1,
-									mask: false,
-									payloadData: data
-								}
-							}
-						});
-					} else {
-						sendBin(msg.id, data);
-						self.broadcast({
-							method: 'Network.webSocketFrameReceived',
-							params: {
-								requestId: msg.id,
-								timestamp: Date.now() / 1000,
-								response: {
-									opcode: 2,
-									mask: false,
-									payloadData: data.toString('base64')
-								}
-							}
-						});
-
-					}
-				});
-
-				ws.on('ping', function(data) {
-					send({
-						m: 'wsping',
-						id: msg.id,
-						d: data
-					});
-				});
-
-				ws.on('pong', function(data) {
-					send({
-						m: 'wspong',
-						id: msg.id,
-						d: data
-					});
-				});
-
-				ws.on('unexpected-response', function(req, res) {
-					send({
-						m: 'wserr',
-						id: msg.id,
-						code: res.statusCode,
-						msg: res.statusMessage,
-						headers: res.headers
-					});
-					self.broadcast({
-						method: 'Network.webSocketFrameError',
-						params: {
-							requestId: msg.id,
-							timestamp: Date.now() / 1000,
-							errorMessage: 'Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage
-						}
-					});
-					self.console.error('WebSocket connection to ' + wsurl + ' failed: Error during WebSocket handshake: Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage);
-				});
-
-				self.broadcast({
-					method: 'Network.webSocketCreated',
-					params: {
-						requestId: msg.id,
-						url: wsurl,
-						initiator: {}
-					}
-				});
-
-				self.broadcast({
-					method: 'Network.webSocketWillSendHandshakeRequest',
-					params: {
-						requestId: msg.id,
-						timestamp: Date.now() / 1000,
-						wallTime: Date.now() / 1000,
-						request: {
-							headers: msg.headers
-						}
-					}
-				});
-
-				send({
-					m: 'wsack',
-					id: msg.id
-				});
-
-
-				break;
-
-			case 'wsm':
-				var info = self.ws[msg.id];
-				if (!info) return;
-				info.ws.send(msg.d);
-				self.broadcast({
-					method: 'Network.webSocketFrameSent',
-					params: {
-						requestId: msg.id,
-						timestamp: Date.now() / 1000,
-						response: {
-							opcode: 1,
-							mask: false,
-							payloadData: msg.d
-						}
-					}
-				});
-				break;
-
-			case 'wsping':
-				var info = self.ws[msg.id];
-				if (info) info.ws.ping(msg.d);
-				break;
-
-			case 'wspong':
-				var info = self.ws[msg.id];
-				if (info) info.ws.pong(msg.d);
-				break;
-
-			case 'wsclose':
-				var info = self.ws[msg.id];
-				if (info) info.ws.close();
-				break;
-
-
-			case 'e':
-				var info = self.reqs[msg.id];
-				if (info) {
-					if (info.req) info.req.end();
-					if (info.reqBody) info.reqBody.end();
-				}
-				break;
-
-			case 'err':
-				var txt;
-				switch (msg.t) {
-					case 'req-err': txt = 'request error: ' + msg.msg; break;
-					case 'timeout': txt = 'gateway timeout'; break;
-					default: txt = '[unknown] ' + msg.msg;
-				}
-
-				reqError(msg, txt);
-				break;
-
-			case 'cx':
-				self.console.error('Your subscription has ended.  Visit https://netsleuth.io/ for more information.');
-				self.emit('error', new Error('Subscription cancelled.'));
-				break;
-
-			case 'blocked':
-				self.console.warn('Blocked request for ' + msg.method + ' ' + msg.headers.host + msg.url, 'network');
-				break;
-
-			case 'msg':
-				if (self.console[msg.t]) {
-					self.console[msg.t](msg.msg);
-				} else {
-					self.console.log(msg.m);
-				}
-				break;
-
-			case 'cfg':
-
-				clearInterval(pinger);
-				clearTimeout(pingto);
-
-				pinger = setInterval(function() {
-					try {
-						clearTimeout(pingto);
-						self.service.ping();
-						pingto = setTimeout(function() {
-							console.error('ping timeout', self.gateway);
-							self.service.close();
-						}, 10000);
-						
-					} catch (ex) {
-						console.error(ex);
-					}
-				}, msg.ping);
-				break;
-
-			case 'ej':
-				self.serviceError = new GatewayError(403, 'This device was disconnected from the gateway because you logged in from another device.  Type "reconnect" to reconnect.');
-				console.log(self.serviceError);
-				self.console.error(self.serviceError.message);
-				self.serviceState = Inspector.SERVICE_STATE.ERROR;
-				self.broadcast({
-					method: 'Gateway.connectionState',
-					params: {
-						state: self.serviceState,
-						message: 'Disconnected from gateway'
-					}
-				});
-				break;
-		}
-
-	}
-
-	function reqError(msg, txt) {
-		self.broadcast({
-			method: 'Network.loadingFailed',
-			params: {
-				requestId: msg.id,
-				timestamp: Date.now() / 1000,
-				type: 'Other',
-				errorText: txt
-			}
-		});
-
-		var info = self.reqs[msg.id];
-		if (info) {
-			info.destroy = true;
-			if (info.req.socket) info.req.socket.destroy();
-			if (info.reqBody) info.reqBody.destroy();
-			if (info.resBody) info.resBody.destroy();
-			delete self.reqs[msg.id];
-		}
-	}
-
-	function connect() {
-		self.servceState = Inspector.SERVICE_STATE.CONNECTING;
-		var service = self.service = new WebSocket(self.gatewayUrl, [], {
-			headers: {
-				Authorization: 'Bearer ' + self.token,
-				'User-Agent': self.ua
-			}
-		});
-
-		service.on('open', function() {
-			self.serviceState = Inspector.SERVICE_STATE.OPEN;
-			self.console.info('Connected to gateway.');
-			self.broadcast({
-				method: 'Gateway.connectionState',
-				params: {
-					state: self.serviceState
-				}
-			});
-			send({
-				m: 'cfg',
-				opts: opts.serviceOpts,
-				hid: thisHid
-			});
-			if (ready) send({ m: 'ready' });
-		});
-
-		service.on('message', function(data) {
-			if (typeof data == 'string') {
-				try {
-					var msg = JSON.parse(data);
-					handleMsg(msg);
-				} catch (ex) {
-					console.error('error handling', msg || data, ex);
-				}
-			} else {
-				if (data.length > 4) {
-					var id = data.readUInt32LE(0);
-					var info = self.reqs[id];
-					if (info && info.req && info.reqBody) {
-						var payload = data.slice(4);
-						info.req.write(payload);
-						info.reqBody.append(payload);
-						if (!info.reqBody.file) {
-							self.broadcast({
-								method: 'Gateway.updateRequestBody',
-								params: {
-									id: id,
-									body: payload.toString()
-								}
-							});
-						}
-					} else if (!info && (info = self.ws[id])) {
-						var payload = data.slice(4);
-						info.ws.send(payload);
-						self.broadcast({
-							method: 'Network.webSocketFrameSent',
-							params: {
-								requestId: id,
-								timestamp: Date.now() / 1000,
-								response: {
-									opcode: 2,
-									mask: false,
-									payloadData: payload.toString('base64')
-								}
-							}
-						});
-					}
-				}
-			}
-
-
-		});
-
-
-		service.on('error', function(err) {
-			if (self.serviceState < Inspector.SERVICE_STATE.DISCONNECTED) {
-				self.emit('temp-error', err);
-				console.error('Gateway connection error.', err);
-				self.console.error('Gateway connection error: ' + err.message);
-			}
-		});
-
-		service.on('unexpected-response', function(req, res) {
-			// if (res.statusCode >= 400 && res.statusCode <= 403) {
-
-				if (res.statusCode == 301 || res.statusCode == 302 || res.statusCode == 303 || res.statusCode == 307 || res.statusCode == 308) {
-					self.serviceState = Inspector.SERVICE_STATE.REDIRECTING;
-					service.terminate();
-					self.gatewayUrl = res.headers.location;
-					return connect();
-				}
-
-				self.serviceState = Inspector.SERVICE_STATE.ERROR;
-				var err = self.serviceError = new GatewayError(res.statusCode, 'Unable to connect to gateway: ' + res.statusCode + ' ' + res.statusMessage);
-				err.status = res.statusCode;
-				err.statusMessage = res.statusMessage;
-
-				if (res.headers['content-type'] != 'text/plain' || res.headers['content-length'] > 4096) ignoreResBody();
-				else {
-					var body = Buffer.alloc(0);
-
-					res.on('data', function(d) {
-						body = Buffer.concat([body, d]);
-						if (body.length > 4096) ignoreResBody();
-					});
-					
-					res.on('end', function() {
-						err.message = body.toString();
-						self.emit('error', err);
-						service.terminate();
-					});
-
-					res.on('error', ignoreResBody);
-				}
-
-				// if (res.statusCode == 401) err.message += ' Invalid token.  Check your auth token and try again.';
-				// if (res.statusCode == 402) err.message += ' You do not have an active subscription.  Visit https://netsleuth.io for more info.';
-				// if (res.statusCode == 403) err.message += ' "' + self.host.host + '" is reserved by another user.  Choose a different hostname.';
-
-				// err.message += ' (' + res.statusCode + ')';
-
-				// self.emit('error', err);
-
-
-				function ignoreResBody() {
-					req.abort();
-					self.emit('error', err);
-					service.terminate();
-				}
-			// }
-			// req.abort();
-			// service.finalize(true);
-		});
-
-		service.on('close', function(code, reason) {
-			clearInterval(pinger);
-			clearTimeout(pingto);
-			if (self.serviceState == Inspector.SERVICE_STATE.OPEN) {
-				console.error('Connection to gateway closed.', code, reason);
-				self.console.error('Connection to gateway closed. ' + code + ' ' + reason);
-			}
-			if (self.serviceState < Inspector.SERVICE_STATE.ERROR) self.serviceState = Inspector.SERVICE_STATE.DISCONNECTED;
-			self.broadcast({
-				method: 'Gateway.connectionState',
-				params: {
-					state: self.serviceState,
-					message: 'Disconnected from gateway'
-				}
-			});
-
-			for (var id in self.reqs) {
-				if (self.reqs[id].req) {
-					if (self.reqs[id].req.socket) self.reqs[id].req.socket.destroy();
-					delete self.reqs[id].req;
-					if (self.reqs[id].reqBody) self.reqs[id].reqBody.destroy();
-					if (self.reqs[id].resBody) self.reqs[id].resBody.destroy();
-					self.broadcast({
-						method: 'Network.loadingFailed',
-						params: {
-							requestId: id,
-							timestamp: Date.now() / 1000,
-							type: 'Other',
-							errorText: 'disconnected from gateway during request'
-						}
-					});
-				}
-			}
-			if (self.serviceState < Inspector.SERVICE_STATE.ERROR) self._connto = setTimeout(connect, 5000);
-		});
-
-		service.on('pong', function() {
-			clearTimeout(pingto);
-		});
-	}
-
-
-	function checkTarget() {
-		var req = (self.target.protocol == 'https:' ? https : http).request({
-			host: self.target.hostname,
-			port: parseInt(self.target.port, 10) || (self.target.protocol == 'https:' ? 443 : 80),
-			method: 'HEAD',
-			path: '/',
-			headers: {
-				Host: opts.hostHeader ? opts.hostHeader : self.target.host
-			},
-			agent: (self.target.protocol == 'https:' ? self.httpsAgent : self.httpAgent),
-			timeout: 5000
-		});
-
-		req.on('response', function(res) {
-			if (res.statusCode < 500) {
-				ready = true;
-				send({ m: 'ready' });
-				console.log('target ready', self.target.hostname);
-			} else self._connto = setTimeout(checkTarget, 5000);
-		});
-
-		req.on('error', function(err) {
-			self._connto = setTimeout(checkTarget, 5000);
-		});
-
-		req.end();
-	}
-
-
-	function preconnect() {
-		if (self.serviceState == Inspector.SERVICE_STATE.CLOSED) return;
-
-		self.serviceState = Inspector.SERVICE_STATE.PREFLIGHT;
-
-		request({
-			method: 'POST',
-			url: 'https://' + self.gateway + '/host',
-			headers: {
-				Authorization: 'Bearer ' + self.token,
-				'User-Agent': self.ua,
-				Host: self.gateway
-			},
-			json: {
-				host: self.host && self.host.host,
-				region: opts.region,
-				temp: opts.temp,
-				serviceOpts: opts.serviceOpts
-			}
-		}, function(err, res, body) {
-			if (err) {
-				var e = new Error('Unable to connect to gateway service: ' + err.message);
-				e.inner = err;
-				return retry(e);
-			}
-			if (res.statusCode != 200 && res.statusCode != 201) {
-				var e = new GatewayError(res.statusCode, body);
-				if (res.statusCode >= 500) retry(e);
-				else self.emit('error', e);
-				return;
-			}
-
-			self.host = url.parse('https://' + body.host);
-
-			self.gatewayUrl = 'wss://' + body.host + '/.well-known/netsleuth';
-
-			server.newRemoteInspector(self);
-			connect();
-			checkTarget();
-			self.connect = connect;
-
-		});
-
-		function retry(err) {
-			self.emit('temp-error', err);
-			self._connto = setTimeout(preconnect, 5000);
-		}
-
-	}
-
-	if (self.gateway._local) {
-		var lii = self.service = self.gateway;
-		lii.on('gateway-message', handleMsg);
-		lii.on('req-data', function(id, chunk) {
-			var info = self.reqs[id];
-			if (info.reqBody) {
-				info.reqBody.append(chunk);
-				if (!info.reqBody.file) {
-					self.broadcast({
-						method: 'Gateway.updateRequestBody',
-						params: {
-							id: id,
-							body: chunk.toString()
-						}
-					});
-				}
-			}
-		});
-
-		self.serviceState = Inspector.SERVICE_STATE.OPEN;
-
-	} else {
-
-		preconnect();
-
-	}
 
 	// every hour, delete any temp files more than 24 hours old
 	// (temp files are saved when a request body is > 100 kB or response body is > 10 MB)
@@ -1105,29 +122,494 @@ function Inspector(server, opts) {
 		});
 	}, 1000 * 60 * 60);
 
-	self.connect = preconnect;
-		
+	// self.connect = preconnect;
+
 
 };
 util.inherits(Inspector, EventEmitter);
 
-Inspector.prototype.reconnect = function() {
-	if (this.service && !this.service._local) {
-		this.serviceState = Inspector.SERVICE_STATE.CLOSED;
-		this.service.close();
-		this.connect();
+Inspector.prototype.addTarget = function(id, opts) {
+	var self = this;
+
+	if (typeof id == 'object') {
+		opts = id;
+		id = 'target' + ++self.tn;
 	}
+
+	var target;
+	if (opts.local) { // local proxy mode
+		target = self.targets[id] = new ReverseProxyTarget(self, opts);
+	} else if (opts.inproc) {
+		target = self.targets[id] = new InprocTarget(self, opts);
+	} else {
+		target = self.targets[id] = new GatewayTarget(self, opts);
+		if (!target.token && self.server.opts.gateways && self.server.opts.gateways[target.gateway]) {
+			target.token = self.server.opts.gateways[target.gateway].token;
+		}
+	}
+
+	target.id = id;
+
+
+	target.on('connected', function(msg) {
+		self.console.info(msg);
+		self.broadcast({
+			method: 'Gateway.connectionState',
+			params: {
+				state: target.state
+			}
+		});
+	});
+
+	target.on('temp-error', function(err, msg) {
+		console.error('Gateway connection error.', err);
+		self.console.error('Gateway connection error: ' + err.message);
+	});
+
+	target.on('error', function(err) {
+		self.console.error(err.message);
+		self.emit('error', err);
+	});
+
+	target.on('closed', function(msg, code, reason) {
+		console.error(msg, code, reason);
+		self.console.error(msg + ' ' + code + ' ' + reason);
+		self.broadcast({
+			method: 'Gateway.connectionState',
+			params: {
+				state: self.state,
+				message: 'Disconnected from target'
+			}
+		});
+
+		for (var id in self.reqs) {
+			var txn = self.reqs[id];
+			if (txn.req) {
+				if (txn.req.socket) txn.req.socket.destroy();
+				delete txn.req;
+				if (txn.reqBody) txn.reqBody.destroy();
+				if (txn.resBody) txn.resBody.destroy();
+				self.broadcast({
+					method: 'Network.loadingFailed',
+					params: {
+						requestId: id,
+						timestamp: Date.now() / 1000,
+						type: 'Other',
+						errorText: 'disconnected from target during request'
+					}
+				});
+			} else if (txn.ws) {
+				txn.ws.close();
+			}
+		}
+	});
+
+	target.on('warn', function(msg) {
+		self.console.warn(msg, 'network');
+	});
+
+	target.on('console-msg', function(type, msg) {
+		if (self.console[type]) {
+			self.console[type](msg);
+		} else {
+			self.console.log(msg);
+		}
+	});
+
+	target.on('request', function(txn) {
+		
+		// do garbage collection on the nextish tick if necessary
+		if (++self.reqn % self.gcFreqCount == 0) setTimeout(reqGC);
+
+		self.reqs[txn.id] = txn;
+		
+		self.broadcast({
+			method: 'Network.requestWillBeSent',
+			params: {
+				requestId: txn.id,
+				loaderId: 'ld',
+				documentURL: 'docurl',
+				timestamp: Date.now() / 1000,
+				wallTime: Date.now() / 1000,
+				request: {
+					url: txn.originalProto + '://' + txn.originalHost + txn.originalPath,
+					method: txn.method,
+					headers: txn.reqHeaders,
+					postData: txn.reqBody ? '' : undefined
+				},
+				initiator: txn.stack && {
+					type: 'script',
+					stack: {
+						callFrames: txn.stack
+					},
+					url: 'script-url',
+					lineNumber: 0
+				},
+				type: 'Other'
+			}
+		});
+
+		for (var i = 0; i < self.notify.length; i++) {
+			var n = self.notify[i];
+			if (n.method == '*' || n.method == txn.method) {
+				if (n.rex.test(txn.originalPath)) {
+					notifier.notify({
+						title: txn.originalHost,
+						message: txn.method + ' ' + txn.originalPath
+					});
+					break;
+				}
+			}
+		}
+	});
+
+	target.on('req-contunue', function(txn) {
+		self.console.debug('Got 100 Continue for ' + txn.url());
+	});
+
+	target.on('req-information', function(txn, info) {
+		self.console.info('HTTP ' + info.statusCode + ' ' + info.statusMessage + ' from ' + txn.url());
+	});
+
+	target.on('req-on-disk', function(txn) {
+		self.broadcast({
+			method: 'Gateway.updateRequestBody',
+			params: {
+				id: txn.id,
+				sentToDisk: true
+			}
+		});
+	});
+
+	target.on('req-blocked', function(txn, rule) {
+		// TODO: update blocks panel
+
+		self.broadcast({
+			method: 'Network.requestWillBeSent',
+			params: {
+				requestId: txn.id,
+				loaderId: 'ld',
+				documentURL: 'docurl',
+				timestamp: Date.now() / 1000,
+				wallTime: Date.now() / 1000,
+				request: {
+					url: txn.originalProto + '://' + txn.originalHost + txn.originalPath,
+					method: txn.method,
+					headers: txn.reqHeaders,
+					postData: txn.reqBody ? '' : undefined
+				},
+				initiator: txn.stack && {
+					type: 'script',
+					stack: {
+						callFrames: txn.stack
+					},
+					url: 'script-url',
+					lineNumber: 0
+				},
+				type: 'Other'
+			}
+		});
+
+		self.broadcast({
+			method: 'Network.loadingFailed',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				type: 'Other',
+				errorText: 'Blocked'
+			}
+		});
+
+
+		self.console.warn('Blocked request for ' + txn.method + ' ' + txn.url());
+	});
+
+	target.on('req-error', function(txn, err) {
+		
+		txn.destroy = true;
+		if (txn.req && txn.req.socket) txn.req.socket.destroy();
+		if (txn.reqBody) txn.reqBody.destroy();
+		if (txn.resBody) txn.resBody.destroy();
+		delete self.reqs[txn.id];
+
+		self.broadcast({
+			method: 'Network.loadingFailed',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				type: 'Other',
+				errorText: err.message
+			}
+		});
+
+		self.console.error('Unable to ' + txn.method + ' ' + txn.url() + '\n' + err.message, 'network');
+
+	});
+
+	target.on('req-data', function(txn, payload) {
+		if (txn.reqBody && !txn.reqBody.file) {
+			self.broadcast({
+				method: 'Gateway.updateRequestBody',
+				params: {
+					id: txn.id,
+					body: payload.toString() // TODO: binary?
+				}
+			});
+		}
+	});
+
+
+	target.on('response', function(txn) {
+		var mime = txn.resHeaders['content-type'];
+		if (mime) {
+			mime = mime.split(';')[0];
+		}
+		self.broadcast({
+			method: 'Network.responseReceived',
+			params: {
+				requestId: txn.id,
+				loaderId: 'ld',
+				timestamp: Date.now() / 1000,
+				wallTime: Date.now() / 1000,
+				response: {
+					protocol: txn.originalProto + ':',
+					url: txn.url(),
+					status: txn.resStatus,
+					statusText: txn.resMessage,
+					headers: txn.resHeaders,
+					headersText: txn.getRawResHeaders(),
+					mimeType: mime,
+					requestHeaders: txn.reqHeaders,
+					requestHeadersText: txn.getRawReqHeaders(),
+					remoteIPAddress: txn.remoteIP,
+					remotePort: txn.remotePort,
+					connectionId: txn.id
+				},
+				type: resourceType(txn.resHeaders['content-type'])
+			}
+		});
+	});
+
+	target.on('res-insecure', function(txn) {
+		self.console.warn('Warning: connection to https://' + txn.targetHost + ' is not secure!  Certificate validation failed with error ' + txn.insecureError + '.');
+		self.broadcast({
+			method: 'Gateway.securityState',
+			params: {
+				insecure: true,
+				message: 'TLS error: ' + txn.insecureError
+			}
+		});
+	});
+
+	target.on('res-secure', function(txn) {
+		self.console.info('The certificate for https://' + txn.targetHost + ' is now validating.');
+		self.broadcast({
+			method: 'Gateway.securityState',
+			params: {
+				insecure: false
+			}
+		});
+	});
+
+	target.on('res-data', function(txn, chunk) {
+		self.broadcast({
+			method: 'Network.dataReceived',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				dataLength: chunk.length,
+				encodedDataLength: chunk.length
+			}
+		});
+	});
+
+	target.on('res-close', function(txn) {
+		if (!txn.complete) {
+			delete self.reqs[txn.id];
+
+			self.broadcast({
+				method: 'Network.loadingFailed',
+				params: {
+					requestId: txn.id,
+					timestamp: Date.now() / 1000,
+					type: 'Other',
+					errorText: 'incomplete response'
+				}
+			});
+
+			self.console.error('Response for ' + txn.method + ' ' + txn.url() + ' terminated prematurely', 'network');
+		}
+	});
+
+	target.on('res-end', function(txn) {
+		if (txn.complete) {
+			self.broadcast({
+				method: 'Network.loadingFinished',
+				params: {
+					requestId: txn.id,
+					timestamp: Date.now() / 1000,
+					encodedDataLength: txn.resBody.length
+				}
+			});
+		}
+	});
+
+	target.on('ws-close', function(txn) {
+		delete self.reqs[txn.id];
+
+		self.broadcast({
+			method: 'Network.webSocketClosed',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000
+			}
+		});
+	});
+
+	target.on('ws-error', function(txn, err) {
+		self.console.error('WebSocket error: ' + err);
+	});
+
+	target.on('ws-upgrade', function(txn) {
+		self.broadcast({
+			method: 'Network.webSocketHandshakeResponseReceived',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				response: {
+					status: txn.resStatus,
+					statusText: txn.resMessage,
+					headers: txn.resHeaders,
+					headersText: 'TODO',
+					requestHeaders: txn.reqHeaders,
+					requestHeadersText: 'TODO'
+				}
+			}
+		});
+	});
+
+	target.on('ws-frame-received', function(txn, payload) {
+		var bin = !(typeof payload == 'string');
+
+		self.broadcast({
+			method: 'Network.webSocketFrameReceived',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				response: {
+					opcode: bin ? 2 : 1,
+					mask: false,
+					payloadData: bin ? payload.toString('base64') : payload
+				}
+			}
+		});
+	});
+
+	target.on('ws-frame-sent', function(txn, payload) {
+		var bin = !(typeof payload == 'string');
+		
+		self.broadcast({
+			method: 'Network.webSocketFrameSent',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				response: {
+					opcode: bin ? 2 : 1,
+					mask: false,
+					payloadData: bin ? payload.toString('base64') : payload
+				}
+			}
+		});
+	});
+
+	target.on('ws-unexpected-response', function(txn, res) {
+		self.broadcast({
+			method: 'Network.webSocketFrameError',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				errorMessage: 'Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage
+			}
+		});
+		
+		self.console.error('WebSocket connection to ' + txn.url() + ' failed: Error during WebSocket handshake: Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage);
+
+	});
+
+	target.on('ws-request', function(txn) {
+		self.reqs[txn.id] = txn;
+		self.broadcast({
+			method: 'Network.webSocketCreated',
+			params: {
+				requestId: txn.id,
+				url: txn.url(),
+				initiator: {}
+			}
+		});
+
+		self.broadcast({
+			method: 'Network.webSocketWillSendHandshakeRequest',
+			params: {
+				requestId: txn.id,
+				timestamp: Date.now() / 1000,
+				wallTime: Date.now() / 1000,
+				request: {
+					headers: txn.headers
+				}
+			}
+		});
+	});
+
+	target.on('force-disconnect', function() {
+		self.console.error(target.serviceError);
+		self.broadcast({
+			method: 'Gateway.connectionState',
+			params: {
+				state: self.targets.main.state,
+				message: 'Disconnected from gateway'
+			}
+		});
+	});
+
+	target.on('hostname', function(hostname, ip) {
+		self.name = hostname;
+		if (self.opts.port && self.opts.port != 80) self.name += ':' + self.opts.port;
+		self.emit('hostname', hostname, ip);
+	});
+
+	target.on('destroy', function() {
+		self.removeTarget(target.id);
+	});
+
+	target.init();
+
+	this.updateTargets();
+
+	return target;
+
+};
+
+Inspector.prototype.removeTarget = function(id) {
+	if (this.targets[id]) {
+		this.targets[id].close();
+		this.targets[id].removeAllListeners();
+		delete this.targets[id];
+	}
+	this.updateTargets();
+};
+
+Inspector.prototype.reconnect = function() {
+	for (var id in this.targets) this.targets[id].reconnect();
 };
 
 Inspector.prototype.close = function() {
 	if (this.shutdown) return;
 	this.shutdown = true;
-	this.serviceState = Inspector.SERVICE_STATE.CLOSED;
 	clearInterval(this._gctimer);
 	clearTimeout(this._connto);
 	this.reqs = {};
-	if (this.service) this.service.close();
-	if (this.gateway && this.gateway._local) this.gateway.close();
+	for (var id in this.targets) this.removeTarget(id);
+	// if (this.gateway && this.gateway._local) this.gateway.close();
 	this.console.warn('This inspector has been removed!');
 	this.broadcast({
 		method: 'Gateway.close'
@@ -1169,23 +651,43 @@ Inspector.prototype.connection = function(ws, req) {
 						}, 100);
 					}
 
-					if (self.serviceState != Inspector.SERVICE_STATE.OPEN) {
-						setTimeout(function() {
-							self.console.error('Not connected to gateway.');
-							if (self.serviceError) self.console.error(self.serviceError.message);
-						}, 100);
-					} else {
-						send({
-							m: 'inspector',
-							iid: ws.id
-						});
-					}
-					csend({
-						method: 'Gateway.connectionState',
-						params: {
-							state: self.serviceState
+					if (self.targets.main) {
+						if (self.targets.main.state != Target.SERVICE_STATE.OPEN) {
+							setTimeout(function() {
+								self.console.error('Not connected to gateway.');
+								if (self.serviceError) self.console.error(self.serviceError.message);
+							}, 100);
+						} else {
+							send({
+								m: 'inspector',
+								iid: ws.id
+							});
 						}
-					});
+						csend({
+							method: 'Gateway.connectionState',
+							params: {
+								state: self.targets.main.state
+							}
+						});
+					} else {
+						var n = 0,
+							open = 0;
+
+						for (var id in self.targets) {
+							++n;
+							if (self.targets[id].state == Target.SERVICE_STATE.OPEN) ++open;
+						}
+
+						csend({
+							method: 'Gateway.connectionState',
+							params: {
+								state: open ? 2 : 3
+							}
+						});
+
+					}
+
+
 					if (self.insecureError) csend({
 						method: 'Gateway.securityState',
 						params: {
@@ -1246,6 +748,7 @@ Inspector.prototype.connection = function(ws, req) {
 					break;
 
 				case 'Network.setBlockedURLs':
+					self.config.blockedUrls = msg.params.urls;
 					send({
 						m: 'block',
 						urls: msg.params.urls
@@ -1254,25 +757,28 @@ Inspector.prototype.connection = function(ws, req) {
 					break;
 
 				case 'Network.setUserAgentOverride':
+					self.config.ua = msg.params.userAgent || null;
 					send({
 						m: 'ua',
-						ua: msg.params.userAgent
+						ua: msg.params.userAgent || null
 					});
 					reply();
 					break;
 
 				case 'Network.emulateNetworkConditions':
+					self.config.throttle = msg.params;
 					send({
 						m: 'throttle',
 						off: msg.params.offline,
 						latency: msg.params.latency,
 						down: msg.params.downloadThroughput,
-						up: msg.params.uploadTHroughput
+						up: msg.params.uploadThroughput
 					});
 					reply();
 					break;
 
 				case 'Network.setCacheDisabled':
+					self.config.noCache = msg.params.cacheDisabled;
 					send({
 						m: 'no-cache',
 						val: msg.params.cacheDisabled
@@ -1339,10 +845,39 @@ Inspector.prototype.connection = function(ws, req) {
 		ws.send(JSON.stringify(msg));
 	}
 	function send(msg) {
-		if (self.service._local) self.service.emit('inspector-message', msg);
-		else self.service.send(JSON.stringify(msg));
+		for (var id in self.targets) self.targets[id].send(msg);
 	}
 
+};
+
+
+Inspector.prototype.updateTargets = function() {
+	var self = this,
+		n = 0,
+		open = 0;
+
+	for (var id in self.targets) {
+		++n;
+		if (self.targets[id].state == Target.SERVICE_STATE.OPEN) ++open;
+	}
+
+	console.log(self.name + ': ' + n + ' targets, ' + open + ' open');
+
+	self.broadcast({
+		method: 'Gateway.connectionState',
+		params: {
+			state: open ? 2 : 3,
+			message: 'No connected targets'
+		}
+	});
+
+	if (n == 0) {
+		self.emit('no-targets');
+	}
+
+	if (n == 1) {
+		self.emit('has-targets');
+	}
 };
 
 
@@ -1358,7 +893,7 @@ function InspectionServer(opts) {
 
 	app.get('/sleuth', function(req, res) {
 		res.send(Object.assign({}, process.versions, {
-			sleuth: require('./package.json').version
+			sleuth: version
 		}));
 	});
 
@@ -1410,7 +945,7 @@ function InspectionServer(opts) {
 		var insp = self.inspectors[req.params.host];
 
 		if (insp) {
-			if (insp instanceof InprocInspector) {
+			if (insp.opts.inproc) {
 				res.set('Cache-Control', ICON_CACHE);
 				if (insp.opts.icon) {
 					fs.stat(insp.opts.icon, function(err, stats) {
@@ -1418,9 +953,9 @@ function InspectionServer(opts) {
 						else res.sendFile(insp.opts.icon);
 					});
 				} else res.sendFile(__dirname + '/www/img/node.svg');
-			} else if (insp.friendlyTarget) {
+			} else if (insp.targets.main) {
 				request({
-					url: insp.friendlyTarget + 'favicon.ico',
+					url: insp.targets.main.url.href + 'favicon.ico',
 					encoding: null
 				}, function(err, ires, body) {
 					if (err) res.sendStatus(500);
@@ -1459,10 +994,11 @@ function InspectionServer(opts) {
 
 				var host = getInspectorId(info.req.url);
 				if (host && host.type == 'inproc') {
-					var existing = self.inspectors[host.name];
-					if (!existing) cb(true);
-					else if (existing instanceof InprocInspector) cb(true);
-					else cb(false, 409, 'Conflict');
+					cb(true);
+					// var existing = self.inspectors[host.name];
+					// if (!existing) cb(true);
+					// else if (existing.targets.main instanceof targets.InprocTarget) cb(true);
+					// else cb(false, 409, 'Conflict');
 				}
 				else if (host && self.inspectors[host.name]) cb(true);
 				else cb(false, 404, 'Not Found');
@@ -1487,13 +1023,28 @@ function InspectionServer(opts) {
 			if (req.url == '/targets') {
 				self.targetMonitorConnection(client, req);
 			} else {
-				var host = getInspectorId(req.url);
-				if (host) {
-					if (host.type == 'inproc') {
-						if (!self.inspectors[host.name]) self.inspectInproc(host.name, req.headers['sleuth-transient'] == 'true', req.headers.icon);
-						self.inspectors[host.name].target(client, req);
+				var ti = getInspectorId(req.url);
+				if (ti) {
+					var inspector = self.inspectors[ti.name];
+					if (ti.type == 'inproc') {
+						// The client is an inspected process
+						if (!inspector) inspector = self.inspectInproc(ti.name, req.headers['sleuth-transient'] == 'true', req.headers.icon);
+						var target = inspector.addTarget({
+							inproc: true,
+							client: client,
+							req: req
+						});
+
+						inspector.console.info(target.pid + ' connected');
+
+						target.on('destroy', function() {
+							inspector.console.info(target.pid + ' disconnected');
+						});
+
 					} else {
-						self.inspectors[host.name].connection(client, req);
+						// The client is the DevTools GUI
+						if (inspector) inspector.connection(client, req);
+						else console.log('oops');
 					}
 					client.on('pong', function() {
 						client.isAlive = true;
@@ -1532,42 +1083,36 @@ InspectionServer.prototype.remove = function(host) {
 			host: host
 		});
 	}
-}
+};
+
 
 InspectionServer.prototype[util.inspect.custom] = true; // instruct console.log to ignore the `inspect` property
 InspectionServer.prototype.inspect = function(opts) {
+	var self = this;
 	this.remove(opts.host);
 	var inspector = new Inspector(this, opts);
 
-	if (opts.gateway._local && opts.host) {
-		this.newRemoteInspector(inspector);
-	}
+	var href = opts.target;
+	if (href && href.substr(0, 5) == 'same:') href = href.substr(5);
+
+	inspector.on('hostname', function(hostname) {
+		self.inspectors[inspector.name] = inspector;
+		
+		self.monitorBroadcast({
+			m: 'new',
+			type: getInspectorType(inspector),
+			host: inspector.name,
+			target: href
+		});
+	});
 
 	return inspector;
 };
 
-InspectionServer.prototype.newRemoteInspector = function(inspector) {
-	this.inspectors[inspector.host.host] = inspector;
-
-	var href = inspector.target.href;
-	if (href && href.substr(0, 5) == 'same:') href = href.substr(5);
-
-	
-	this.monitorBroadcast({
-		m: 'new',
-		type: getInspectorType(inspector),
-		host: inspector.host.host,
-		target: href
-	});
-
-	process.nextTick(function() {
-		inspector.emit('hostname', inspector.host.host);
-	});
-};
-
 InspectionServer.prototype.inspectInproc = function(name, transient, icon) {
 	var self = this,
-		inspector = self.inspectors[name] = new InprocInspector(self, {
+		inspector = self.inspectors[name] = new Inspector(self, {
+			inproc: true,
 			name: name,
 			transient: transient,
 			icon: icon
@@ -1604,10 +1149,14 @@ InspectionServer.prototype.targetMonitorConnection = function(ws, req) {
 
 	var inspectors = [];
 	for (var k in self.inspectors) {
+
+		var href = self.inspectors[k].targets.main && self.inspectors[k].targets.main.url.href;
+		if (href && href.substr(0, 5) == 'same:') href = href.substr(5);
+
 		inspectors.push({
 			type: getInspectorType(self.inspectors[k]),
 			host: k,
-			target: self.inspectors[k].friendlyTarget
+			target: href
 		});
 	}
 
@@ -1626,102 +1175,6 @@ InspectionServer.prototype.monitorBroadcast = function(msg) {
 };
 
 
-var availLocal = ipToLong('127.0.0.1'), LOCAL_MAX = ipToLong('127.255.255.255'), ipish = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
-InspectionServer.nextLocal = function() {
-	var ip = ++availLocal;
-	console.log(ip, ipFromLong(ip), ip & 255);
-	if ((ip & 255) == 255 || (ip & 255) == 0) return InspectionServer.nextLocal();
-	if (ip > LOCAL_MAX) throw new Error('No available loopback IP');
-	return ipFromLong(ip);
-};
-
-InspectionServer.prototype.inspectOutgoing = function(opts, cb) {
-	var self = this,
-		gateway = new GatewayServer(opts.gatewayOpts || {
-			noForwarded: true
-		});
-
-	if (typeof opts == 'string') opts = { target: opts };
-
-	if (!opts || !opts.target) throw new Error('Must specify target host for outgoing inspection');
-
-	if (opts.host) {
-		var p = opts.host.indexOf(':');
-		if (p >= 0) {
-			opts.port = parseInt(opts.host.substr(p+1), 10) || 80;
-			opts.host = opts.host.substr(0, p);
-			if (!opts.host || opts.host == '*') opts.host = '*' + ':' + opts.port;
-		}
-		if (opts.host[0] == '*') opts.ip = '0.0.0.0';
-		console.log(opts);
-	}
-
-	var ip = opts.ip;
-	if (!ip && ipish.test(opts.host)) ip = opts.host;
-
-
-	if (ip) {
-		function onerror(err) {
-			gateway.http.removeListener('listening', onlistening);
-			if (cb) cb(err);
-			else console.error('error', err);
-		}
-		function onlistening() {
-			gateway.http.removeListener('error', onerror);
-			up(ip);
-		}
-
-		gateway.http.once('error', onerror);
-		gateway.http.once('listening', onlistening);
-
-
-		gateway.http.listen(opts.port || 80, ip);
-	} else {
-		tryListen();
-	}
-
-	function tryListen() {
-		try {
-			var ip = InspectionServer.nextLocal();
-		} catch (ex) {
-			if (cb) cb(ex);
-			else throw ex;
-			return;
-		}
-		console.log('trying', ip);
-
-		function onerror(err) {
-			gateway.http.removeListener('listening', onlistening);
-			if (err.code == 'EADDRINUSE') tryListen();
-			else {
-				if (cb) cb(err);
-				else throw err;
-			}
-		}
-		function onlistening() {
-			gateway.http.removeListener('error', onerror);
-			up(ip);
-		}
-
-		gateway.http.once('error', onerror);
-		gateway.http.once('listening', onlistening);
-
-		gateway.http.listen(opts.port || 80, ip);
-	}
-
-	function up(ip) {
-		var inspector = self.inspect({
-			host: opts.host || ip,
-			target: opts.target,
-			gateway: gateway.inspect(opts.host || ip, opts.serviceOpts),
-			insecure: opts.insecure,
-			ca: opts.ca,
-			hostsfile: opts.hostsfile,
-			ip: opts.ip
-		});
-		if (cb) cb(null, inspector, ip);
-	}
-};
 
 function getHid() {
 	var hash = crypto.createHash('sha256');
@@ -1732,21 +1185,6 @@ function getHid() {
 	return hash.digest('base64');
 }
 
-function ipToLong(ip) {
-	var ipl = 0;
-	ip.split('.').forEach(function(octet) {
-	 	ipl <<= 8;
-		ipl += parseInt(octet);
-	});
-	return(ipl >>> 0);
-}
-
-function ipFromLong(ipl) {
-	return ((ipl >>> 24) + '.' +
-		(ipl >> 16 & 255) + '.' +
-		(ipl >> 8 & 255) + '.' +
-		(ipl & 255) );
-}
 
 InspectionServer.prototype.broadcast = function(msg) {
 	msg = JSON.stringify(msg);
@@ -1766,19 +1204,13 @@ InspectionServer.prototype.close = function() {
 };
 
 
-
-
-
-
-
-
 function getInspectorId(url) {
 	var path = url.split('/');
 	if (path[1] == 'inspect' || path[1] == 'inproc') return { type: path[1], name: path[2] };
 }
 
 function getInspectorType(insp) {
-	if (insp instanceof InprocInspector) return 2;
-	if (insp.gateway._local) return 3;
+	if (insp.opts.inproc) return 2;
+	if (insp.opts.local) return 3;
 	return 1;
 }
