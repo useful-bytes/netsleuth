@@ -9,6 +9,7 @@
 
 <header>
 	<h1><img src="/img/netsleuth.svg" width=32 height=32> netsleuth</h1>
+	<div id="showsetup" title="System setup is incomplete">⚠️</div>
 	<button id="add" title="Add new inspection target">+</button>
 </header>
 
@@ -17,13 +18,15 @@
 <div id="notchrome" class="err" style="display:none;">The inspector only works in Chrome.  Please open this page in Chrome.</div>
 <div id="disc" class="err"><p>The connection to the netsleuth daemon was closed.</p><p>Attempting to reconnect...</p></div>
 <div id="syssetup" class="warn">
+<div id="syssetupclose" class="closebtn">×</div>
 <h4>⚠️ System setup incomplete</h4>
-<p>Additional system configuration is required to allow netsleuth to listen for connections on <a href="https://netsleuth.io/docs/privileged-ports" target=_blank>privileged ports</a>.</p>
+<p>Additional system configuration is required to allow netsleuth to <span id="syssetupprivport">listen for connections on <a href="https://netsleuth.io/docs/privileged-ports" target=_blank>privileged ports</a> and</span> proxy HTTPS requests.</p>
 <ul id="syssetuplist">
 	<li id="syssetupautoab">netsleuth will install <a href="https://en.wikipedia.org/wiki/Authbind">authbind</a> for you</li>
 	<li id="syssetupmanualab">You must manually install <a href="https://en.wikipedia.org/wiki/Authbind">authbind</a> on your system.</li>
 	<li id="syssetupabconfig">netsleuth will configure authbind to allow you to listen on ports 80 and 443.</li>
 	<li id="syssetuplbconfig">netsleuth will configure your loopback interface to allow you to use 127.0.0.x</li>
+	<li id="syssetupca"><input type="checkbox" id="syssetupcay" checked><label for="syssetupcay"> Install netsleuth's generated proxy CA as a trusted root CA</label></li>
 </ul>
 <button id="syssetupgo"><img src="/img/elevate.png" width=16 height=16 title="Elevated privileges required"> Complete system setup</button> <span id="syssetupwait"><img src="/img/loading.svg" width=24 height=24> Installing...</span>
 </div>
@@ -32,7 +35,8 @@
 </ul>
 <div id="empty">
 <i>No inspection targets</i>
-
+</div>
+<div id="getstart">
 <h3>Adding your first target</h3>
 <p>There are several ways to get started:</p>
 <ul>

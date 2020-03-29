@@ -22,6 +22,7 @@ var http = require('http'),
 	GatewayTarget = require('./lib/gateway-target'),
 	InprocTarget = require('./lib/inproc-target'),
 	ReverseProxyTarget = require('./lib/reverse-proxy-target'),
+	ForwardProxyTarget = require('./lib/forward-proxy-target'),
 	version = require('./package.json').version;
 
 var argv = require('yargs').argv;
@@ -65,6 +66,7 @@ function Inspector(server, opts) {
 
 
 	this.id = crypto.randomBytes(33).toString('base64');
+	this.name = opts.name;
 	this.tn = 0;
 	this.targets = {};
 	this.clients = [];
@@ -139,6 +141,8 @@ Inspector.prototype.addTarget = function(id, opts) {
 	var target;
 	if (opts.local) { // local proxy mode
 		target = self.targets[id] = new ReverseProxyTarget(self, opts);
+	} else if (opts.fwd) {
+		target = self.targets[id] = new ForwardProxyTarget(self, opts);
 	} else if (opts.inproc) {
 		target = self.targets[id] = new InprocTarget(self, opts);
 	} else {
@@ -886,6 +890,7 @@ function InspectionServer(opts) {
 	self.opts = opts = opts || {};
 	self.inspectors = {};
 	self.monitors = [];
+	self.localCA = opts.localCA;
 
 	var app = this.app = express();
 
@@ -953,7 +958,7 @@ function InspectionServer(opts) {
 						else res.sendFile(insp.opts.icon);
 					});
 				} else res.sendFile(__dirname + '/www/img/node.svg');
-			} else if (insp.targets.main) {
+			} else if (insp.targets.main && insp.targets.main.url) {
 				request({
 					url: insp.targets.main.url.href + 'favicon.ico',
 					encoding: null
@@ -1007,7 +1012,8 @@ function InspectionServer(opts) {
 
 	function onrequest(req, res) {
 		if (req.url[0] == '/') app(req, res);
-		else rawRespond(req.socket, 501, 'Not Implemented', 'HTTP proxy coming soon');
+		else if (fwd) fwd.targets.main.gateway.handleRequest(req, res);
+		else rawRespond(req.socket, 403, 'Forbidden', 'Forward proxy server disabled.');
 	}
 
 	function onupgrade(req, socket, head) {
@@ -1055,7 +1061,14 @@ function InspectionServer(opts) {
 		});
 	}
 
+	function onconnect(req, socket, head) {
+		if (fwd) fwd.targets.main.gateway.handleConnect(req, socket, head);
+		else rawRespond(socket, 405, 'Method Not Allowed', 'This server does not allow CONNECT requests because the forward proxy is disabled.');
+	}
+
 	httpServer.on('upgrade', onupgrade);
+
+	httpServer.on('connect', onconnect);
 
 	httpServer.on('error', function(err) {
 		console.error('inspector http error', err);
@@ -1068,8 +1081,17 @@ function InspectionServer(opts) {
 	if (opts.https) {
 		var httpsServer = this.https = https.createServer(opts.https, app);
 		httpsServer.on('upgrade', onupgrade);
+		httpsServer.on('connect', onconnect);
 	}
 
+	var fwd = self.inspectors[':' + opts.port] = new Inspector(this, {
+		fwd: true,
+		name: ':' + opts.port
+	});
+	fwd.addTarget('main', {
+		fwd: true,
+		insecure: true
+	});
 
 };
 
@@ -1090,6 +1112,7 @@ InspectionServer.prototype[util.inspect.custom] = true; // instruct console.log 
 InspectionServer.prototype.inspect = function(opts) {
 	var self = this;
 	this.remove(opts.host);
+	opts.name = opts.host;
 	var inspector = new Inspector(this, opts);
 
 	var href = opts.target;
@@ -1150,7 +1173,7 @@ InspectionServer.prototype.targetMonitorConnection = function(ws, req) {
 	var inspectors = [];
 	for (var k in self.inspectors) {
 
-		var href = self.inspectors[k].targets.main && self.inspectors[k].targets.main.url.href;
+		var href = self.inspectors[k].targets.main && self.inspectors[k].targets.main.url && self.inspectors[k].targets.main.url.href;
 		if (href && href.substr(0, 5) == 'same:') href = href.substr(5);
 
 		inspectors.push({
@@ -1212,5 +1235,6 @@ function getInspectorId(url) {
 function getInspectorType(insp) {
 	if (insp.opts.inproc) return 2;
 	if (insp.opts.local) return 3;
+	if (insp.opts.fwd) return 4;
 	return 1;
 }

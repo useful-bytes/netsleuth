@@ -35,6 +35,7 @@
     "jquery": "^3.4.1",
     "jsondiffpatch": "^0.3.11",
     "mime-types": "^2.1.22",
+    "node-forge": "^0.9.1",
     "node-notifier": "^5.4.0",
     "opn": "^5.1.0",
     "request": "^2.88.2",

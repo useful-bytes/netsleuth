@@ -3,6 +3,7 @@
 var fs = require('fs'),
 	path = require('path'),
 	readline = require('readline'),
+	os = require('os'),
 	rcfile = require('../lib/rcfile'),
 	Daemon = require('../lib/daemon'),
 	gw = require('../lib/gateway-client');
@@ -783,6 +784,10 @@ var yargs = require('yargs')
 	.command('setup', 'Run netsleuth system setup', function(yargs) {
 		yargs
 		.usage('Usage: sudo $0 restart [options]')
+		.option('ca', {
+			boolean: true,
+			describe: 'Install the proxy CA certificate as a trusted CA'
+		})
 		.option('uninstall', {
 			boolean: true,
 			describe: 'Remove netsleuth\'s system modifications'
@@ -791,13 +796,9 @@ var yargs = require('yargs')
 
 	}, function(argv) {
 
-		if (process.platform == 'win32') {
-			console.log('It is not necessary to run this command on Windows.');
-		}
-
 		var systemSetup = require('../lib/system-setup');
 		
-		if (argv.status) systemSetup.getStatus(function(err, status) {
+		if (argv.status) systemSetup.getStatus(getCa(), function(err, status) {
 			if (err) {
 				console.error(err.message);
 				process.exit(1);
@@ -808,7 +809,9 @@ var yargs = require('yargs')
 				systemSetup.printStatus(status);
 			}
 		});
-		else if (argv.uninstall) systemSetup.uninstall(function(err) {
+		else if (argv.uninstall) systemSetup.uninstall({
+			ca: rcfile.CONFIG_DIR + '/ca.cer'
+		}, function(err) {
 			if (err) {
 				console.error(err.message);
 				process.exit(1);
@@ -816,12 +819,14 @@ var yargs = require('yargs')
 				console.log('Success.  Uninstalled.');
 			}
 		});
-		else systemSetup.install(function(err) {
+		else systemSetup.install({
+			ca: argv.ca && rcfile.CONFIG_DIR + '/ca.cer'
+		}, function(err) {
 			if (err) {
 				console.error(err.message);
 				process.exit(1);
 			} else {
-				systemSetup.getStatus(function(err, status) {
+				systemSetup.getStatus(getCa(), function(err, status) {
 					if (err) {
 						console.error('Setup completed successfully, but there was an error while verifying installation:', err.message);
 						process.exit(1);
@@ -841,6 +846,46 @@ var yargs = require('yargs')
 			}
 		});
 
+	})
+	.command('ca', 'Get the local netsleuth CA certificate', function(yargs) {
+		yargs.usage('Usage: $0')
+		.command('issue <common-name>', 'Issue a certificate for this DNS name', function(yargs) {
+			yargs
+			.option('cert', {
+				alias: 'c',
+				describe: 'Where to save the certificate',
+				default: '-'
+			})
+			.option('key', {
+				alias: 'k',
+				describe: 'Where to save the private key',
+				default: '-'
+			})
+			.option('months', {
+				alias: 'm',
+				describe: 'Months of validity',
+				default: 1
+			})
+		}, function(argv) {
+			getCa().issue({ cn: argv.commonName, months: argv.months }, function(err, r) {
+				if (err) {
+					console.error(err);
+					process.exit(1);
+				}
+
+				if (argv.cert == '-') console.log(r.cert);
+				else fs.writeFileSync(argv.cert, r.cert);
+				if (argv.key == '-') console.log(r.key);
+				else fs.writeFileSync(argv.key, r.key);
+			});
+		});
+	}, function(argv) {
+		var stream = fs.createReadStream(rcfile.CONFIG_DIR + '/ca.cer', { encoding: 'utf-8' });
+		stream.on('error', function(err) {
+			console.error('No local CA has been set up.');
+			process.exit(1);
+		});
+		stream.pipe(process.stdout);
 	})
 	.command('project [path]', 'Run project autoconfiguration', function(yargs) {
 		yargs.usage('Usage: $0 project [path]\n\nThis will look for a .sleuthrc project configuration file in the current directory (or path, if provided) and send it to the netsleuth daemon for processing.  See https://netsleuth.io/docs/project for more info.')
@@ -887,4 +932,17 @@ function gatewayFromHost(host) {
 	host = host.split('.');
 	host.splice(0, 1);
 	return host.join('.');
+}
+
+function getCa() {
+	try {
+		var ca = new (require('../lib/certs'))({
+			cert: fs.readFileSync(rcfile.CONFIG_DIR + '/ca.cer'),
+			key: fs.readFileSync(rcfile.CONFIG_DIR + '/ca.key')
+		});
+		return ca;
+	} catch (ex) {
+		console.error('CA certificate not found.', ex.message);
+		process.exit(1);
+	}
 }

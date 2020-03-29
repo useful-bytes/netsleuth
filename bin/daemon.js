@@ -13,6 +13,7 @@ var fs = require('fs'),
 	browserLogin = require('../lib/browser-login'),
 	hosts = require('../lib/hosts'),
 	serverCert = require('../lib/server-cert'),
+	CertificateAuthority = require('../lib/certs'),
 	systemSetup = require('../lib/system-setup'),
 	Server = require('../server'),
 	version = require('../package.json').version;
@@ -29,9 +30,28 @@ var config = rcfile.get(),
 	port = +process.argv[2],
 	ua = 'netsleuth/' + version + ' (' + os.platform() + '; ' + os.arch() + '; ' + os.release() +') node/' + process.versions.node;
 
+var ca;
+try {
+	ca = new CertificateAuthority({
+		cert: fs.readFileSync(rcfile.CONFIG_DIR + '/ca.cer'),
+		key: fs.readFileSync(rcfile.CONFIG_DIR + '/ca.key')
+	});
+} catch (ex) {
+	console.error('failed to load CA', ex);
+	var gen = CertificateAuthority.generate();
+	try {
+		fs.writeFileSync(rcfile.CONFIG_DIR + '/ca.cer', gen.cert);
+		fs.writeFileSync(rcfile.CONFIG_DIR + '/ca.key', gen.key);
+	} catch (ex) {
+		console.error('failed to save generated CA', ex);
+	}
+	ca = new CertificateAuthority(gen);
+}
+
 var server = new Server({
 	gateways: config.gateways,
-	port: port
+	port: port,
+	localCA: ca
 });
 
 
@@ -304,16 +324,20 @@ server.app.get('/ipc/gateways', isLocal, function(req, res) {
 });
 
 server.app.get('/ipc/setup', isLocal, function(req, res) {
-	systemSetup.getStatus(function(err, status) {
+	systemSetup.getStatus(ca, function(err, status) {
 		if (err) res.status(500).send(err.message);
 		else res.send(status);
 	});
 });
 
 server.app.post('/ipc/setup', isLocal, function(req, res) {
-	systemSetup.install(function(err) {
+	var iopts = {};
+	if (req.body.ca) {
+		iopts.ca = rcfile.CONFIG_DIR + '/ca.cer';
+	}
+	systemSetup.install(iopts, function(err) {
 		res.send({ err: err && err.message });
-		if (!err) child_process.exec('node "' + path.join(__dirname, 'netsleuth.js') + '" restart');
+		if (!err && process.platform != 'win32') child_process.exec('node "' + path.join(__dirname, 'netsleuth.js') + '" restart');
 	});
 });
 

@@ -68,7 +68,7 @@ try {
 			daemon = new Daemon(config);
 
 
-		systemSetup.getStatus(function(err, status) {
+		systemSetup.getStatus(null, function(err, status) {
 			if (err) console.error('warning: netsleuth failed to get current system setup status.', err);
 			else if (!status.ok) {
 				console.error('netsleuth: System setup is incomplete');

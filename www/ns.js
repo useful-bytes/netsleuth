@@ -11,16 +11,29 @@ function connect() {
 
 		fetch('/ipc/setup').then(function(res) {
 			res.json().then(function(status) {
+				var items = 0;
 				$('#syssetupwait').hide();
 				$('#syssetupgo').attr('disabled', false);
 				$('#syssetuplist li').hide();
-				$('#syssetup').vis(!status.ok);
-				if (!status.authbindInstalled) {
+				if (status.authbindInstalled === null) $('#syssetupprivport').hide();
+				if (status.authbindInstalled === false) {
+					++items;
 					if (status.pkg) $('#syssetupautoab').show();
 					else $('#syssetupmanualab').show();
 				}
-				if (!status.authbindConfigured) $('#syssetupabconfig').show();
-				if (!status.loopbackConfigured) $('#syssetuplbconfig').show();
+				if (status.authbindConfigured === false) {
+					++items;
+					$('#syssetupabconfig').show();
+				}
+				if (!status.loopbackConfigured) {
+					++items;
+					$('#syssetuplbconfig').show();
+				}
+				if (!status.caCertInstalled && localStorage.ignoreCa !== 'true') {
+					++items;
+					$('#syssetupca').show();
+				}
+				$('#syssetup').vis(!status.ok && items > 0);
 			});
 		});
 	};
@@ -47,8 +60,9 @@ function connect() {
 connect();
 
 function listUpdated() {
-	if (list.children('li').length == 0) $('#empty').show();
-	else $('#empty').hide();
+	var n = list.children('li').length
+	$('#empty').vis(n == 0);
+	$('#getstart').vis(n < 2);
 }
 
 function addHost(h) {
@@ -487,11 +501,33 @@ $('#acgateway').on('change', function() {
 	}
 });
 
+
+$('#syssetupcay').on('change', function() {
+	var items = $('#syssetup li:visible').length;
+	$('#syssetupgo').attr('disabled', !(items > 1 || this.checked));
+});
+$('#syssetupclose').click(function() {
+	$('#syssetup').hide();
+	$('#showsetup').show();
+});
+$('#showsetup').click(function() {
+	$('#showsetup').hide();
+	$('#syssetup').show();
+});
 $('#syssetupgo').click(function() {
 	var btn = $('#syssetupgo').attr('disabled', true),
 		spinner = $('#syssetupwait').show();
+
+	localStorage.ignoreCa = !$('#syssetupcay').is(':checked');
+
 	fetch('/ipc/setup', {
-		method: 'POST'
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			ca: $('#syssetupcay').is(':checked')
+		})
 	}).then(function(res) {
 		return res.json().then(function(result) {
 			if (result.err) {

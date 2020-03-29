@@ -1,6 +1,7 @@
 var http = require('http'),
 	https = require('https'),
 	util = require('util'),
+	url = require('url'),
 	EventEmitter = require('events'),
 	WebSocket = require('ws'),
 	rawRespond = require('./lib/raw-respond');
@@ -19,22 +20,27 @@ function GatewayServer(opts) {
 	self.reqid = 0;
 	self.silenceTimeout = opts.silenceTimeout || (1000 * 60 * 2);
 	self.pingFreq = opts.pingFreq || 120000;
+	self.localCA = opts.localCA;
 
 	var wss = self.wss = new WebSocket.Server({
 		noServer: true
 	});
 
 
-	self.http = http.createServer(handleRequest);
+	self.http = http.createServer();
 	setupServer(self.http);
 
 	if (opts.https) {
-		self.https = https.createServer(opts.https, handleRequest);
+		self.https = https.createServer(opts.https);
 		setupServer(self.https);
 	}
 
 
 	function setupServer(server) {
+		server.on('request', function(req, res) {
+			self.handleRequest(req, res);
+		});
+
 		server.on('upgrade', function(req, socket, head) {
 			var reqHost = req.headers.host;
 
@@ -75,46 +81,7 @@ function GatewayServer(opts) {
 				
 
 				} else {
-
-					var host = self.hosts[reqHost] || self.hosts['*'];
-
-					if (!host) return rawRespond(socket, 503, 'Service Unavialable', 'The host "' + reqHost + '" does not have an active destination.');
-
-
-					var id = ++self.reqid;
-					self.ws[id] = host.wsconn[id] = {
-						id: id,
-						req: req,
-						socket: socket,
-						head: head
-					};
-
-
-					var proto = req.socket.encrypted ? 'wss' : 'ws',
-						remote;
-
-					if (req.socket.remoteFamily == 'IPv6') remote = '[' + req.socket.remoteAddress + ']';
-					else remote = req.socket.remoteAddress;
-
-					if (!host.opts.noForwarded && !self.opts.noForwarded) {
-						var fwd = req.headers['forwarded'];
-						if (fwd) fwd += ',';
-						else fwd = '';
-
-						req.headers['forwarded'] = fwd + 'for="' + remote + ':' + req.socket.remotePort + '";host="' + reqHost + '";proto=' +  proto;
-					}
-
-					send(host.ws, {
-						m: 'ws',
-						id: id,
-						remoteIP: remote,
-						remotePort: req.socket.remotePort,
-						proto: proto,
-						method: req.method,
-						url: req.url,
-						headers: req.headers,
-						raw: req.rawHeaders
-					});
+					self.handleWs(req, socket, head);
 				}
 			}
 			
@@ -122,12 +89,16 @@ function GatewayServer(opts) {
 			
 		});
 
+		server.on('connect', function(req, socket, head) { // http CONNECT method
+			self.handleConnect(req, socket, head);			
+		});
+
 		server.on('checkContinue', function(req, res) {
-			handleRequest(req, res, true);
+			self.handleRequest(req, res, true);
 		});
 
 		server.on('checkExpectation', function(req, res) {
-			handleRequest(req, res, true);
+			self.handleRequest(req, res, true);
 		});
 
 		server.on('error', function(err) {
@@ -135,28 +106,6 @@ function GatewayServer(opts) {
 		});
 	}
 
-	function send(ws, msg) {
-		if (ws._local) {
-			ws.emit('gateway-message', msg);
-		} else {
-			ws.send(JSON.stringify(msg), function(err) {
-				if (err) {
-					console.error('SEND ERR', err);
-					self.removeHost(ws.nshost);
-				}
-			});
-		}
-	}
-	function sendBin(ws, type, id, chunk) {
-		if (ws._local) {
-			ws.emit('gateway-data', type, id, chunk);
-		} else {
-			var header = Buffer.allocUnsafe(5);
-			header.writeUInt8(type, 0, true);
-			header.writeUInt32LE(id, 1, true);
-			ws.send(Buffer.concat([header, chunk], chunk.length + 5));
-		}
-	}
 
 
 	function handleMsg(host, msg, originalMsg) {
@@ -183,8 +132,12 @@ function GatewayServer(opts) {
 				if (res) res.ackBy = null;
 				break;
 
+			case 'bad':
+				self.respond(self.ress[msg.id], 400, 'Bad Request', msg.msg);
+				break;
+
 			case 'err':
-				respond(self.ress[msg.id], 502, 'Bad Gateway', 'Network error communicating with target:\r\n\r\n' + msg.msg);
+				self.respond(self.ress[msg.id], 502, 'Bad Gateway', 'Network error communicating with target:\r\n\r\n' + msg.msg);
 				break;
 
 			case 'cont':
@@ -276,18 +229,18 @@ function GatewayServer(opts) {
 
 					ws.on('message', function(data) {
 						if (typeof data == 'string') {
-							send(host.ws, {
+							self.send(host.ws, {
 								m: 'wsm',
 								id: msg.id,
 								d: data
 							});
 						} else {
-							sendBin(host.ws, 3, msg.id, data);
+							self.sendBin(host.ws, 3, msg.id, data);
 						}
 					});
 
 					ws.on('close', function() {
-						send(host.ws, {
+						self.send(host.ws, {
 							m: 'wsclose',
 							id: msg.id
 						});
@@ -301,7 +254,7 @@ function GatewayServer(opts) {
 					});
 
 					ws.on('ping', function(data) {
-						send(host.ws, {
+						self.send(host.ws, {
 							m: 'wsping',
 							id: msg.id,
 							d: data
@@ -309,7 +262,7 @@ function GatewayServer(opts) {
 					});
 
 					ws.on('pong', function(data) {
-						send(host.ws, {
+						self.send(host.ws, {
 							m: 'wspong',
 							id: msg.id,
 							d: data
@@ -363,7 +316,7 @@ function GatewayServer(opts) {
 	function handleClose(host) {
 		
 		for (var id in host.ress) {
-			respond(host.ress[id], 502, 'Bad Gateway', 'Inspector disconnected during request');
+			self.respond(host.ress[id], 502, 'Bad Gateway', 'Inspector disconnected during request');
 		}
 
 		for (var id in host.wsconn) {
@@ -428,7 +381,7 @@ function GatewayServer(opts) {
 
 		self.emit('host-online', host);
 
-		send(host.ws, {
+		self.send(host.ws, {
 			m: 'cfg',
 			ping: self.pingFreq
 		});
@@ -457,211 +410,19 @@ function GatewayServer(opts) {
 
 
 
-
-
-
-
-	function handleRequest(req, res, hasExpectation) {
-		var hostname = req.headers.host,
-			host;
-
-		if (!hostname) {
-			host = self.hosts['*'];
-			if (!host) return respond(res, 400, 'Bad Request (missing host header)', 'Client did not supply the Host header, which well-behaved clients MUST supply.');
-		} else {
-			host = self.hosts[hostname] || self.hosts['*'];
-		}
-
-		// if (!host) {
-		// 	var p = hostname.indexOf(':');
-		// 	if (p > 0) {
-		// 		var port = hostname.substr(p+1);
-		// 		host = self.hosts['*:' + port];
-		// 	}
-		// }
-
-		if (self.apps[hostname]) return self.apps[hostname](req, res);
-
-		if (self.opts.handleRequest) {
-			if (self.opts.handleRequest(req, res)) return;
-		}
-
-		if (req.url == '/robots.txt') {
-			return respond(res, 200, 'OK', 'User-agent: *\r\nDisallow: /\r\nNoindex: /\r\nNofollow: /\r\n', {
-				'Cache-Control': 'public, max-age=2592000'
-			});
-		}
-
-		if (host) {
-
-			var id = ++self.reqid;
-			res._id = id;
-			self.ress[id] = host.ress[id] = res;
-			res.nshost = host;
-
-			// 12 for " HTTP/1.1\r\n", 4 for ": " and "\r\n" in header lines, and final 4 for "\r\n\r\n" at end of headers
-			res.bytes = req.method.length + req.url.length + 12 + req.rawHeaders.join('    ').length + 4;
-
-			if (host.opts.auth) {
-				if (req.headers.authorization == host.opts.auth) {
-					delete req.headers.authorization;
-				} else if (req.headers['proxy-authorization'] == host.opts.auth) {
-					delete req.headers['proxy-authorization']
-				} else {
-					return respond(res, 401, 'Authorization Required', 'This host requires authorization to make requests.', {
-						'WWW-Authenticate': 'Basic realm="netsleuth host ' + hostname + '"'
-					});
-				}
-			}
-
-			if (host.throttle.off) {
-				return respond(res, 503, 'Service Unavialable', 'Currently set to offline mode.');
-			}
-
-
-			var proto = req.socket.encrypted ? 'https' : 'http',
-				remote;
-
-			if (req.socket.remoteFamily == 'IPv6') remote = '[' + req.socket.remoteAddress + ']';
-			else remote = req.socket.remoteAddress;
-
-
-			if (!host.opts.noForwarded && !self.opts.noForwarded) {
-				var fwd = req.headers['forwarded'];
-				if (fwd) fwd += ',';
-				else fwd = '';
-
-				req.headers['forwarded'] = fwd + 'for="' + remote + ':' + req.socket.remotePort + '";host="' + hostname + '";proto=' +  proto;
-				res.bytes += req.headers['forwarded'].length + 13; // "forwarded: " + "\r\n"
-			}
-
-
-			if (host.blocks.length) {
-				for (var i = 0; i < host.blocks.length; i++) {
-					if (host.blocks[i].test(hostname + req.url)) {
-						respond(res, 450, 'Request Blocked', 'This request URL matched an active request blocking pattern: ' + host.blocks[i].src);
-						checkOpen() && send(host.ws, {
-							m: 'blocked',
-							id: id,
-							remoteIP: remote,
-							remotePort: req.socket.remotePort,
-							proto: proto,
-							method: req.method,
-							url: req.url,
-							headers: req.headers,
-							raw: req.rawHeaders,
-							rule: host.blocks[i].src
-						});
-						return;
-					}
-				}
-			}
-
-			if (host.uaOverride) {
-				req.headers['user-agent'] = host.uaOverride;
-			}
-
-			if (host.noCache) {
-				req.headers['cache-control'] = 'no-cache';
-				delete req.headers['if-none-match'];
-				delete req.headers['if-modified-since'];
-			}
-
-
-			if (checkOpen()) {
-				send(host.ws, {
-					m: 'r',
-					id: id,
-					remoteIP: remote,
-					remotePort: req.socket.remotePort,
-					proto: proto,
-					method: req.method,
-					url: req.url,
-					headers: req.headers,
-					raw: req.rawHeaders
-				});
-
-				var now = Date.now();
-				res.ackBy = now + 10000;
-				res.expires = now + self.silenceTimeout;
-			} else {
-				respond(res, 502, 'Bad Gateway', 'Inspector not connected.');
-			}
-
-			req.on('error', function(err) {
-				checkOpen() && send(host.ws, {
-					m: 'err',
-					id: msg.id,
-					t: 'req-err',
-					msg: err.message
-				});
-				self.emit('response-complete', host, res);
-				delete self.ress[id];
-				delete host.ress[id];
-			});
-
-			req.on('data', function(chunk) {
-				res.bytes += chunk.length;
-				checkOpen() && sendBin(host.ws, 1, id, chunk);
-				res.expires = Date.now() + self.silenceTimeout;
-			});
-
-			req.on('end', function() {
-				checkOpen() && send(host.ws, {
-					m: 'e',
-					id: id
-				});
-			});
-
-		} else {
-			if (self.apps.default) self.apps.default(req, res);
-			else respond(res, 503, 'Service Unavailable', 'The host "' + hostname + '" does not have an active destination.');
-		}
-
-		function checkOpen() {
-			if ((host.ws && host.ws.readyState == WebSocket.OPEN) || host.type == 'local') return true;
-			else respond(res, 502, 'Bad Gateway', 'Inspector disconnected during request');
-		}
-	}
-
-
-
-	function respond(res, code, status, message, headers) {
-		if (res) {	
-			if (res.headersSent) {
-				if (res.socket) res.socket.destroy();
-			} else {
-				var msg = Buffer.from(message);
-				headers = headers || {};
-				headers.Connection = 'close';
-				headers['Content-Type'] = 'text/plain';
-				headers['Content-Length'] = msg.length;
-				
-				res.writeHead(code, status, headers);
-				res.end(msg);
-			}
-
-			if (res.nshost) {
-				self.emit('response-complete', res.nshost, res);
-				delete self.ress[res._id];
-				delete res.nshost.ress[res._id];
-			}
-		}
-	}
-
 	self.reaper = setInterval(function() {
 		var now = Date.now();
 		for (var id in self.ress) {
 			var res = self.ress[id];
 			if (res.ackBy && res.ackBy < now) {
-				respond(res, 504, 'Gateway Timeout', 'Request timed out.  The inspector did not acknowledge this request.');
-				if (res.nshost) {
+				self.respond(res, 504, 'Gateway Timeout', 'Request timed out.  The inspector did not acknowledge this request.');
+				if (!opts.forwardProxy && res.nshost) {
 					self.removeHost(res.nshost);
 				}
 			}
 			else if (res.expires < now) {
-				respond(res, 504, 'Gateway Timeout', 'Request timed out.');
-				if (res.nshost && res.nshost.ws.readyState == WebSocket.OPEN) send(res.nshost.ws, {
+				self.respond(res, 504, 'Gateway Timeout', 'Request timed out.');
+				if (res.nshost && res.nshost.ws.readyState == WebSocket.OPEN) self.send(res.nshost.ws, {
 					m: 'err',
 					id: res._id,
 					t: 'timeout'
@@ -673,6 +434,288 @@ function GatewayServer(opts) {
 }
 
 util.inherits(GatewayServer, EventEmitter);
+
+GatewayServer.prototype.respond = function(res, code, status, message, headers) {
+	var self = this;
+	if (res) {	
+		if (res.headersSent) {
+			if (res.socket) res.socket.destroy();
+		} else {
+			var msg = Buffer.from(message);
+			headers = headers || {};
+			headers.Connection = 'close';
+			headers['Content-Type'] = 'text/plain';
+			headers['Content-Length'] = msg.length;
+			
+			res.writeHead(code, status, headers);
+			res.end(msg);
+		}
+
+		if (res.nshost) {
+			self.emit('response-complete', res.nshost, res);
+			delete self.ress[res._id];
+			delete res.nshost.ress[res._id];
+		}
+	}
+};
+
+
+GatewayServer.prototype.send = function(ws, msg) {
+	var self = this;
+	if (ws._local) {
+		ws.emit('gateway-message', msg);
+	} else {
+		ws.send(JSON.stringify(msg), function(err) {
+			if (err) self.removeHost(ws.nshost);
+		});
+	}
+};
+GatewayServer.prototype.sendBin = function(ws, type, id, chunk) {
+	var self = this;
+	if (ws._local) {
+		ws.emit('gateway-data', type, id, chunk);
+	} else {
+		var header = Buffer.allocUnsafe(5);
+		header.writeUInt8(type, 0, true);
+		header.writeUInt32LE(id, 1, true);
+		ws.send(Buffer.concat([header, chunk], chunk.length + 5), function(err) {
+			if (err) self.removeHost(ws.nshost);
+		});
+	}
+};
+
+
+GatewayServer.prototype.handleRequest = function(req, res, hasExpectation) {
+	var self = this,
+		hostname = req.headers.host,
+		host;
+
+	if (self.opts.forwardProxy || !hostname) {
+		host = self.hosts['*'];
+		if (!host) return self.respond(res, 400, 'Bad Request (missing host header)', 'Client did not supply the Host header, which well-behaved clients MUST supply.');
+	} else {
+		host = self.hosts[hostname] || self.hosts['*'];
+	}
+
+	// if (!host) {
+	// 	var p = hostname.indexOf(':');
+	// 	if (p > 0) {
+	// 		var port = hostname.substr(p+1);
+	// 		host = self.hosts['*:' + port];
+	// 	}
+	// }
+
+	if (self.apps[hostname]) return self.apps[hostname](req, res);
+
+	if (self.opts.handleRequest) {
+		if (self.opts.handleRequest(req, res)) return;
+	}
+
+	if (req.url == '/robots.txt') {
+		return self.respond(res, 200, 'OK', 'User-agent: *\r\nDisallow: /\r\nNoindex: /\r\nNofollow: /\r\n', {
+			'Cache-Control': 'public, max-age=2592000'
+		});
+	}
+
+	if (host) {
+
+		var id = ++self.reqid;
+		res._id = id;
+		self.ress[id] = host.ress[id] = res;
+		res.nshost = host;
+
+		// 12 for " HTTP/1.1\r\n", 4 for ": " and "\r\n" in header lines, and final 4 for "\r\n\r\n" at end of headers
+		res.bytes = req.method.length + req.url.length + 12 + req.rawHeaders.join('    ').length + 4;
+
+		if (host.opts.auth) {
+			if (req.headers.authorization == host.opts.auth) {
+				delete req.headers.authorization;
+			} else if (req.headers['proxy-authorization'] == host.opts.auth) {
+				delete req.headers['proxy-authorization']
+			} else {
+				return self.respond(res, 401, 'Authorization Required', 'This host requires authorization to make requests.', {
+					'WWW-Authenticate': 'Basic realm="netsleuth host ' + hostname + '"'
+				});
+			}
+		}
+
+		if (host.throttle.off) {
+			return self.respond(res, 503, 'Service Unavialable', 'Currently set to offline mode.');
+		}
+
+
+		var proto = req.socket.encrypted ? 'https' : 'http',
+			remote;
+
+		if (req.socket.remoteFamily == 'IPv6') remote = '[' + req.socket.remoteAddress + ']';
+		else remote = req.socket.remoteAddress;
+
+
+		if (!host.opts.noForwarded && !self.opts.noForwarded) {
+			var fwd = req.headers['forwarded'];
+			if (fwd) fwd += ',';
+			else fwd = '';
+
+			req.headers['forwarded'] = fwd + 'for="' + remote + ':' + req.socket.remotePort + '";host="' + hostname + '";proto=' +  proto;
+			res.bytes += req.headers['forwarded'].length + 13; // "forwarded: " + "\r\n"
+		}
+
+
+		if (host.blocks.length) {
+			for (var i = 0; i < host.blocks.length; i++) {
+				if (host.blocks[i].test(hostname + req.url)) {
+					self.respond(res, 450, 'Request Blocked', 'This request URL matched an active request blocking pattern: ' + host.blocks[i].src);
+					checkOpen() && self.send(host.ws, {
+						m: 'blocked',
+						id: id,
+						remoteIP: remote,
+						remotePort: req.socket.remotePort,
+						proto: proto,
+						method: req.method,
+						url: req.url,
+						headers: req.headers,
+						raw: req.rawHeaders,
+						rule: host.blocks[i].src
+					});
+					return;
+				}
+			}
+		}
+
+		if (host.uaOverride) {
+			req.headers['user-agent'] = host.uaOverride;
+		}
+
+		if (host.noCache) {
+			req.headers['cache-control'] = 'no-cache';
+			delete req.headers['if-none-match'];
+			delete req.headers['if-modified-since'];
+		}
+
+
+		if (checkOpen()) {
+			self.send(host.ws, {
+				m: 'r',
+				id: id,
+				remoteIP: remote,
+				remotePort: req.socket.remotePort,
+				proto: proto,
+				method: req.method,
+				url: req.url,
+				headers: req.headers,
+				raw: req.rawHeaders
+			});
+
+			var now = Date.now();
+			res.ackBy = now + 10000;
+			res.expires = now + self.silenceTimeout;
+		} else {
+			self.respond(res, 502, 'Bad Gateway', 'Inspector not connected.');
+		}
+
+		req.on('error', function(err) {
+			checkOpen() && self.send(host.ws, {
+				m: 'err',
+				id: msg.id,
+				t: 'req-err',
+				msg: err.message
+			});
+			self.emit('response-complete', host, res);
+			delete self.ress[id];
+			delete host.ress[id];
+		});
+
+		req.on('data', function(chunk) {
+			res.bytes += chunk.length;
+			checkOpen() && self.sendBin(host.ws, 1, id, chunk);
+			res.expires = Date.now() + self.silenceTimeout;
+		});
+
+		req.on('end', function() {
+			checkOpen() && self.send(host.ws, {
+				m: 'e',
+				id: id
+			});
+		});
+
+	} else {
+		if (self.apps.default) self.apps.default(req, res);
+		else self.respond(res, 503, 'Service Unavailable', 'The host "' + hostname + '" does not have an active destination.');
+	}
+
+	function checkOpen() {
+		if ((host.ws && host.ws.readyState == WebSocket.OPEN) || host.type == 'local') return true;
+		else self.respond(res, 502, 'Bad Gateway', 'Inspector disconnected during request');
+	}
+};
+
+GatewayServer.prototype.handleWs = function(req, socket, head) {
+	var self = this,
+		reqHost = req.headers.host;
+		host = self.hosts[reqHost] || self.hosts['*'];
+
+	if (!host) return rawRespond(socket, 503, 'Service Unavialable', 'The host "' + reqHost + '" does not have an active destination.');
+
+	var id = ++self.reqid;
+	self.ws[id] = host.wsconn[id] = {
+		id: id,
+		req: req,
+		socket: socket,
+		head: head
+	};
+
+
+	var proto = req.socket.encrypted ? 'wss' : 'ws',
+		remote;
+
+	if (req.socket.remoteFamily == 'IPv6') remote = '[' + req.socket.remoteAddress + ']';
+	else remote = req.socket.remoteAddress;
+
+	if (!host.opts.noForwarded && !self.opts.noForwarded) {
+		var fwd = req.headers['forwarded'];
+		if (fwd) fwd += ',';
+		else fwd = '';
+
+		req.headers['forwarded'] = fwd + 'for="' + remote + ':' + req.socket.remotePort + '";host="' + reqHost + '";proto=' +  proto;
+	}
+
+	self.send(host.ws, {
+		m: 'ws',
+		id: id,
+		remoteIP: remote,
+		remotePort: req.socket.remotePort,
+		proto: proto,
+		method: req.method,
+		url: req.url,
+		headers: req.headers,
+		raw: req.rawHeaders
+	});
+};
+
+GatewayServer.prototype.handleConnect = function(req, socket, head) {
+	var self = this;
+	if (!self.opts.forwardProxy) return rawRespond(socket, 405, 'Method Not Allowed', 'This server does not allow CONNECT requests.');
+	else {
+		var authority = url.parse('tcp://' + req.url);
+		self.localCA.get(authority.hostname, function(err, host) {
+			if (err) return rawRespond(socket, 500, 'Internal Server Error', 'Failed to get certificate for origin server.');
+
+			var mitm = https.createServer({
+				cert: host.cert,
+				key: host.key
+			});
+
+			mitm.on('request', function(req, res) {
+				req.url = 'https://' + authority.host + req.url;
+				self.handleRequest(req, res);
+			});
+
+			socket.write('HTTP/1.1 200 OK\r\n\r\n');
+			mitm.emit('connection', socket);
+		});
+	}
+
+};
 
 function GatewayHost(name, type, connection) {
 	this.type = type;
