@@ -35,6 +35,11 @@ function GatewayServer(opts) {
 		setupServer(self.https);
 	}
 
+	if (opts.forwardProxy) {
+		self.fwdhttps = {}; // see handleConnect
+		self.setupProxy(self.fwdhttp = http.createServer());
+	}
+
 
 	function setupServer(server) {
 		server.on('request', function(req, res) {
@@ -684,6 +689,7 @@ GatewayServer.prototype.handleWs = function(req, socket, head) {
 		id: id,
 		remoteIP: remote,
 		remotePort: req.socket.remotePort,
+		authority: (req.socket._authority && req.socket._authority.host) || (req.socket._parent && req.socket._parent._authority && req.socket._parent._authority.host),
 		proto: proto,
 		method: req.method,
 		url: req.url,
@@ -697,25 +703,77 @@ GatewayServer.prototype.handleConnect = function(req, socket, head) {
 	if (!self.opts.forwardProxy) return rawRespond(socket, 405, 'Method Not Allowed', 'This server does not allow CONNECT requests.');
 	else {
 		var authority = url.parse('tcp://' + req.url);
-		self.localCA.get(authority.hostname, function(err, host) {
-			if (err) return rawRespond(socket, 500, 'Internal Server Error', 'Failed to get certificate for origin server.');
 
-			var mitm = https.createServer({
-				cert: host.cert,
-				key: host.key
-			});
+		// We have to sniff out whether this is a plain HTTP or HTTPS connection.
+		// WebSocket requests to http origins will be CONNECT to the proxy followed by plain HTTP
 
-			mitm.on('request', function(req, res) {
-				req.url = 'https://' + authority.host + req.url;
-				self.handleRequest(req, res);
-			});
+		socket.on('data', ondata);
 
-			socket.write('HTTP/1.1 200 OK\r\n\r\n');
-			mitm.emit('connection', socket);
-		});
+		function ondata(data) {
+
+			socket.pause();
+			socket.removeListener('data', ondata);
+			socket._authority = authority;
+
+			if (data[0] == 22) { // ClientHello
+
+				// Ideally, we wouldn't create a new https server for every host.
+				// We do need to know the server hostname so we can present the correct certificate.
+				// However, some clients don't send SNI, but we still know the hostname from the CONNECT
+				// portion of the exchange.
+				// Unfortunately, if we use SNICallback, node will kill SNI-less connections before we ever see them.
+				// So, we create a new https.Server with a default cert for each hostname and distribute incoming
+				// connections based on what we saw in the CONNECT request.
+
+				if (self.fwdhttps[authority.hostname]) self.fwdhttps[authority.hostname].emit('connection', socket);
+				else self.localCA.get(authority.hostname, function(err, tls) {
+					if (err) return socket.destroy();
+					var mitm = self.fwdhttps[authority.hostname] = https.createServer({
+						cert: tls.cert,
+						key: tls.key
+					});
+					self.setupProxy(mitm, true);
+					mitm.emit('connection', socket);
+				});
+			} else {
+				self.fwdhttp.emit('connection', socket);
+				socket._readableState.flowing = true;
+			}
+
+			socket.unshift(data);
+
+
+		}
+
+		socket.write('HTTP/1.1 200 OK\r\n\r\n');
 	}
 
 };
+
+GatewayServer.prototype.setupProxy = function(srv, secure) {
+	var self = this;
+	srv.on('request', function(req, res) {
+		if (secure) req.url = 'https://' + req.socket._parent._authority.host + req.url;
+		else req.url = 'http://' + req.socket._authority.host + req.url;
+		self.handleRequest(req, res);
+	});
+
+	srv.on('upgrade', function(req, socket, head) {
+		
+		// Attach an error handler now so that socket errors that happen before the upgrade is completed
+		// do not bring down the process.
+		socket.on('error', function(err) {
+			// noop
+		});
+
+		self.handleWs(req, socket, head);
+
+	});
+
+	srv.on('error', function(err) {
+		console.error(err);
+	});
+}
 
 function GatewayHost(name, type, connection) {
 	this.type = type;
