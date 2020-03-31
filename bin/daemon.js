@@ -51,7 +51,8 @@ try {
 var server = new Server({
 	gateways: config.gateways,
 	port: port,
-	localCA: ca
+	localCA: ca,
+	trustedCerts: loadTrustedCerts()
 });
 
 
@@ -345,6 +346,39 @@ server.app.get('/logged-in', function(req, res) {
 	reload();
 	res.redirect('/');
 });
+
+
+var COLON = /:/g;
+server.trustCert = function(cert) {
+	fs.mkdir(path.join(rcfile.CONFIG_DIR, 'trust'), 0o700, function(err) {
+		if (err && err.code != 'EEXIST') return console.error('Failed to create trust dir', err);
+		fs.mkdir(path.join(rcfile.CONFIG_DIR, 'trust', cert.hostname), 0o700, function(err) {
+			if (err && err.code != 'EEXIST') return console.error('Failed to create host trust dir', err);
+			fs.writeFile(path.join(rcfile.CONFIG_DIR, 'trust', cert.hostname, cert.fingerprint256.replace(COLON, '') + '.cer'), cert.raw, { mode: 0o600 }, function(err) {
+				if (err) return console.error('Failed to write trust cert', err);
+			});
+		});
+	});
+};
+
+function loadTrustedCerts() {
+	var pems = [];
+	try {
+		fs.readdirSync(rcfile.CONFIG_DIR + '/trust').forEach(function(dir) {
+			try {
+				fs.readdirSync(path.join(rcfile.CONFIG_DIR, 'trust', dir)).forEach(function(file) {
+					try {
+						if (path.extname(file) == '.cer') pems.push({
+							hostname: dir,
+							raw: fs.readFileSync(path.join(rcfile.CONFIG_DIR, 'trust', dir, file), 'utf-8')
+						});
+					} catch (ex) {}
+				});
+			} catch (ex) {}
+		});
+	} catch (ex) {}
+	return pems;
+}
 
 var cache = {};
 function getGatewayInfo(gw, type, cb) {

@@ -800,6 +800,7 @@ inspectorBackend.registerEvent("Gateway.securityState", ["insecure","message"]);
 inspectorBackend.registerEvent("Gateway.updateRequestBody", ["id", "body", "sentToDisk"]);
 inspectorBackend.registerEvent("Gateway.dataReceived", ["requestId", "chunk"]);
 inspectorBackend.registerEvent("Gateway.close", []);
+inspectorBackend.registerEvent("Gateway.untrustedCert", ["cert"]);
 inspectorBackend.registerCommand("Gateway.none", [], [], false);
 
 }

@@ -1,5 +1,6 @@
 var http = require('http'),
 	https = require('https'),
+	tls = require('tls'),
 	fs = require('fs'),
 	os = require('os'),
 	path = require('path'),
@@ -32,7 +33,8 @@ var app = express();
 var wsid = 0;
 
 var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend'),
-	DEVTOOLS_CASE_SENSITIVE = !fs.existsSync(DEVTOOLS + '/InSPECtOR.HtML');
+	DEVTOOLS_CASE_SENSITIVE = !fs.existsSync(DEVTOOLS + '/InSPECtOR.HtML'),
+	COLON = /:/g;
 
 exports = module.exports = InspectionServer;
 
@@ -581,6 +583,19 @@ Inspector.prototype.addTarget = function(id, opts) {
 		self.emit('hostname', hostname, ip);
 	});
 
+	target.on('untrusted-cert', function(cert) {
+		cert.id = cert.fingerprint256.replace(COLON, '');
+		if (!self.server.rejectedCerts[cert.id]) {
+			self.broadcast({
+				method: 'Gateway.untrustedCert', 
+				params: {
+					cert: cert
+				}
+			});
+			self.server.badCerts[cert.id] = cert;
+		}
+	});
+
 	target.on('destroy', function() {
 		self.removeTarget(target.id);
 	});
@@ -799,6 +814,10 @@ Inspector.prototype.connection = function(ws, req) {
 					self.sessionCLI.parse(msg, reply);
 					break;
 
+				case 'Gateway.setCertTrust':
+					self.server.setCertTrust(msg.params.hostname, msg.params.id, msg.params.op);
+					break;
+
 				default:
 					// console.log(msg);
 					reply();
@@ -885,12 +904,39 @@ Inspector.prototype.updateTargets = function() {
 };
 
 
+var CERT = /-----BEGIN CERTIFICATE-----\r?\n?(.+)\r?\n?-----END CERTIFICATE-----/s, LF = /\r?\n?/g;
+
 function InspectionServer(opts) {
 	var self = this;
 	self.opts = opts = opts || {};
 	self.inspectors = {};
 	self.monitors = [];
 	self.localCA = opts.localCA;
+	self.badCerts = {};
+	self.rejectedCerts = {};
+	self.acceptedCerts = {};
+
+	self.secureContext = tls.createSecureContext({
+		honorCipherOrder: true
+	});
+
+	if (opts.extraCAs) opts.extraCAs.forEach(function(pem) {
+		self.secureContext.context.addCACert(pem);
+	});
+
+	if (opts.trustedCerts) opts.trustedCerts.forEach(function(cert) {
+		if (cert.hostname == 'CA') {
+			self.secureContext.context.addCACert(cert.raw);
+		} else {
+			var der = CERT.exec(cert.raw);
+			if (der && der[1]) {
+				der = Buffer.from(der[1].replace(LF, ''), 'base64');
+				var hash = crypto.createHash('sha256');
+				hash.update(der);
+				self.setCertTrust(cert.hostname, hash.digest('hex').toUpperCase(), 'session', true);
+			}
+		}
+	});
 
 	var app = this.app = express();
 
@@ -1089,8 +1135,7 @@ function InspectionServer(opts) {
 		name: ':' + opts.port
 	});
 	fwd.addTarget('main', {
-		fwd: true,
-		insecure: true
+		fwd: true
 	});
 
 };
@@ -1197,6 +1242,23 @@ InspectionServer.prototype.monitorBroadcast = function(msg) {
 	}
 };
 
+InspectionServer.prototype.setCertTrust = function(hostname, id, op, cert) {
+	if (!cert) cert = this.badCerts[id];
+	if (!cert) return;
+
+	if (op == 'reject') this.rejectedCerts[id] = true;
+	else if (op == 'session' || op == 'perm') {
+		if (!this.acceptedCerts[hostname]) this.acceptedCerts[hostname] = {};
+		this.acceptedCerts[hostname][id] = true;
+		if (op == 'perm') this.trustCert(cert);
+	}
+
+	delete this.badCerts[id];
+};
+
+InspectionServer.prototype.trustCert = function() {
+	console.error('Cert trust not implemented');
+};
 
 
 function getHid() {

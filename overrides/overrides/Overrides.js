@@ -2,13 +2,18 @@
 Root.Runtime._queryParamsObject.set('ws',location.host + location.pathname);
 document.title = location.pathname.split('/')[2] + ' - netsleuth';
 
+
+function send(obj) {
+	SDK.targetManager.mainTarget()._router._connection._socket.send(JSON.stringify(obj));
+}
+
 InspectorFrontendHost.copyText = function(text) {
-	SDK.targetManager.mainTarget()._router._connection._socket.send(JSON.stringify({
+	send({
 		method: 'Clipboard.write',
 		params: {
 			text: text
 		}
-	}));
+	});
 };
 
 InspectorFrontendHost.save = function(url, content, forceSaveAs) {
@@ -107,6 +112,62 @@ SDK.GatewayModel = class extends SDK.SDKModel {
 			req._contentData = Promise.resolve(new TextDecoder('utf-8').decode(result));
 			req.dispatchEventToListeners(SDK.NetworkRequest.Events.RequestHeadersChanged);
 		}
+	}
+
+	untrustedCert(cert) {
+		console.log(cert);
+
+		class UntrustedCertAlert extends UI.VBox {
+		  constructor() {
+			super(true);
+			this.registerRequiredCSS('ui/remoteDebuggingTerminatedScreen.css');
+			var message = this.contentElement.createChild('div', 'message');
+			
+			var err = message.createChild('span', 'reason');
+			err.createChild('span').textContent = '⚠️ The server at ';
+			err.createChild('span').textContent = cert.hostname;
+			err.createChild('span').textContent = ' presented an untrusted certificate.';
+
+			line('Subject:', cert.subject.CN);
+			line('Issuer:', cert.issuer.CN);
+			line('Issued:', cert.valid_from);
+			line('Expires:', cert.valid_to);
+			line('Fingerprint (SHA-1):', cert.fingerprint);
+			line('Fingerprint (SHA-256):', cert.fingerprint256);
+
+			var btns = message.createChild('div');
+
+			btns.appendChild(UI.createTextButton('Reject for session', choice('reject')));
+			btns.appendChild(UI.createTextButton('Accept for session', choice('session')));
+			btns.appendChild(UI.createTextButton('Accept permanently', choice('perm')));
+
+			function choice(op) {
+				return function() {
+					send({
+						method: 'Gateway.setCertTrust',
+						params: {
+							hostname: cert.hostname,
+							id: cert.id,
+							op: op
+						}
+					});
+					dialog.hide();
+				}
+			}
+
+			function line(label, value) {
+				var ln = message.createChild('div');
+				ln.createChild('b').textContent = label + ' ';
+				ln.createChild('span').textContent = value;
+			}
+		  }
+		}
+
+		var dialog = new UI.Dialog();
+		dialog.setSizeBehavior(UI.GlassPane.SizeBehavior.MeasureContent);
+		dialog.addCloseButton();
+		new UntrustedCertAlert().show(dialog.contentElement);
+		dialog.show();
 	}
 
 	close() {
