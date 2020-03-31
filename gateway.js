@@ -707,6 +707,10 @@ GatewayServer.prototype.handleConnect = function(req, socket, head) {
 		// We have to sniff out whether this is a plain HTTP or HTTPS connection.
 		// WebSocket requests to http origins will be CONNECT to the proxy followed by plain HTTP
 
+		socket.on('error', function(err) {
+			console.error('CONNECT err', err);
+		});
+		
 		socket.on('data', ondata);
 
 		function ondata(data) {

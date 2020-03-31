@@ -93,18 +93,9 @@ function Inspector(server, opts) {
 		noCache: false
 	};
 
-
-	function reqGC() {
-		var now = Date.now(), del=0;
-		for (var id in self.reqs) {
-			if (!self.reqs[id].ws && self.reqs[id].date + self.gcMinLifetime < now) {
-				delete self.reqs[id];
-				++del;
-			}
-		}
-	}
-
-	self._gctimer = setInterval(reqGC, self.gcFreqMs);
+	self._gctimer = setInterval(function() {
+		self.reqGC();
+	}, self.gcFreqMs);
 
 
 	// every hour, delete any temp files more than 24 hours old
@@ -225,7 +216,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	target.on('request', function(txn) {
 		
 		// do garbage collection on the nextish tick if necessary
-		if (++self.reqn % self.gcFreqCount == 0) setTimeout(reqGC);
+		if (++self.reqn % self.gcFreqCount == 0) self.reqGC();
 
 		self.reqs[txn.id] = txn;
 		
@@ -608,6 +599,17 @@ Inspector.prototype.addTarget = function(id, opts) {
 
 };
 
+Inspector.prototype.reqGC = function() {
+	var self = this, now = Date.now(), del=0;
+	for (var id in self.reqs) {
+		if (!self.reqs[id].ws && self.reqs[id].date + self.gcMinLifetime < now) {
+			delete self.reqs[id];
+			++del;
+		}
+	}
+};
+
+
 Inspector.prototype.removeTarget = function(id) {
 	if (this.targets[id]) {
 		this.targets[id].close();
@@ -942,6 +944,11 @@ function InspectionServer(opts) {
 
 	app.use(bodyParser.json());
 
+	app.get('/ca.cer', function(req, res) {
+		if (self.localCA) res.set('Content-Type', 'application/x-x509-ca-cert').send(self.localCA.pem());
+		else res.sendStatus(404);
+	});
+
 	app.get('/sleuth', function(req, res) {
 		res.send(Object.assign({}, process.versions, {
 			sleuth: version
@@ -1132,6 +1139,7 @@ function InspectionServer(opts) {
 
 	var fwd = self.inspectors[':' + opts.port] = new Inspector(this, {
 		fwd: true,
+		deletable: false,
 		name: ':' + opts.port
 	});
 	fwd.addTarget('main', {
@@ -1224,7 +1232,8 @@ InspectionServer.prototype.targetMonitorConnection = function(ws, req) {
 		inspectors.push({
 			type: getInspectorType(self.inspectors[k]),
 			host: k,
-			target: href
+			target: href,
+			deletable: self.inspectors[k].opts.deletable
 		});
 	}
 

@@ -208,6 +208,7 @@ server.app.post('/ipc/rm', isLocal, function(req, res) {
 		reload();
 		req.body.hosts.forEach(function(host) {
 			var insp = server.inspectors[host];
+			if (insp.opts.deletable === false) return res.sendStatus(403);
 			if (insp.opts.hostsfile) {
 				hosts.remove(insp.opts.ip, insp.opts.host, function(err) {
 					if (err) console.error('error removing HOSTS entry for ' + insp.opts.host, err);

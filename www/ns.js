@@ -75,11 +75,12 @@ function addHost(h) {
 		h3 = $('<h3>').text(h.host).appendTo(a);
 
 	if (h.type == 1) $('<img>').attr('src', '/img/cloud.svg').attr('title', 'Public gateway inspector').addClass('ttype').appendTo(a);
-	if (h.type == 3) $('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local proxy inspector').addClass('ttype').appendTo(a);
+	if (h.type == 3) $('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local reverse proxy inspector').addClass('ttype').appendTo(a);
+	if (h.type == 4) $('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local forward proxy inspector').addClass('ttype').appendTo(a);
 
 	if (h.target) $('<span>').addClass('target').text('→ ' + h.target).appendTo(a);
 
-	$('<button>').addClass('rm').text('×').appendTo(a);
+	if (h.deletable !== false) $('<button>').addClass('rm').text('×').appendTo(a);
 
 	li.appendTo(list);
 	hosts[h.host] = h;
