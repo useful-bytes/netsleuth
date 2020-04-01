@@ -1,4 +1,5 @@
 body { font-family:sans-serif; padding:0; margin:0; }
+u { text-decoration-skip-ink:none; }
 
 .btn { text-decoration:none; padding:9px 17px; border-radius:5px; text-shadow:1px 1px 0 #000; }
 

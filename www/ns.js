@@ -147,8 +147,8 @@ $('#add').click(function() {
 	atype();
 	tlspick(false);
 	$('#adddlg input, #adddlg select').trigger('change');
-	$('#adddlg input:visible').eq(0).focus();
-}).click();
+	$('#acname').focus();
+});
 $('#aclose').click(aclose);
 function aclose() {
 	$('#main').removeClass('disabled');
@@ -167,6 +167,22 @@ function atype() {
 
 $('#actarget').on('focus', function() {
 	if (this.value == 'http://localhost:80') this.setSelectionRange(17,19);
+	else if (this.value == 'https://localhost:80') this.setSelectionRange(18,20);
+});
+$('#actarget').on('keydown', function(e) {
+	if (this.value.substr(this.selectionStart-1, 1) == ':' && this.selectionEnd == this.value.length) {
+		if (e.keyCode == 83 && !e.altKey) {
+			e.preventDefault();
+			if (this.value[4] == 's') this.value = 'http://' + this.value.substr(this.value.indexOf('/') + 2);
+			else this.value = 'https://' + this.value.substr(this.value.indexOf('/') + 2);
+			this.setSelectionRange(this.value.lastIndexOf(':')+1, this.value.length);
+		} else if (e.keyCode == 37) {
+			e.preventDefault();
+			this.setSelectionRange(this.value.indexOf('://') + 3, this.value.lastIndexOf(':'));
+		}
+	}
+}).on('keyup', function() {
+	$(this).trigger('change');
 });
 
 $('#actemp').change(function() {
@@ -302,7 +318,8 @@ function acsu() {
 	$('#acaddsu').vis(hf.is(':checked:enabled:visible'));
 }
 
-$('#acadd').click(function() {
+$('#addctls').submit(function(e) {
+	e.preventDefault();
 	var opts = {};
 
 	opts.host = $('#acname').val();

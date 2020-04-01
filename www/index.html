@@ -56,20 +56,20 @@
 <div id="adddlg" class="dialog">
 	<div id="aclose" class="closebtn">×</div>
 
-	<div id="addctls" class="atab">
+	<form id="addctls" class="atab">
 		<h4>New target</h4>
 		<div class="row types">
-			<input type="radio" name="attype" id="attypepub" checked><label for="attypepub"> <img src="/img/cloud.svg" width=16 height=16> Public gateway target</label><br>
+			<input type="radio" name="attype" id="attypepub" checked accesskey="g"><label for="attypepub"> <img src="/img/cloud.svg" width=16 height=16> Public <u>g</u>ateway target</label><br>
 			<small>Requests will be forwarded from the public gateway server to the target server via your machine.</small>
-			<input type="radio" name="attype" id="attypeprox"><label for="attypeprox"> <img src="/img/proxy.svg" width=16 height=16> Local reverse proxy target</label>
+			<input type="radio" name="attype" id="attypeprox" accesskey="l"><label for="attypeprox"> <img src="/img/proxy.svg" width=16 height=16> <u>L</u>ocal reverse proxy target</label>
 			<small>Requests will be forwarded via proxy server on your machine to the target server.</small>
 		</div>
-		<div class="row"><label for="acname">Hostname: </label><input id="acname" placeholder="(autoassigned)"><select id="acgateway" class="atpub"><option value="netsleuth.io">.netsleuth.io</option></select><small class="atprox">Hostname can be a name, your machine's IP address (LAN or 127.0.0.x), and/or a port.  <a href="https://netsleuth.io/docs/local-proxy#hostname" target=_blank>Learn more</a></small></div>
-		<div class="row atpub"><label for="acregion">Region: </label><select id="acregion"><option value=""></option></select><small>This host will be served from this cloud region.</small></div>
-		<div class="row"><label for="actarget">Target: </label><input id="actarget" value="http://localhost:80"><small>Target can be any HTTP(S) server reachable from your machine (local or remote).  Use a protocol-relative URL (<code>//example.com</code>) to use the same protocol as each client request.</small></div>
+		<div class="row"><label for="acname"><u>H</u>ostname: </label><input id="acname" placeholder="(autoassigned)" accesskey="h"><select id="acgateway" class="atpub"><option value="netsleuth.io">.netsleuth.io</option></select><small class="atprox">Hostname can be a name, your machine's IP address (LAN or 127.0.0.x), and/or a port.  <a href="https://netsleuth.io/docs/local-proxy#hostname" target=_blank>Learn more</a></small></div>
+		<div class="row atpub"><label for="acregion"><u>R</u>egion: </label><select id="acregion" accesskey="r"><option value=""></option></select><small>This host will be served from this cloud region.</small></div>
+		<div class="row"><label for="actarget"><u>T</u>arget: </label><input id="actarget" value="http://localhost:80" accesskey="t"><small>Target can be any HTTP(S) server reachable from your machine (local or remote).  Use a protocol-relative URL (<code>//example.com</code>) to use the same protocol as each client request.</small></div>
 		<div class="row">
-			<label for="actls">Target TLS: </label>
-			<select id="actls">
+			<label for="actls">Target TL<u>S</u>: </label>
+			<select id="actls" accesskey="s">
 				<option value="normal">Normal</option>
 				<option value="insecure">Insecure</option>
 				<option value="ca">Custom CA</option>
@@ -79,24 +79,24 @@
 		<div class="row" id="actlscar">
 			<label for="actlsca">Certificate: </label>
 			<span id="actlscasel">
-				<button id="actlsget">Get…</button> or 
+				<button type="button" id="actlsget">Get…</button> or 
 				<input type="file" id="actlsca">
 			</span>
 			<span id="actlscafetched">
 				<span id="actlscasubject"></span>
-				<button id="actlscasubjectclear">×</button>
+				<button type="button" id="actlscasubjectclear">×</button>
 			</span>
 		</div>
-		<div class="row"><input type="checkbox" id="actemp"><label for="actemp"> Temporary<small class="cbdesc" id="actempi"></small></label></div>
-		<div class="row atpub"><input type="checkbox" id="acstore" class="notemp"><label for="acstore" class="notempl"> Store requests when offline<small class="cbdesc" id="acstorei"></small></label></div>
-		<div class="row"><input type="checkbox" id="acauth"><label for="acauth"> Require Basic auth from clients</label>
-			<div class="row acauth"><label for="acauthu">Username: </label><input id="acauthu"></div>
-			<div class="row acauth"><label for="acauthp">Password: </label><input id="acauthp"></div>
+		<div class="row"><input type="checkbox" id="actemp" accesskey="m"><label for="actemp"> Te<u>m</u>porary<small class="cbdesc" id="actempi"></small></label></div>
+		<div class="row atpub"><input type="checkbox" id="acstore" class="notemp" accesskey="o"><label for="acstore" class="notempl"> Store requests when <u>o</u>ffline<small class="cbdesc" id="acstorei"></small></label></div>
+		<div class="row"><input type="checkbox" id="acauth" accesskey="a"><label for="acauth"> Require Basic <u>a</u>uth from clients</label>
+			<div class="row acauth"><label for="acauthu"><u>U</u>sername: </label><input id="acauthu" accesskey="u"></div>
+			<div class="row acauth"><label for="acauthp"><u>P</u>assword: </label><input id="acauthp" accesskey="p"></div>
 		</div>
-		<div class="row atprox"><input type="checkbox" id="atproxhostsfile"><label for="atproxhostsfile"> <img src="/img/elevate.png" width=16 height=16 title="Elevated privileges required"> Add hostname to system HOSTS file</label></div>
+		<div class="row atprox"><input type="checkbox" id="atproxhostsfile" accesskey="i"><label for="atproxhostsfile"> <img src="/img/elevate.png" width=16 height=16 title="Elevated privileges required"> Add hostname to system HOSTS f<u>i</u>le</label></div>
 		<div class="row atpub"><p class="loggedout danger">You must <a href="/login">log in</a> to the gateway service before you can add a public host.</p></div>
-		<div class="row"><button id="acadd"><img src="/img/elevate.png" width=16 height=16 id="acaddsu"> Add</button></div>
-	</div>
+		<div class="row"><button type="submit" id="acadd"><img src="/img/elevate.png" width=16 height=16 id="acaddsu"> Add</button></div>
+	</form>
 
 
 </div>
