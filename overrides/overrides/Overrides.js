@@ -79,18 +79,24 @@ SDK.GatewayModel = class extends SDK.SDKModel {
 	}
 
 	// REQUEST body data received
-	updateRequestBody(id, body, sentToDisk) {
+	updateRequestBody(id, body, sentToDisk, file) {
 		var req = getReq(id);
 		if (req) {
 			if (!req._requestFormData) req._requestFormData = '';
 			if (sentToDisk) {
-				req._requestFormData += '\n\n…';
+				req._requestFormData = '(file too large to display here; saved to ' + file + ')';
+				req._nsreqBodyFile = file;
 			} else {
 				req._requestFormData += body;
 			}
 			req.setRequestFormData(true, req._requestFormData);
 			req.dispatchEventToListeners(SDK.NetworkRequest.Events.RequestHeadersChanged);
 		}
+	}
+
+	responseBodyLarge(id, file) {
+		var req = getReq(id);
+		req._nsresBodyFile = file;
 	}
 
 	// RESPONSE body data received
@@ -189,6 +195,117 @@ SDK.SDKModel.register(SDK.GatewayModel, SDK.Target.Capability.Network, true);
 SDK.GatewayModel.Events = {
 	ConnectionState: Symbol('ConnectionState')
 };
+
+// There's probably a better way of doing this...
+var patcher = setInterval(function() {
+	if (window.Network && Network.RequestHeadersView) {
+		clearInterval(patcher);
+		var _populateTreeElementWithSourceText = Network.RequestHeadersView.prototype._populateTreeElementWithSourceText;
+		Network.RequestHeadersView.prototype._populateTreeElementWithSourceText = function(treeElement, sourceText) {
+			var self = this;
+			_populateTreeElementWithSourceText.call(self, treeElement, sourceText);
+			// debugger;
+			if (self._request._nsreqBodyFile) {
+				var div = createElementWithClass('div', '');
+
+				var open = createElementWithClass('button', 'request-headers-show-more-button');
+				open.textContent = 'Open file';
+				open.addEventListener('click', function() {
+					send({
+						method: 'Gateway.openFile',
+						params: {
+							path: self._request._nsreqBodyFile
+						}
+					});
+				});
+				div.appendChild(open);
+
+				var reveal = createElementWithClass('button', 'request-headers-show-more-button');
+				reveal.textContent = 'Reveal file';
+				reveal.addEventListener('click', function() {
+					send({
+						method: 'Gateway.revealFile',
+						params: {
+							path: self._request._nsreqBodyFile
+						}
+					});
+				});
+				div.appendChild(reveal);
+
+				var copy = createElementWithClass('button', 'request-headers-show-more-button');
+				copy.textContent = 'Copy path';
+				copy.addEventListener('click', function() {
+					send({
+						method: 'Clipboard.write',
+						params: {
+							text: self._request._nsreqBodyFile
+						}
+					});
+				});
+				div.appendChild(copy);
+
+				treeElement._children[0].titleElement.appendChild(div);
+			}
+		};
+
+		var responseCreatePreview = Network.RequestResponseView.prototype.createPreview;
+		Network.RequestResponseView.prototype.createPreview = async function() {
+			if (this.request._nsresBodyFile) {
+				return savedRes(this.request._nsresBodyFile);
+			}
+			else return responseCreatePreview.call(this);
+		};
+		var previewCreatePreview = Network.RequestPreviewView.prototype.createPreview;
+		Network.RequestPreviewView.prototype.createPreview = async function() {
+			if (this.request._nsresBodyFile) {
+				return savedRes(this.request._nsresBodyFile);
+			}
+			else return previewCreatePreview.call(this);
+		};
+	}
+}, 100);
+
+function savedRes(file) {
+	var widget = new UI.EmptyWidget('Response too large to display here.');
+	var info = widget._contentElement.createChild('div');
+	info.createChild('b').textContent = 'Saved to: ';
+	info.createChild('span').textContent = file;
+	var btns = widget._contentElement.createChild('div');
+	btns.style.margin = '10px 0 0';
+	var open = btns.createChild('button');
+	open.textContent = 'Open file';
+	open.addEventListener('click', function() {
+		send({
+			method: 'Gateway.openFile',
+			params: {
+				path: file
+			}
+		});
+	});
+	btns.createChild('span').textContent = ' ';
+	var reveal = btns.createChild('button');
+	reveal.textContent = 'Reveal file';
+	reveal.addEventListener('click', function() {
+		send({
+			method: 'Gateway.revealFile',
+			params: {
+				path: file
+			}
+		});
+	});
+	btns.createChild('span').textContent = ' ';
+	var copy = btns.createChild('button');
+	copy.textContent = 'Copy path';
+	copy.addEventListener('click', function() {
+		send({
+			method: 'Clipboard.write',
+			params: {
+				text: file
+			}
+		});
+	});
+	return widget;
+}
 
 
 var Base64Binary = {

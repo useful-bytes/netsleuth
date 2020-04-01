@@ -7,6 +7,7 @@ var fs = require('fs'),
 	path = require('path'),
 	child_process = require('child_process'),
 	dialog = require('dialog'),
+	opn = require('opn'),
 	request = require('request'),
 	rcfile = require('../lib/rcfile'),
 	gw = require('../lib/gateway-client'),
@@ -15,6 +16,7 @@ var fs = require('fs'),
 	serverCert = require('../lib/server-cert'),
 	CertificateAuthority = require('../lib/certs'),
 	systemSetup = require('../lib/system-setup'),
+	reveal = require('../lib/reveal'),
 	Server = require('../server'),
 	version = require('../package.json').version;
 
@@ -380,6 +382,14 @@ function loadTrustedCerts() {
 	} catch (ex) {}
 	return pems;
 }
+
+server.openFile = function(path) {
+	opn(path).catch(function(err) {
+		console.error(err);
+	});
+};
+
+server.revealFile = reveal;
 
 var cache = {};
 function getGatewayInfo(gw, type, cb) {

@@ -268,12 +268,23 @@ Inspector.prototype.addTarget = function(id, opts) {
 		self.console.info('HTTP ' + info.statusCode + ' ' + info.statusMessage + ' from ' + txn.url());
 	});
 
-	target.on('req-on-disk', function(txn) {
+	target.on('req-large', function(txn) {
 		self.broadcast({
 			method: 'Gateway.updateRequestBody',
 			params: {
 				id: txn.id,
-				sentToDisk: true
+				sentToDisk: true,
+				file: txn.reqBody.file.path
+			}
+		});
+	});
+
+	target.on('res-large', function(txn) {
+		self.broadcast({
+			method: 'Gateway.responseBodyLarge',
+			params: {
+				id: txn.id,
+				file: txn.resBody.file.path
 			}
 		});
 	});
@@ -818,6 +829,14 @@ Inspector.prototype.connection = function(ws, req) {
 
 				case 'Gateway.setCertTrust':
 					self.server.setCertTrust(msg.params.hostname, msg.params.id, msg.params.op);
+					break;
+
+				case 'Gateway.openFile':
+					self.server.openFile(msg.params.path);
+					break;
+
+				case 'Gateway.revealFile':
+					self.server.revealFile(msg.params.path);
 					break;
 
 				default:
