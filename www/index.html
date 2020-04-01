@@ -20,7 +20,7 @@
 <div id="syssetup" class="warn">
 <div id="syssetupclose" class="closebtn">×</div>
 <h4>⚠️ System setup incomplete</h4>
-<p>Additional system configuration is required to allow netsleuth to <span id="syssetupprivport">listen for connections on <a href="https://netsleuth.io/docs/privileged-ports" target=_blank>privileged ports</a> and</span> proxy HTTPS requests.</p>
+<p>Additional system configuration is required to allow netsleuth to <span id="syssetupprivport">listen for connections on <a href="https://netsleuth.io/docs/privileged-ports" target=_blank>privileged ports</a> and</span> <a href="https://netsleuth.io/docs/tls" target=_blank>proxy HTTPS requests</a>.</p>
 <ul id="syssetuplist">
 	<li id="syssetupautoab">netsleuth will install <a href="https://en.wikipedia.org/wiki/Authbind">authbind</a> for you</li>
 	<li id="syssetupmanualab">You must manually install <a href="https://en.wikipedia.org/wiki/Authbind">authbind</a> on your system.</li>
@@ -55,16 +55,15 @@
 </div>
 <div id="adddlg" class="dialog">
 	<div id="aclose" class="closebtn">×</div>
-	<div id="atabs">
-		<img id="atpub" src="/img/cloud.svg" title="Add a public gateway target">
-		<img id="atprox" src="/img/proxy.svg" title="Add a local proxy target">
-	</div>
 
 	<div id="addctls" class="atab">
-		<h4 class="atpub">New public gateway target</h4>
-		<h4 class="atprox">New local proxy target</h4>
-		<p class="atpub">Requests will be forwarded from the public gateway server to the target server via your machine.</p>
-		<p class="atprox">Requests will be forwarded from a server on your machine to the target server.</p>
+		<h4>New target</h4>
+		<div class="row types">
+			<input type="radio" name="attype" id="attypepub" checked><label for="attypepub"> <img src="/img/cloud.svg" width=16 height=16> Public gateway target</label><br>
+			<small>Requests will be forwarded from the public gateway server to the target server via your machine.</small>
+			<input type="radio" name="attype" id="attypeprox"><label for="attypeprox"> <img src="/img/proxy.svg" width=16 height=16> Local reverse proxy target</label>
+			<small>Requests will be forwarded via proxy server on your machine to the target server.</small>
+		</div>
 		<div class="row"><label for="acname">Hostname: </label><input id="acname" placeholder="(autoassigned)"><select id="acgateway" class="atpub"><option value="netsleuth.io">.netsleuth.io</option></select><small class="atprox">Hostname can be a name, your machine's IP address (LAN or 127.0.0.x), and/or a port.  <a href="https://netsleuth.io/docs/local-proxy#hostname" target=_blank>Learn more</a></small></div>
 		<div class="row atpub"><label for="acregion">Region: </label><select id="acregion"><option value=""></option></select><small>This host will be served from this cloud region.</small></div>
 		<div class="row"><label for="actarget">Target: </label><input id="actarget" value="http://localhost:80"><small>Target can be any HTTP(S) server reachable from your machine (local or remote).  Use a protocol-relative URL (<code>//example.com</code>) to use the same protocol as each client request.</small></div>

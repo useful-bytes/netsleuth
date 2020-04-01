@@ -144,26 +144,24 @@ var fcert, usefcert;
 $('#add').click(function() {
 	$('#main').addClass('disabled');
 	$('#adddlg').show();
-	atab('atpub');
+	atype();
 	tlspick(false);
 	$('#adddlg input, #adddlg select').trigger('change');
 	$('#adddlg input:visible').eq(0).focus();
-});
+}).click();
 $('#aclose').click(aclose);
 function aclose() {
 	$('#main').removeClass('disabled');
 	$('#adddlg').hide();
 }
-$('#atabs img').click(function() {
-	atab(this.id);
-});
-function atab(id) {
-	atab.active = id;
+$('input[name="attype"]').change(atype);
+function atype() {
+	var id = $('#attypepub').is(':checked') ? 'atpub' : 'atprox';
+	atype.active = id;
 	$('.atpub,.atprox').hide();
-	$('#atabs img').removeClass('active');
 	$('#' + id).addClass('active');
 	$('.' + id).show();
-	$('#adddlg input').trigger('change');
+	$('#adddlg input').not('[name="attype"]').trigger('change');
 	acsu();
 }
 
@@ -173,11 +171,11 @@ $('#actarget').on('focus', function() {
 
 $('#actemp').change(function() {
 	$('#actempi').text(this.checked ?
-		'This host will be automatically deleted at next restart' + ( atab.active == 'atpub' ?
+		'This host will be automatically deleted at next restart' + ( atype.active == 'atpub' ?
 			' and the public gateway will not reserve its name for you.' :
 			'.'
 		) :
-		'This host will be saved to your config file' + (atab.active == 'atpub' ?
+		'This host will be saved to your config file' + (atype.active == 'atpub' ?
 			' and its name will be exclusively reserved for you by the public gateway.' :
 			'.'));
 
@@ -325,7 +323,7 @@ $('#acadd').click(function() {
 		pass: $('#acauthp').val()
 	};
 
-	if (atab.active == 'atprox') {
+	if (atype.active == 'atprox') {
 		opts.local = true;
 		opts.hostsfile = $('#atproxhostsfile').is(':checked');
 	} else {

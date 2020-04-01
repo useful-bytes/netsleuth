@@ -49,6 +49,7 @@ code.term { background:#000; color:#fff; padding:3px; border-radius:4px; }
 .atab h4 { margin:0; }
 .row { margin:12px 0; }
 small { display:block; color:#666; }
+.types small { margin-left:46px; }
 .danger { color:#f00; }
 .cbdesc { margin-left:24px; }
 #dico { margin-right:10px; }
