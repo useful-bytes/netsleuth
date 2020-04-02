@@ -1319,7 +1319,7 @@ export class NetworkLogView extends UI.Widget.VBox {
    * @param {!SDK.NetworkRequest.NetworkRequest} request
    */
   handleContextMenuForRequest(contextMenu, request) {
-    contextMenu.appendApplicableItems(request);
+    // contextMenu.appendApplicableItems(request);
     let copyMenu = contextMenu.clipboardSection().appendSubMenuItem(Common.UIString.UIString('Copy'));
     const footerSection = copyMenu.footerSection();
     if (request) {
@@ -1439,11 +1439,20 @@ export class NetworkLogView extends UI.Widget.VBox {
             Common.UIString.UIString('Unblock %s', croppedDomain), removeBlockedURL.bind(null, domain));
       }
 
-      if (SDK.NetworkManager.NetworkManager.canReplayRequest(request)) {
-        contextMenu.debugSection().appendItem(
-            Common.UIString.UIString('Replay XHR'),
-            SDK.NetworkManager.NetworkManager.replayRequest.bind(null, request));
-      }
+      // if (SDK.NetworkManager.NetworkManager.canReplayRequest(request)) {
+      //   contextMenu.debugSection().appendItem(
+      //       Common.UIString.UIString('Replay XHR'),
+      //       SDK.NetworkManager.NetworkManager.replayRequest.bind(null, request));
+      // }
+
+      contextMenu.debugSection().appendItem('Replay', function() {
+        send({
+          method: 'Gateway.replay',
+          params: {
+            id: request._requestId
+          }
+        });
+      });
     }
   }
 

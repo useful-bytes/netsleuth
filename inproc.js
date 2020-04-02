@@ -11,11 +11,13 @@ var http = require('http'),
 	installHooks = require('./install-hooks'),
 	Daemon = require('./lib/daemon'),
 	rcfile = require('./lib/rcfile'),
+	serverCert = require('./lib/server-cert'),
 	getStackFrames = require('./get-stack-frames');
 
 var globalConfig = rcfile.get(),
 	rexEscape = /([\\^$.|?*+()\[\]{}])/g, wildcard = /\\\*/g,
-	uconfig = {};
+	uconfig = {},
+	reqId = 0;
 
 function getrcfile(from) {
 	var rc;
@@ -108,9 +110,205 @@ function attach(opts, readyCb) {
 
 	if (opts.hooks !== false) installHooks();
 
-	var ws = {}, reqId = 0, pending = [];
+	var ws = {}, pending = [];
 
-	var HttpClientRequest = http.ClientRequest;
+	var ClientRequest = patch(send, sendBin);
+
+
+	http.request = function request(url, options, cb) {
+		return new ClientRequest(url, options, cb);
+	};
+
+	http.get = function(url, options, cb) {
+		var req = http.request(url, options, cb);
+		req.end();
+		return req;
+	};
+
+	https.request = function request(input, options, cb) {
+
+
+		var args = Array.prototype.slice.call(arguments);
+
+		if (typeof input == 'string') {
+			input = url.parse(input);
+		} else if (url.URL && input instanceof url.URL) {
+			input = urlToOptions(input);
+		} else {
+			cb = options;
+			options = input;
+			input = null;
+		}
+
+		if (typeof options == 'function') {
+			cb = options;
+			options = Object.assign({}, input);
+		} else {
+			options = Object.assign({}, input, options);
+		}
+
+		options._defaultAgent = https.globalAgent;
+
+		return new ClientRequest(options, cb);
+	};
+
+	https.get = function(url, options, cb) {
+		var req = https.request(url, options, cb);
+		req.end();
+		return req;
+	};
+
+	http.ClientRequest = ClientRequest;
+	https.ClientRequest = ClientRequest;
+
+
+
+	var agent = new http.Agent();
+	agent.__ignore = true;
+
+	function connect() {
+		var headers = {
+			Origin: 'netsleuth:api',
+			PID: process.argv0 + '.' + process.pid,
+			'Sleuth-Transient': !!opts.transient,
+		};
+		if (opts.icon) headers.Icon = opts.icon;
+
+		ws = new WebSocket('ws://' + daemon.host + '/inproc/' + opts.name, [], {
+			agent: agent,
+			headers: headers
+		});
+
+		ws.on('open', function() {
+			if (pending.length) {
+				var ops = pending;
+				pending = [];
+				for (var i = 0; i < ops.length; i++) {
+					if (ops[i].op == 'msg') send(ops[i].msg);
+					else if (ops[i].op == 'close') close();
+					else sendBin(ops[i].type, ops[i].id, ops[i].chunk);
+				}
+			}
+		});
+
+		ws.on('message', function(msg) {
+			msg = JSON.parse(msg);
+			switch (msg.m) {
+				case 'ready':
+					if (readyCb) {
+						readyCb();
+						readyCb = null;
+					}
+					if (ws._socket && opts.unref !== false) ws._socket.unref();
+					break;
+
+				case 'config':
+					uconfig = msg.config;
+					if (uconfig.blockedUrls) uconfig.blockedUrls = compileBlockRules(uconfig.blockedUrls);
+					break;
+
+				case 'block':
+					uconfig.blockedUrls = compileBlockRules(msg.urls);
+					break;
+
+				case 'ua':
+					uconfig.ua = msg.ua;
+					break;
+
+				case 'throttle':
+					uconfig.throttle = {
+						offline: msg.off,
+						latency: msg.latency,
+						downloadThroughput: msg.down,
+						uploadThroughput: msg.up
+					};
+					break;
+
+				case 'no-cache':
+					uconfig.noCache = msg.val;
+					break;
+			}
+		});
+
+		ws.on('close', function() {
+			setTimeout(connect, 5000);
+		});
+		ws.on('error', function(err) {
+			console.error('netsleuth connection error', err);
+		});
+	}
+
+
+	process.nextTick(function() {
+		// start() does a daemon health check.  Do it on the next tick so that startup sync i/o (eg require())
+		// does not accidentally cause a timeout in communication with the daemon
+		daemon.start(function(err, reused, host, version) {
+			if (err) console.error('Unable to start netsleuth daemon', err);
+			else {
+				if (!reused) console.error('Started netsleuth daemon v' + version + ' on ' + host);
+				if (projectConfig && opts.initProject !== false) initProject(daemon, projectConfig);
+				connect();
+			}
+		});
+	});
+
+
+
+	function blocked(req, rule) {
+		req.__blocked = true;
+		req._send = function() {
+			// blocked request -- do not send
+		}
+		send({
+			m: 'blocked',
+			id: req.__reqId,
+			proto: req.__protocol.substr(0, req.__protocol.length-1),
+			method: req.method,
+			url: req.path,
+			headers: req._headers,
+			raw: req.rawHeaders,
+			rule: rule
+		});
+	}
+	function send(msg) {
+		if (ws && ws.readyState == WebSocket.OPEN) ws.send(JSON.stringify(msg));
+		else pending.push({ op:'msg', msg:msg });
+	}
+	function sendBin(type, id, chunk, cb) {
+		if (ws && ws.readyState == WebSocket.OPEN) {
+			var header = Buffer.allocUnsafe(5);
+			header.writeUInt8(type, 0, true);
+			header.writeUInt32LE(id, 1, true);
+			ws.send(Buffer.concat([header, chunk], chunk.length + 5), cb);
+		} else {
+			pending.push({ op:'bin', type:type, id:id, chunk:chunk });
+			if (cb) cb();
+		}
+	}
+
+	function close() {
+		process.nextTick(function() {
+			ws.removeAllListeners();
+			ws.close();
+		});
+	}
+
+	return {
+		close: function() {
+			if (ws && ws.readyState == WebSocket.OPEN) {
+				close();
+			} else {
+				pending.push({ op:'close' });
+			}
+		}
+	}
+
+}
+
+var HttpClientRequest = http.ClientRequest;
+
+function patch(send, sendBin) {
+
 
 	function ClientRequest(input, options, cb) {
 		// NOTE: This is the patched ClientRequest hooked by netsleuth
@@ -152,7 +350,7 @@ function attach(opts, readyCb) {
 
 			self.once('response', function(res) {
 				
-				var fwd = new ResponseBodyForwarder(num, ws);
+				var fwd = new ResponseBodyForwarder(num, sendBin);
 				
 				// Save the stream's current flow state so we can restore it after calling pipe()
 				// This is necessary so that res.pipe(…) and its call to res.on('data', …) do not
@@ -333,194 +531,8 @@ function attach(opts, readyCb) {
 	};
 
 
+	return ClientRequest;
 
-
-
-	http.request = function request(url, options, cb) {
-		return new ClientRequest(url, options, cb);
-	};
-
-	http.get = function(url, options, cb) {
-		var req = http.request(url, options, cb);
-		req.end();
-		return req;
-	};
-
-	https.request = function request(input, options, cb) {
-
-
-		var args = Array.prototype.slice.call(arguments);
-
-		if (typeof input == 'string') {
-			input = url.parse(input);
-		} else if (url.URL && input instanceof url.URL) {
-			input = urlToOptions(input);
-		} else {
-			cb = options;
-			options = input;
-			input = null;
-		}
-
-		if (typeof options == 'function') {
-			cb = options;
-			options = Object.assign({}, input);
-		} else {
-			options = Object.assign({}, input, options);
-		}
-
-		options._defaultAgent = https.globalAgent;
-
-		return new ClientRequest(options, cb);
-	};
-
-	https.get = function(url, options, cb) {
-		var req = https.request(url, options, cb);
-		req.end();
-		return req;
-	};
-
-	http.ClientRequest = ClientRequest;
-	https.ClientRequest = ClientRequest;
-
-
-
-	var agent = new http.Agent();
-	agent.__ignore = true;
-
-	function connect() {
-		var headers = {
-			Origin: 'netsleuth:api',
-			PID: process.argv0 + '.' + process.pid,
-			'Sleuth-Transient': !!opts.transient,
-		};
-		if (opts.icon) headers.Icon = opts.icon;
-
-		ws = new WebSocket('ws://' + daemon.host + '/inproc/' + opts.name, [], {
-			agent: agent,
-			headers: headers
-		});
-
-		ws.on('open', function() {
-			if (pending.length) {
-				var ops = pending;
-				pending = [];
-				for (var i = 0; i < ops.length; i++) {
-					if (ops[i].op == 'msg') send(ops[i].msg);
-					else if (ops[i].op == 'close') close();
-					else sendBin(ops[i].type, ops[i].id, ops[i].chunk);
-				}
-			}
-		});
-
-		ws.on('message', function(msg) {
-			msg = JSON.parse(msg);
-			switch (msg.m) {
-				case 'ready':
-					if (readyCb) {
-						readyCb();
-						readyCb = null;
-					}
-					if (ws._socket && opts.unref !== false) ws._socket.unref();
-					break;
-
-				case 'config':
-					uconfig = msg.config;
-					if (uconfig.blockedUrls) uconfig.blockedUrls = compileBlockRules(uconfig.blockedUrls);
-					break;
-
-				case 'block':
-					uconfig.blockedUrls = compileBlockRules(msg.urls);
-					break;
-
-				case 'ua':
-					uconfig.ua = msg.ua;
-					break;
-
-				case 'throttle':
-					uconfig.throttle = {
-						offline: msg.off,
-						latency: msg.latency,
-						downloadThroughput: msg.down,
-						uploadThroughput: msg.up
-					};
-					break;
-
-				case 'no-cache':
-					uconfig.noCache = msg.val;
-					break;
-			}
-		});
-
-		ws.on('close', function() {
-			setTimeout(connect, 5000);
-		});
-		ws.on('error', function(err) {
-			console.error('netsleuth connection error', err);
-		});
-	}
-
-
-	process.nextTick(function() {
-		// start() does a daemon health check.  Do it on the next tick so that startup sync i/o (eg require())
-		// does not accidentally cause a timeout in communication with the daemon
-		daemon.start(function(err, reused, host, version) {
-			if (err) console.error('Unable to start netsleuth daemon', err);
-			else {
-				if (!reused) console.error('Started netsleuth daemon v' + version + ' on ' + host);
-				if (projectConfig && opts.initProject !== false) initProject(daemon, projectConfig);
-				connect();
-			}
-		});
-	});
-
-
-
-	function blocked(req, rule) {
-		req.__blocked = true;
-		req._send = function() {
-			// blocked request -- do not send
-		}
-		send({
-			m: 'blocked',
-			id: req.__reqId,
-			proto: req.__protocol.substr(0, req.__protocol.length-1),
-			method: req.method,
-			url: req.path,
-			headers: req._headers,
-			raw: req.rawHeaders,
-			rule: rule
-		});
-	}
-	function send(msg) {
-		if (ws && ws.readyState == WebSocket.OPEN) ws.send(JSON.stringify(msg));
-		else pending.push({ op:'msg', msg:msg });
-	}
-	function sendBin(type, id, chunk) {
-		if (ws && ws.readyState == WebSocket.OPEN) {
-			var header = Buffer.allocUnsafe(5);
-			header.writeUInt8(type, 0, true);
-			header.writeUInt32LE(id, 1, true);
-			ws.send(Buffer.concat([header, chunk], chunk.length + 5));
-		}
-		else pending.push({ op:'bin', type:type, id:id, chunk:chunk });
-	}
-
-	function close() {
-		process.nextTick(function() {
-			ws.removeAllListeners();
-			ws.close();
-		});
-	}
-
-	return {
-		close: function() {
-			if (ws && ws.readyState == WebSocket.OPEN) {
-				close();
-			} else {
-				pending.push({ op:'close' });
-			}
-		}
-	}
 }
 
 function compileBlockRules(rules) {
@@ -563,5 +575,6 @@ util.inherits(RequestBlockedError, Error);
 
 exports.attach = attach;
 exports.init = init;
+exports.patch = patch;
 exports.getUserConfig = function() { return uconfig; };
 exports.RequestBlockedError = RequestBlockedError;

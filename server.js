@@ -3,6 +3,7 @@ var http = require('http'),
 	tls = require('tls'),
 	fs = require('fs'),
 	os = require('os'),
+	url = require('url'),
 	path = require('path'),
 	util = require('util'),
 	crypto = require('crypto'),
@@ -18,12 +19,14 @@ var http = require('http'),
 	MessageBody = require('./lib/message-body'),
 	rawRespond = require('./lib/raw-respond'),
 	insensitize = require('./lib/insensitize'),
+	serverCert = require('./lib/server-cert'),
 	SessionCLI = require('./session-cli'),
 	Target = require('./lib/target'),
 	GatewayTarget = require('./lib/gateway-target'),
 	InprocTarget = require('./lib/inproc-target'),
 	ReverseProxyTarget = require('./lib/reverse-proxy-target'),
 	ForwardProxyTarget = require('./lib/forward-proxy-target'),
+	InternalTarget = require('./lib/internal-target'),
 	version = require('./package.json').version;
 
 var argv = require('yargs').argv;
@@ -119,6 +122,10 @@ function Inspector(server, opts) {
 
 	// self.connect = preconnect;
 
+	self.addTarget('_req', {
+		internal: true
+	});
+
 
 };
 util.inherits(Inspector, EventEmitter);
@@ -138,6 +145,8 @@ Inspector.prototype.addTarget = function(id, opts) {
 		target = self.targets[id] = new ForwardProxyTarget(self, opts);
 	} else if (opts.inproc) {
 		target = self.targets[id] = new InprocTarget(self, opts);
+	} else if (opts.internal) {
+		target = self.targets[id] = new InternalTarget(self, opts);
 	} else {
 		target = self.targets[id] = new GatewayTarget(self, opts);
 		if (!target.token && self.server.opts.gateways && self.server.opts.gateways[target.gateway]) {
@@ -338,7 +347,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 		if (txn.req && txn.req.socket) txn.req.socket.destroy();
 		if (txn.reqBody) txn.reqBody.destroy();
 		if (txn.resBody) txn.resBody.destroy();
-		delete self.reqs[txn.id];
+		txn.done = true;
 
 		self.broadcast({
 			method: 'Network.loadingFailed',
@@ -434,8 +443,8 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('res-close', function(txn) {
+		txn.done = true;
 		if (!txn.complete) {
-			delete self.reqs[txn.id];
 
 			self.broadcast({
 				method: 'Network.loadingFailed',
@@ -452,6 +461,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('res-end', function(txn) {
+		txn.done = true;
 		if (txn.complete) {
 			self.broadcast({
 				method: 'Network.loadingFinished',
@@ -465,7 +475,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('ws-close', function(txn) {
-		delete self.reqs[txn.id];
+		txn.done = true;
 
 		self.broadcast({
 			method: 'Network.webSocketClosed',
@@ -768,8 +778,6 @@ Inspector.prototype.connection = function(ws, req) {
 							});
 						}
 
-						// at this point, nothing will need the req info anymore.
-						delete self.reqs[msg.params.requestId];
 						
 					} else {
 						csend({
@@ -839,6 +847,72 @@ Inspector.prototype.connection = function(ws, req) {
 
 				case 'Gateway.revealFile':
 					self.server.revealFile(msg.params.path);
+					break;
+
+				case 'Gateway.clear':
+					for (var id in self.reqs) if (self.reqs[id].done) delete self.reqs[id];
+					break;
+
+				case 'Gateway.replay':
+					var txn = self.reqs[msg.params.id]
+					if (txn) {
+						if (txn.statusCode < 200) return self.console.error('Cannot replay requests that result in HTTP ' + txn.statusCode);
+						var opts = url.parse(txn.targetUrl());
+
+						opts.method = txn.method;
+						opts.headers = txn.reqHeaders;
+						opts.agent = opts.protocol == 'https:' ? https.globalAgent : http.globalAgent;
+						opts.rejectUnauthorized = false;
+
+						var req = new self.targets._req.ClientRequest(opts);
+						req.__init = [{
+							functionName: '(replay of ' + txn.id + ')'
+						}];
+
+						req.on('response', function(res) {
+							res.on('data', function() {
+								// noop
+							});
+						});
+
+						req.on('error', function(err) {
+							// noop
+						});
+
+						req.on('socket', function() {
+							req.socket.once('secureConnect', function() {
+
+
+								if (!req.socket.authorized && !req.socket.isSessionReused()) {
+									var cert = req.socket.getPeerCertificate();
+
+									cert.raw = serverCert.pemEncode(cert.raw.toString('base64'), 64);
+									cert.hostname = url.parse('https://' + txn.targetHost).hostname.toLowerCase();
+
+									if (!self.server.acceptedCerts[cert.hostname] || !self.server.acceptedCerts[cert.hostname][cert.fingerprint256.replace(COLON, '')]) {
+
+										self.targets._req.emit('untrusted-cert', cert);
+										var err = new Error(req.socket.authorizationError);
+										err.code = req.socket.authorizationError;
+										req.socket.destroy(err);
+									}
+								}
+							});
+						});
+
+						if (txn.reqBody) {
+							if (txn.reqBody.file) {
+								fs.createReadStream(txn.reqBody.file.path).on('error', function(err) {
+									self.console.error('Cannot replay request.  Unable to open saved request body.  ' + err.message);
+									req.destroy();
+								}).pipe(req);
+							} else {
+								req.end(txn.reqBody.data);
+							}
+						} else {
+							req.end();
+						}
+					}
 					break;
 
 				default:
