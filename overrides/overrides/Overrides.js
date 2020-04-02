@@ -250,14 +250,18 @@ var patcher = setInterval(function() {
 
 		var responseCreatePreview = Network.RequestResponseView.prototype.createPreview;
 		Network.RequestResponseView.prototype.createPreview = async function() {
-			if (this.request._nsresBodyFile) {
+			if (this.request.failed) {
+				return new UI.EmptyWidget('Request failed; no response.');
+			} else if (this.request._nsresBodyFile) {
 				return savedRes(this.request._nsresBodyFile);
 			}
 			else return responseCreatePreview.call(this);
 		};
 		var previewCreatePreview = Network.RequestPreviewView.prototype.createPreview;
 		Network.RequestPreviewView.prototype.createPreview = async function() {
-			if (this.request._nsresBodyFile) {
+			if (this.request.failed) {
+				return new UI.EmptyWidget('Request failed; no response.');
+			} else if (this.request._nsresBodyFile) {
 				return savedRes(this.request._nsresBodyFile);
 			}
 			else return previewCreatePreview.call(this);
