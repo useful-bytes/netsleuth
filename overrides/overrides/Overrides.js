@@ -262,6 +262,24 @@ var patcher = setInterval(function() {
 			}
 			else return previewCreatePreview.call(this);
 		};
+
+
+		var nrnRenderCell = Network.NetworkLogView.NetowrkRequestNode.prototype.renderCell;
+		Network.NetworkLogView.NetowrkRequestNode.prototype.renderCell = function(cell, columnId) {
+			nrnRenderCell.call(this, cell, columnId);
+			if (columnId == 'name') {
+				if (this._request._securityState == 'insecure') {
+					var ico = createElement('img');
+					ico.src = '/img/insecure.svg';
+					ico.width = 14;
+					ico.height = 14;
+					ico.style.marginRight = '3px';
+					ico.title = 'TLS validation failed: ' + this._request._securityDetails;
+					cell.querySelector('.network-cell-subtitle').prepend(ico);
+				}
+
+			}
+		};
 	}
 }, 100);
 

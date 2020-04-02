@@ -382,6 +382,8 @@ Inspector.prototype.addTarget = function(id, opts) {
 				response: {
 					protocol: txn.originalProto + ':',
 					url: txn.url(),
+					securityState: txn.targetProto == 'https' ? (txn.authorized ? 'secure' : 'insecure') : 'neutral',
+					securityDetails: txn.authorizationError,
 					status: txn.resStatus,
 					statusText: txn.resMessage,
 					headers: txn.resHeaders,
@@ -986,12 +988,16 @@ function InspectionServer(opts) {
 		});
 	});
 
-	app.use('/inspect', express.static(path.join(__dirname, 'overrides')));
-	var dtStatic = express.static(DEVTOOLS);
+	var staticOpts = {
+		maxAge: 1000*60*60*24
+	};
+
+	app.use('/inspect', express.static(path.join(__dirname, 'overrides'), staticOpts));
+	var dtStatic = express.static(DEVTOOLS, staticOpts);
 	if (DEVTOOLS_CASE_SENSITIVE) app.use('/inspect', insensitize(DEVTOOLS, dtStatic));
 	else app.use('/inspect', dtStatic);
-	app.use('/jq', express.static(path.dirname(require.resolve('jquery'))));
-	app.use(express.static(__dirname + '/www'));
+	app.use('/jq', express.static(path.dirname(require.resolve('jquery')), staticOpts));
+	app.use(express.static(__dirname + '/www', staticOpts));
 
 	app.get('/img/elevate.png', function(req, res) {
 		res.set('Cache-Control', 'public, max-age=31536000');

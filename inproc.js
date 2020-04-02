@@ -140,7 +140,7 @@ function attach(opts, readyCb) {
 		var protocol = (options.uri && options.uri.protocol) || options.protocol || '';
 		if (self.agent && self.agent.protocol) protocol = self.agent.protocol || '';
 		self.__protocol = protocol;
-		self.__host = options.host;
+		self.__host = url.parse(url.format(options)).host;
 
 		HttpClientRequest.apply(self, args);
 
@@ -194,6 +194,8 @@ function attach(opts, readyCb) {
 					id: self.__reqId,
 					remoteIP: remote,
 					remotePort: self.socket.remotePort,
+					authorized: self.socket.authorized,
+					authorizationError: self.socket.authorizationError,
 					statusCode: res.statusCode,
 					statusMessage: res.statusMessage,
 					headers: res.headers,

@@ -1390,10 +1390,10 @@ export class NetworkLogView extends UI.Widget.VBox {
 
     contextMenu.saveSection().appendItem(ls`Save all as HAR with content`, this.exportAll.bind(this));
 
-    contextMenu.editSection().appendItem(
-        Common.UIString.UIString('Clear browser cache'), this._clearBrowserCache.bind(this));
-    contextMenu.editSection().appendItem(
-        Common.UIString.UIString('Clear browser cookies'), this._clearBrowserCookies.bind(this));
+    // contextMenu.editSection().appendItem(
+    //     Common.UIString.UIString('Clear browser cache'), this._clearBrowserCache.bind(this));
+    // contextMenu.editSection().appendItem(
+    //     Common.UIString.UIString('Clear browser cookies'), this._clearBrowserCookies.bind(this));
 
     if (request) {
       const maxBlockedURLLength = 20;
@@ -2090,6 +2090,8 @@ export class NetworkLogView extends UI.Widget.VBox {
     return self.UI.themeSupport.patchColorText('#B31412', UI.UIUtils.ThemeSupport.ColorUsage.Foreground);
   }
 }
+
+NetworkLogView.NetowrkRequestNode = NetworkRequestNode;
 
 export const isFilteredOutSymbol = Symbol('isFilteredOut');
 export const _networkNodeSymbol = Symbol('NetworkNode');
