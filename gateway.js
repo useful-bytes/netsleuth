@@ -605,6 +605,7 @@ GatewayServer.prototype.handleRequest = function(req, res, hasExpectation) {
 				remoteIP: remote,
 				remotePort: req.socket.remotePort,
 				proto: proto,
+				ver: req.httpVersion,
 				method: req.method,
 				url: req.url,
 				headers: req.headers,
@@ -710,7 +711,7 @@ GatewayServer.prototype.handleConnect = function(req, socket, head) {
 		socket.on('error', function(err) {
 			console.error('CONNECT err', err);
 		});
-		
+
 		socket.on('data', ondata);
 
 		function ondata(data) {

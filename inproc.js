@@ -1,5 +1,6 @@
 var http = require('http'),
  	https = require('https'),
+ 	http2,
 	fs = require('fs'),
 	os = require('os'),
 	url = require('url'),
@@ -18,6 +19,10 @@ var globalConfig = rcfile.get(),
 	rexEscape = /([\\^$.|?*+()\[\]{}])/g, wildcard = /\\\*/g,
 	uconfig = {},
 	reqId = 0;
+
+try {
+	http2 = require('http2');
+} catch(ex) {}
 
 function getrcfile(from) {
 	var rc;
@@ -160,6 +165,136 @@ function attach(opts, readyCb) {
 
 	http.ClientRequest = ClientRequest;
 	https.ClientRequest = ClientRequest;
+
+	// This is made more difficult because core attempts to hide all its h2 internals...
+	if (http2) {  
+		var h2connect = http2.connect;
+		http2.connect = function(authority, options) {
+			var session = h2connect(authority, options),
+				pauth = url.parse(authority),
+				proto = pauth.protocol.substr(0, pauth.protocol.length-1),
+				remoteIP;
+
+			session.__ignore = options && options.__ignore;
+
+			session.on('connect', function() {
+				if (session.socket.remoteFamily == 'IPv6') remoteIP = '[' + session.socket.remoteAddress + ']';
+				else remoteIP = session.socket.remoteAddress;
+			});
+
+			var h2request = session.request;
+			session.request = function(headers, options) {
+				var stream = h2request.call(session, headers, options);
+				stream.__reqNum = ++reqId;
+				stream.__reqId = process.argv0 + '.' + process.pid + ':' + stream.__reqNum;
+				stream.__ignore = options && options.__ignore;
+				if (stream.__ignore === undefined) stream.__ignore = session.__ignore;
+
+				if (!stream.__ignore) {
+					send({
+						m: 'ri',
+						id: stream.__reqId,
+						proto: proto,
+						ver: '2.0',
+						method: headers[':method'] || 'GET',
+						host: headers[':authority'] || pauth.host,
+						url: headers[':path'],
+						headers: headers,
+						stack: (options && options.__init) || getStackFrames(__filename)
+					});
+
+					stream.on('response', function(headers, flags) {
+						send({
+							m: 'p',
+							id: stream.__reqId,
+							remoteIP: remoteIP,
+							remotePort: session.socket.remotePort,
+							authorized: session.socket.authorized,
+							authorizationError: session.socket.authorizationError,
+							ver: '2.0',
+							statusCode: headers[':status'],
+							statusMessage: http.STATUS_CODES[headers[':status']] || '',
+							headers: headers
+						});
+					});
+
+					var fwd = new ResponseBodyForwarder(stream.__reqNum, sendBin);
+					var flowing = stream._readableState.flowing;
+					stream._readableState.flowing = false;
+
+					stream.pipe(fwd);
+
+					stream._readableState.flowing = flowing;
+
+					stream.on('end', function() {
+						if (stream.rstCode == 0) send({
+							m: 'pe',
+							id: stream.__reqId,
+							complete: true
+						});
+					});
+
+					stream.on('error', function(err) {
+						send({
+							m: 'err',
+							id: stream.__reqId,
+							t: 'err',
+							msg: err.message
+						});
+
+						if (stream.listenerCount('error') < 2) {
+							if (err instanceof Error) {
+								throw err; // Unhandled 'error' event (in user code -- not netsleuth)
+							} else {
+								var e = new Error('Unhandled "error" event. (' + err + ')');
+								e.context = err;
+								throw e;
+							}
+						}
+					});
+
+					var streamWrite = stream.write;
+					stream.write = function(chunk, encoding, cb) {
+						var ret = streamWrite.call(stream, chunk, encoding, cb);
+
+						if (typeof encoding == 'function') encoding = undefined;
+
+						if (!(chunk instanceof Buffer)) {
+							chunk = Buffer.from(chunk, encoding);
+						}
+
+						sendBin(1, stream.__reqNum, chunk);
+
+						return ret;
+					};
+
+					var streamEnd = stream.end;
+					stream.end = function(chunk, encoding, cb) {
+						var ret = streamEnd.call(stream, chunk, encoding, cb);
+
+						if (typeof encoding == 'function') encoding = undefined;
+						if (typeof chunk == 'string') {
+							chunk = Buffer.from(chunk, encoding);
+						}
+						if (chunk instanceof Buffer) {
+							sendBin(1, stream.__reqNum, chunk);
+						}
+
+						if (!stream.__blocked) send({
+							m: 'e',
+							id: stream.__reqId
+						});
+
+						return ret;
+					};
+				}
+
+				return stream;
+			}
+
+			return session;
+		}
+	}
 
 
 
@@ -394,10 +529,11 @@ function patch(send, sendBin) {
 					remotePort: self.socket.remotePort,
 					authorized: self.socket.authorized,
 					authorizationError: self.socket.authorizationError,
+					ver: res.httpVersion,
 					statusCode: res.statusCode,
 					statusMessage: res.statusMessage,
 					headers: res.headers,
-					rawHeaders: res.rawHeaders
+					raw: res.rawHeaders
 				});
 			});
 
@@ -479,6 +615,7 @@ function patch(send, sendBin) {
 				m: 'ri',
 				id: self.__reqId,
 				proto: self.__protocol.substr(0, self.__protocol.length-1),
+				ver: '1.1',
 				method: self.method,
 				host: self.__host,
 				url: self.path,

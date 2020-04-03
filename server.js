@@ -31,8 +31,6 @@ var http = require('http'),
 
 var argv = require('yargs').argv;
 
-var app = express();
-
 var wsid = 0;
 
 var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend'),
@@ -49,6 +47,12 @@ function gatewayFromHost(host) {
 	host = host.split('.');
 	host.splice(0, 1);
 	return host.join('.');
+}
+
+function stringVals(obj) {
+	var r = {};
+	for (var k in obj) r[k] = obj[k].toString();
+	return r;
 }
 
 var thisHid = getHid();
@@ -240,7 +244,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 				request: {
 					url: txn.originalProto + '://' + txn.originalHost + txn.originalPath,
 					method: txn.method,
-					headers: txn.reqHeaders,
+					headers: stringVals(txn.reqHeaders),
 					postData: txn.reqBody ? '' : undefined
 				},
 				initiator: txn.stack && {
@@ -312,7 +316,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 				request: {
 					url: txn.originalProto + '://' + txn.originalHost + txn.originalPath,
 					method: txn.method,
-					headers: txn.reqHeaders,
+					headers: stringVals(txn.reqHeaders),
 					postData: txn.reqBody ? '' : undefined
 				},
 				initiator: txn.stack && {
@@ -395,10 +399,10 @@ Inspector.prototype.addTarget = function(id, opts) {
 					securityDetails: txn.authorizationError,
 					status: txn.resStatus,
 					statusText: txn.resMessage,
-					headers: txn.resHeaders,
+					headers: stringVals(txn.resHeaders),
 					headersText: txn.getRawResHeaders(),
 					mimeType: mime,
-					requestHeaders: txn.reqHeaders,
+					requestHeaders: stringVals(txn.reqHeaders),
 					requestHeadersText: txn.getRawReqHeaders(),
 					remoteIPAddress: txn.remoteIP,
 					remotePort: txn.remotePort,
@@ -468,7 +472,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 				params: {
 					requestId: txn.id,
 					timestamp: Date.now() / 1000,
-					encodedDataLength: txn.resBody.length
+					encodedDataLength: txn.resBody && txn.resBody.length
 				}
 			});
 		}
@@ -499,9 +503,9 @@ Inspector.prototype.addTarget = function(id, opts) {
 				response: {
 					status: txn.resStatus,
 					statusText: txn.resMessage,
-					headers: txn.resHeaders,
+					headers: stringVals(txn.resHeaders),
 					headersText: 'TODO',
-					requestHeaders: txn.reqHeaders,
+					requestHeaders: stringVals(txn.reqHeaders),
 					requestHeadersText: 'TODO'
 				}
 			}
@@ -574,7 +578,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 				timestamp: Date.now() / 1000,
 				wallTime: Date.now() / 1000,
 				request: {
-					headers: txn.headers
+					headers: stringVals(txn.headers)
 				}
 			}
 		});
