@@ -21,6 +21,7 @@ var http = require('http'),
 	insensitize = require('./lib/insensitize'),
 	serverCert = require('./lib/server-cert'),
 	SessionCLI = require('./session-cli'),
+	Script = require('./lib/script'),
 	Target = require('./lib/target'),
 	GatewayTarget = require('./lib/gateway-target'),
 	InprocTarget = require('./lib/inproc-target'),
@@ -35,6 +36,7 @@ var wsid = 0;
 
 var DEVTOOLS = path.join(__dirname, 'deps', 'devtools-frontend'),
 	DEVTOOLS_CASE_SENSITIVE = !fs.existsSync(DEVTOOLS + '/InSPECtOR.HtML'),
+	UNSAFE = /[\\/:*?"<>|]/g,
 	COLON = /:/g;
 
 exports = module.exports = InspectionServer;
@@ -125,6 +127,10 @@ function Inspector(server, opts) {
 	}, 1000 * 60 * 60);
 
 	// self.connect = preconnect;
+
+	if (server.scriptDir) self.script = new Script(self, {
+		dir: path.join(server.scriptDir, opts.name.replace(UNSAFE, '_'))
+	});
 
 	self.addTarget('_req', {
 		internal: true
@@ -226,12 +232,14 @@ Inspector.prototype.addTarget = function(id, opts) {
 		}
 	});
 
-	target.on('request', function(txn) {
-		
+	target.on('request-created', function(txn) {		
 		// do garbage collection on the nextish tick if necessary
 		if (++self.reqn % self.gcFreqCount == 0) self.reqGC();
 
 		self.reqs[txn.id] = txn;
+	});
+
+	target.on('request', function(txn) {
 		
 		self.broadcast({
 			method: 'Network.requestWillBeSent',
@@ -657,6 +665,7 @@ Inspector.prototype.close = function() {
 	clearTimeout(this._connto);
 	this.reqs = {};
 	for (var id in this.targets) this.removeTarget(id);
+	if (this.script) this.script.close();
 	// if (this.gateway && this.gateway._local) this.gateway.close();
 	this.console.warn('This inspector has been removed!');
 	this.broadcast({
@@ -1012,6 +1021,7 @@ function InspectionServer(opts) {
 	self.opts = opts = opts || {};
 	self.inspectors = {};
 	self.monitors = [];
+	self.scriptDir = opts.scriptDir;
 	self.localCA = opts.localCA;
 	self.badCerts = {};
 	self.rejectedCerts = {};

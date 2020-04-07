@@ -187,6 +187,10 @@ function GatewayServer(opts) {
 				}
 				break;
 
+			case 'rblock':
+				self.respond(self.ress[msg.id], 450, 'Request Blocked', 'This request was blocked by script.');
+				break;
+
 			case 'block':
 				host.blocks = msg.urls.map(function(str) {
 					var rex;
@@ -599,6 +603,10 @@ GatewayServer.prototype.handleRequest = function(req, res, hasExpectation) {
 
 
 		if (checkOpen()) {
+			var now = Date.now();
+			res.ackBy = now + 10000;
+			res.expires = now + self.silenceTimeout;
+
 			self.send(host.ws, {
 				m: 'r',
 				id: id,
@@ -611,10 +619,6 @@ GatewayServer.prototype.handleRequest = function(req, res, hasExpectation) {
 				headers: req.headers,
 				raw: req.rawHeaders
 			});
-
-			var now = Date.now();
-			res.ackBy = now + 10000;
-			res.expires = now + self.silenceTimeout;
 		} else {
 			self.respond(res, 502, 'Bad Gateway', 'Inspector not connected.');
 		}

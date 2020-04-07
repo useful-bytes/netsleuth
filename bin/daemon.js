@@ -50,9 +50,14 @@ try {
 	ca = new CertificateAuthority(gen);
 }
 
+var scriptDir;
+if (config.scriptDir === null) scriptDir = null
+else scriptDir = config.scriptDir ? path.resolve(rcfile.CONFIG_DIR, config.scriptDir) : path.join(rcfile.CONFIG_DIR, 'scripts');
+
 var server = new Server({
 	gateways: config.gateways,
 	port: port,
+	scriptDir: scriptDir,
 	localCA: ca,
 	trustedCerts: loadTrustedCerts()
 });
