@@ -288,14 +288,25 @@ var patcher = setInterval(function() {
 		Console.ConsoleViewMessage.prototype._formatAsNetworkRequest = function() {
 			var req = SDK.NetworkLog.requestForConsoleMessage(this._message),
 				msg = this._format(this._message.parameters || [messageText]);
-			var btn = createElement('button');
-			btn.style = 'float:right; margin:0 0 2px 4px;';
-			btn.textContent = 'Reveal request';
-			btn.onclick = function() {
-				Common.Revealer.reveal(req);
-			};
-			msg.prepend(btn);
+
+			if (req) {
+				var btn = createElementWithClass('button', 'ns-net-reveal');
+				btn.style = 'float:right; margin:0 0 2px 4px;';
+				btn.textContent = 'Reveal request';
+				btn.onclick = function() {
+					Common.Revealer.reveal(req);
+				};
+				msg.prepend(btn);
+			}
 			return msg;
+		};
+
+		var nlReset = SDK.networkLog.reset;
+		SDK.networkLog.reset = function() {
+			nlReset.call(SDK.networkLog);
+			document.querySelectorAll('.ns-net-reveal').forEach(function(el) {
+				el.remove();
+			});
 		};
 	}
 }, 100);

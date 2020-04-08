@@ -128,8 +128,8 @@ function Inspector(server, opts) {
 
 	// self.connect = preconnect;
 
-	if (server.scriptDir) self.script = new Script(self, {
-		dir: path.join(server.scriptDir, opts.name.replace(UNSAFE, '_'))
+	self.script = new Script(self, {
+		dir: server.scriptDir ? path.join(server.scriptDir, opts.name.replace(UNSAFE, '_')) : null
 	});
 
 	self.addTarget('_req', {
