@@ -220,8 +220,8 @@ Inspector.prototype.addTarget = function(id, opts) {
 		}
 	});
 
-	target.on('warn', function(msg) {
-		self.console.warn(msg, 'network');
+	target.on('warn', function(msg, txn) {
+		self.console.source('network', txn.id).warn(msg);
 	});
 
 	target.on('console-msg', function(type, msg) {
@@ -282,11 +282,11 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('req-contunue', function(txn) {
-		self.console.debug('Got 100 Continue for ' + txn.url());
+		self.console.source('network', txn.id).debug('Got 100 Continue for ' + txn.url());
 	});
 
 	target.on('req-information', function(txn, info) {
-		self.console.info('HTTP ' + info.statusCode + ' ' + info.statusMessage + ' from ' + txn.url());
+		self.console.source('network', txn.id).info('HTTP ' + info.statusCode + ' ' + info.statusMessage + ' from ' + txn.url());
 	});
 
 	target.on('req-large', function(txn) {
@@ -350,7 +350,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 		});
 
 
-		self.console.warn('Blocked request for ' + txn.method + ' ' + txn.url());
+		self.console.source('network', txn.id).warn('Blocked request for ' + txn.method + ' ' + txn.url());
 	});
 
 	target.on('req-error', function(txn, err) {
@@ -371,7 +371,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 			}
 		});
 
-		self.console.error('Unable to ' + txn.method + ' ' + txn.url() + '\n' + err.message, 'network');
+		self.console.source('network', txn.id).error('Unable to ' + txn.method + ' ' + txn.url() + '\n' + err.message);
 
 	});
 
@@ -422,7 +422,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('res-insecure', function(txn) {
-		self.console.warn('Warning: connection to https://' + txn.targetHost + ' is not secure!  Certificate validation failed with error ' + txn.insecureError + '.');
+		self.console.source('network', txn.id).warn('Warning: connection to https://' + txn.targetHost + ' is not secure!  Certificate validation failed with error ' + txn.insecureError + '.');
 		self.broadcast({
 			method: 'Gateway.securityState',
 			params: {
@@ -433,7 +433,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('res-secure', function(txn) {
-		self.console.info('The certificate for https://' + txn.targetHost + ' is now validating.');
+		self.console.source('network', txn.id).info('The certificate for https://' + txn.targetHost + ' is now validating.');
 		self.broadcast({
 			method: 'Gateway.securityState',
 			params: {
@@ -468,7 +468,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 				}
 			});
 
-			self.console.error('Response for ' + txn.method + ' ' + txn.url() + ' terminated prematurely', 'network');
+			self.console.source('network', txn.id).error('Response for ' + txn.method + ' ' + txn.url() + ' terminated prematurely');
 		}
 	});
 
@@ -499,7 +499,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('ws-error', function(txn, err) {
-		self.console.error('WebSocket error: ' + err);
+		self.console.source('network', txn.id).error('WebSocket error: ' + err);
 	});
 
 	target.on('ws-upgrade', function(txn) {
@@ -564,7 +564,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 			}
 		});
 		
-		self.console.error('WebSocket connection to ' + txn.url() + ' failed: Error during WebSocket handshake: Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage);
+		self.console.source('network', txn.id).error('WebSocket connection to ' + txn.url() + ' failed: Error during WebSocket handshake: Unexpected response code: ' + res.statusCode + ' ' + res.statusMessage);
 
 	});
 
