@@ -2,6 +2,7 @@ var http = require('http'),
 	https = require('https'),
 	util = require('util'),
 	url = require('url'),
+	stream = require('stream'),
 	EventEmitter = require('events'),
 	WebSocket = require('ws'),
 	rawRespond = require('./lib/raw-respond');
@@ -15,6 +16,7 @@ function GatewayServer(opts) {
 	self.opts = opts;
 	self.apps = {};
 	self.hosts = {};
+	self.reqs = {};
 	self.ress = {};
 	self.ws = {};
 	self.reqid = 0;
@@ -170,6 +172,7 @@ function GatewayServer(opts) {
 				if (res) {
 					res.end();
 					self.emit('response-complete', host, res);
+					delete self.reqs[msg.id];
 					delete self.ress[msg.id];
 					delete host.ress[msg.id];
 				}
@@ -316,6 +319,21 @@ function GatewayServer(opts) {
 				}
 				break;
 
+			case 'rp':
+				var req = self.reqs[msg.id];
+				if (req && !req._pause) {
+					req._pause = true;
+				}
+				break;
+
+			case 'rr':
+				var req = self.reqs[msg.id];
+				if (req) {
+					if (typeof req._pause == 'function') req._pause();
+					req._pause = false;
+				}
+				break;
+
 			case 'inspector':
 				self.emit('inspector-connected', host, msg.id);
 				break;
@@ -358,12 +376,24 @@ function GatewayServer(opts) {
 					self.removeHost(host);
 				}
 			} else {
+				// handleBin
+
 				var type = data.readUInt8(0),
 					id = data.readUInt32LE(1);
 				var res = self.ress[id];
 				if (res) {
 					if (res.nshost != host) return self.removeHost(host);
-					res.write(data.slice(5));
+					if (!res.write(data.slice(5))) {
+						self.send(host.ws, {
+							m: 'pp',
+							id: id
+						});
+						if (res.socket._writableState.length > 1048576) {
+							res.socket.destroy();
+							var req = self.reqs[id];
+							if (req) req.emit('error', new Error('Inspector ignored flow control instruction.'));
+						}
+					}
 					res.bytes += data.length;
 					res.expires = Date.now() + self.silenceTimeout;
 				} else {
@@ -403,12 +433,12 @@ function GatewayServer(opts) {
 			handleMsg(host, msg);
 		});
 
-		host.ws.on('inspector-data', function(type, id, chunk) {
+		host.ws.on('inspector-data', function(type, id, chunk, cb) {
 			if (type == 2 && self.ress[id]) {
-				self.ress[id].write(chunk);
+				self.ress[id].write(chunk, cb);
 				self.ress[id].bytes += chunk.length;
 			} else if (type == 3 && self.ws[id]) {
-				self.ws[id].ws.send(chunk);
+				self.ws[id].ws.send(chunk, cb);
 			}
 		});
 
@@ -462,6 +492,7 @@ GatewayServer.prototype.respond = function(res, code, status, message, headers) 
 
 		if (res.nshost) {
 			self.emit('response-complete', res.nshost, res);
+			delete self.reqs[res._id];
 			delete self.ress[res._id];
 			delete res.nshost.ress[res._id];
 		}
@@ -479,16 +510,18 @@ GatewayServer.prototype.send = function(ws, msg) {
 		});
 	}
 };
-GatewayServer.prototype.sendBin = function(ws, type, id, chunk) {
+GatewayServer.prototype.sendBin = function(ws, type, id, chunk, cb) {
 	var self = this;
 	if (ws._local) {
 		ws.emit('gateway-data', type, id, chunk);
+		if (cb) cb();
 	} else {
 		var header = Buffer.allocUnsafe(5);
 		header.writeUInt8(type, 0, true);
 		header.writeUInt32LE(id, 1, true);
 		ws.send(Buffer.concat([header, chunk], chunk.length + 5), function(err) {
 			if (err) self.removeHost(ws.nshost);
+			if (cb) cb(err);
 		});
 	}
 };
@@ -530,6 +563,7 @@ GatewayServer.prototype.handleRequest = function(req, res, hasExpectation) {
 
 		var id = ++self.reqid;
 		res._id = id;
+		self.reqs[id] = req;
 		self.ress[id] = host.ress[id] = res;
 		res.nshost = host;
 
@@ -626,24 +660,44 @@ GatewayServer.prototype.handleRequest = function(req, res, hasExpectation) {
 		req.on('error', function(err) {
 			checkOpen() && self.send(host.ws, {
 				m: 'err',
-				id: msg.id,
+				id: id,
 				t: 'req-err',
 				msg: err.message
 			});
 			self.emit('response-complete', host, res);
+			delete self.reqs[id];
 			delete self.ress[id];
 			delete host.ress[id];
 		});
 
-		req.on('data', function(chunk) {
-			res.bytes += chunk.length;
-			checkOpen() && self.sendBin(host.ws, 1, id, chunk);
-			res.expires = Date.now() + self.silenceTimeout;
+		var forwarder = new stream.Writable({
+			write: function(chunk, enc, cb) {
+				res.bytes += chunk.length;
+				res.expires = Date.now() + self.silenceTimeout;
+				if (checkOpen()) {
+					if (req._pause === true) {
+						req._pause = cb;
+						self.sendBin(host.ws, 1, id, chunk);
+					}
+					else self.sendBin(host.ws, 1, id, chunk, cb);
+				} else {
+					cb(new Error('Inspector disconnected'));
+				}
+			}
 		});
+
+		req.pipe(forwarder);
 
 		req.on('end', function() {
 			checkOpen() && self.send(host.ws, {
 				m: 'e',
+				id: id
+			});
+		});
+
+		res.on('drain', function() {
+			checkOpen() && self.send(host.ws, {
+				m: 'pr',
 				id: id
 			});
 		});
