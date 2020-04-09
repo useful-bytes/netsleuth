@@ -110,10 +110,7 @@ exports.yargs = function(yargs) {
 	})
 	.command(['ls'], 'List profiles', function(yargs) {
 		yargs.help();
-	}, function(argv) {
-		if (!config.profiles) return fatal('There are no profiles.');
-		for (var k in config.profiles) console.log(k, '->', config.profiles[k].host);
-	})
+	}, list)
 	.command(['payload <profile> <payload-name>', 'pl'], 'Add or edit a named payload on a profile', function(yargs) {
 		yargs.help();
 	}, function(argv) {
@@ -134,6 +131,12 @@ exports.yargs = function(yargs) {
 	.help(true);
 };
 
+function list(argv) {
+	if (!config.profiles) return fatal('There are no profiles.');
+	for (var k in config.profiles) console.log(k, '->', config.profiles[k].host);
+}
+
+exports.list = list;
 exports.exec = function(argv) {
 
 };

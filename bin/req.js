@@ -29,6 +29,11 @@ var yargs = exports.yargs = require('yargs')
 	.command('profile', 'Modify a profile', function(yargs) {
 		require('./req-profile').yargs(yargs);
 	})
+	.command('profiles', 'List profiles', function(yargs) {
+		yargs.help();
+	}, function(argv) {
+		require('./req-profile').list(argv);
+	})
 	.command('*', 'req', function(yargs) {
 		yargs
 		.option('no-follow', {
@@ -210,7 +215,7 @@ var yargs = exports.yargs = require('yargs')
 	.help(false),
 	argv = yargs.argv;
 
-if (require.main != module || argv._[0] == 'profile') return;
+if (require.main != module || argv._[0] == 'profile' || argv._[0] == 'profiles') return;
 
 if (argv.help) {
 	yargs.showHelp(function(optTxt) {
