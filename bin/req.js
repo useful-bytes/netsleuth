@@ -156,6 +156,14 @@ var yargs = exports.yargs = require('yargs')
 			group: 'Network Behavior',
 			describe: 'Local interface to bind for network connections'
 		})
+		.option('max-upload', {
+			group: 'Network Behavior',
+			describe: 'Limit request upload to this number of [kmg]bytes/sec'
+		})
+		.option('max-download', {
+			group: 'Network Behavior',
+			describe: 'Limit response download to this number of [kmg]bytes/sec'
+		})
 		.option('inspector', {
 			alias: 'i',
 			describe: 'Inspector GUI tab to send this request to',
@@ -891,9 +899,14 @@ function request(method, uri, isRedirect, noBody) {
 			var entity = res,
 				entityText;
 
+			if (argv.maxDownload) var maxDl = require('../lib/size-string')(argv.maxDownload);
+			if (maxDl) {
+				var ThrottleStream = require('../lib/throttle-stream');
+				entity = entity.pipe(new ThrottleStream({ bps: parseInt(maxDl, 10) }));
+			}
+
 			if (res.headers['content-encoding'] == 'gzip') {
-				entity = zlib.createGunzip();
-				res.pipe(entity);
+				entity = entity.pipe(zlib.createGunzip());
 			}
 
 			var isJson = !argv.raw && (ctype && ctype.substr(0, 16) == 'application/json' || argv.json) && process.stdout.isTTY;
@@ -1151,11 +1164,20 @@ function request(method, uri, isRedirect, noBody) {
 				outBody('request', null);
 			}
 
+			var entity = req;
+
+			if (argv.maxUpload) var maxUl = require('../lib/size-string')(argv.maxUpload);
+			if (maxUl) {
+				var ThrottleStream = require('../lib/throttle-stream');
+				entity = new ThrottleStream({ bps: parseInt(maxUl, 10) });
+				entity.pipe(req);
+			}
+
 			if (bodyStream) {
 				var seen = 0;
 				if (argv.gzipReq) {
 					var gzip = zlib.createGzip();
-					gzip.pipe(req);
+					gzip.pipe(entity);
 					bodyStream.pipe(gzip);
 					gzip.on('data', function(d) {
 						seen += d.length;
@@ -1165,7 +1187,7 @@ function request(method, uri, isRedirect, noBody) {
 						if (logger) loggger.compressedReqLength = seen;
 					});
 				} else {
-					bodyStream.pipe(req);
+					bodyStream.pipe(entity);
 					bodyStream.on('data', function(d) {
 						seen += d.length;
 						if (seen > streamLength) {
@@ -1202,7 +1224,7 @@ function request(method, uri, isRedirect, noBody) {
 				}
 				if (logger) logger.observeReqBody(req);
 			} else {
-				req.end(rawBody);
+				entity.end(rawBody);
 				if (logger) {
 					if (rawBody) logger.setReqBody(rawBody);
 					logger.reqEnd();
