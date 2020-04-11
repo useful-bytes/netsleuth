@@ -130,7 +130,7 @@ function Inspector(server, opts) {
 
 	var scriptDirs = [];
 
-	if (server.scriptDir) scriptDirs.push(path.join(server.scriptDir, opts.name.replace(UNSAFE, '_')));
+	if (server.scriptDir && !opts.transient && !opts.temp) scriptDirs.push(path.join(server.scriptDir, opts.name.replace(UNSAFE, '_')));
 	if (opts.scriptDir) scriptDirs.push(opts.scriptDir);
 
 	self.script = new Script(self, {
@@ -1009,11 +1009,12 @@ Inspector.prototype.updateTargets = function() {
 		}
 	});
 
-	if (n == 0) {
+	// the default _req target doesn't count
+	if (n == 1) {
 		self.emit('no-targets');
 	}
 
-	if (n == 1) {
+	if (n == 2) {
 		self.emit('has-targets');
 	}
 };
