@@ -53,6 +53,8 @@ function connect() {
 		} else if (msg.m == 'rm') {
 			$(document.getElementById('t-' + msg.host)).remove();
 			delete hosts[msg.host];
+		} else if (msg.m == 'unseen') {
+			$(document.getElementById('t-' + msg.host)).find('.unseen').text(msg.unseen).vis(msg.unseen);
 		}
 		listUpdated();
 	}
@@ -72,7 +74,8 @@ function addHost(h) {
 			target: '_blank'
 		}).appendTo(li),
 		img = $('<img>').attr('src', '/inspect/' + h.host + '/favicon.ico').addClass('tico').on('error', badIcon).appendTo(a),
-		h3 = $('<h3>').text(h.host).appendTo(a);
+		h3 = $('<h3>').text(h.host).appendTo(a),
+		unseen = $('<span>').addClass('unseen').text(h.unseen ? h.unseen : '').appendTo(a);
 
 	if (h.type == 1) $('<img>').attr('src', '/img/cloud.svg').attr('title', 'Public gateway inspector').addClass('ttype').appendTo(a);
 	if (h.type == 3) $('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local reverse proxy inspector').addClass('ttype').appendTo(a);
@@ -83,6 +86,7 @@ function addHost(h) {
 	if (h.deletable !== false) $('<button>').addClass('rm').text('×').appendTo(a);
 
 	li.appendTo(list);
+	unseen.vis(h.unseen);
 	hosts[h.host] = h;
 }
 
@@ -139,6 +143,7 @@ if (!localStorage.nsinit) {
 $.fn.vis = function(v) {
 	if (v) this.show();
 	else this.hide();
+	return this;
 };
 var fcert, usefcert;
 $('#add').click(function() {

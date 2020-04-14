@@ -88,7 +88,9 @@ function Inspector(server, opts) {
 	this.gcFreqMs = opts.gcFreqMs || 1000*60*15;
 	this.gcFreqCount = opts.gcFreqCount || 500;
 	this.gcMinLifetime = opts.gcMinLifetime || 1000*60*5;
+	this.bufferLen = opts.bufferLen || 512;
 	this.buffer = [];
+	this.unseenReqs = 0;
 	this.sessionCLI = new SessionCLI(this);
 	this.notify = [];
 	this.tmpDir = opts.tmpDir || path.join(os.tmpdir(), 'netsleuth');
@@ -244,8 +246,14 @@ Inspector.prototype.addTarget = function(id, opts) {
 		self.reqs[txn.id] = txn;
 	});
 
+	function unseen() {
+		++self.unseenReqs;
+		self.emit('unseen-req');
+	}
+
 	target.on('request', function(txn) {
-		
+
+		if (self.buffer) unseen();
 		self.broadcast({
 			method: 'Network.requestWillBeSent',
 			params: {
@@ -318,6 +326,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	target.on('req-blocked', function(txn, rule) {
 		// TODO: update blocks panel
 
+		if (self.buffer) unseen();
 		self.broadcast({
 			method: 'Network.requestWillBeSent',
 			params: {
@@ -685,6 +694,9 @@ Inspector.prototype.broadcast = function(msg) {
 	var self = this;
 	if (self.buffer) {
 		self.buffer.push(msg);
+		if (self.buffer.length > self.bufferLen) {
+			self.buffer.splice(0, 16);
+		}
 	} else {
 		msg = JSON.stringify(msg);
 		self.clients.forEach(function(ws) {
@@ -955,8 +967,12 @@ Inspector.prototype.connection = function(ws, req) {
 
 	ws.on('close', function() {
 		for (var i = 0; i < self.clients.length; i++) {
-			if (self.clients[i] == ws) return self.clients.splice(i, 1);
+			if (self.clients[i] == ws) {
+				self.clients.splice(i, 1);
+				break;
+			}
 		}
+		if (self.clients.length == 0) self.buffer = [];
 	});
 
 	// enable console
@@ -972,11 +988,16 @@ Inspector.prototype.connection = function(ws, req) {
 	});
 
 	if (self.buffer) {
-		var buf = self.buffer;
+		var buf = self.buffer,
+			reqs = 0;
 		self.buffer = null;
 		buf.forEach(function(msg) {
+			if (msg.method == 'Network.requestWillBeSent') ++reqs;
 			self.broadcast(msg);
 		});
+		if (reqs < self.unseenReqs) self.console.warn(self.unseenReqs - reqs + ' requests made before you opened this inspector were discarded.');
+		self.unseenReqs = 0;
+		self.emit('unseen-req');
 	}
 
 	function csend(msg) {
@@ -1301,6 +1322,18 @@ InspectionServer.prototype.inspect = function(opts) {
 		});
 	});
 
+	var uto;
+	inspector.on('unseen-req', function() {
+		if (!uto) uto = setTimeout(function() {
+			self.monitorBroadcast({
+				m: 'unseen', 
+				host: inspector.name,
+				unseen: inspector.unseenReqs
+			});
+			uto = null;
+		}, 1000);
+	});
+
 	return inspector;
 };
 
@@ -1318,6 +1351,18 @@ InspectionServer.prototype.inspectInproc = function(name, transient, icon) {
 			self.remove(name);
 		});
 	}
+
+	var uto;
+	inspector.on('unseen-req', function() {
+		if (!uto) uto = setTimeout(function() {
+			self.monitorBroadcast({
+				m: 'unseen', 
+				host: inspector.name,
+				unseen: inspector.unseenReqs
+			});
+			uto = null;
+		}, 1000);
+	});
 
 	self.monitorBroadcast({
 		m: 'new',
@@ -1352,7 +1397,8 @@ InspectionServer.prototype.targetMonitorConnection = function(ws, req) {
 			type: getInspectorType(self.inspectors[k]),
 			host: k,
 			target: href,
-			deletable: self.inspectors[k].opts.deletable
+			deletable: self.inspectors[k].opts.deletable,
+			unseen: self.inspectors[k].unseenReqs
 		});
 	}
 

@@ -25,6 +25,7 @@ h1 { margin:0; padding:10px; font-size:22px; display:inline-block; }
 .ttype { width:16px; height:16px; margin:0 3px 0 0; vertical-align:bottom; }
 h3 { margin:0; }
 .target { font-size:0.7em; color:#555; }
+#targets a .unseen { display:none; position:absolute; top:5px; right:5px; background:red; color:#fff; padding:2px; border-radius:23px; min-width:18px; text-align:center; }
 
 .btn.login { background:#139713; color:#fff; font-size:2em; display:inline-block; margin:20px 0; padding:9px 30px; }
 
