@@ -925,7 +925,7 @@ Inspector.prototype.connection = function(ws, req) {
 									req.destroy();
 								}).pipe(req);
 							} else {
-								req.end(txn.reqBody.data);
+								req.end(txn.reqBody.data());
 							}
 						} else {
 							req.end();
