@@ -166,7 +166,9 @@ function atype() {
 	$('.atpub,.atprox').hide();
 	$('#' + id).addClass('active');
 	$('.' + id).show();
+	$('#acadd').attr('disabled', false);
 	$('#adddlg input').not('[name="attype"]').trigger('change');
+	if (id == 'atpub') $('#acgateway').trigger('change');
 	acsu();
 }
 
@@ -509,7 +511,24 @@ updateGateways();
 $('#acgateway').on('change', function() {
 	var self = this,
 		$r = $('#acregion').empty(),
-		regions = domains[self.value].regions;
+		gateway = domains[self.value],
+		regions = gateway.regions,
+		addOk = false;
+
+	if (gateway.name == 'netsleuth.io') {
+		$('#acgwlogout').hide();
+		$('.publoggedout').vis(!gateway.loggedIn);
+		if (gateway.plan) $('#acprem').hide();
+		else $('#acprem').show();
+		addOk = gateway.loggedIn && gateway.plan;
+	} else {
+		$('#acprem').hide();
+		$('#acgwlogout').vis(!gateway.loggedIn);
+		addOk = gateway.loggedIn;
+	}
+	$('#acadd').attr('disabled', !addOk);
+	$('.gwlogin').attr('href','/login?gateway=' + gateway.name);
+	$('.gwlogintxt').text(gateway.name);
 
 	if (regions) {
 		regions.forEach(function(region) {

@@ -94,7 +94,14 @@
 			<div class="row acauth"><label for="acauthp"><u>P</u>assword: </label><input id="acauthp" accesskey="p"></div>
 		</div>
 		<div class="row atprox"><input type="checkbox" id="atproxhostsfile" accesskey="i"><label for="atproxhostsfile"> <img src="/img/elevate.png" width=16 height=16 title="Elevated privileges required"> Add hostname to system HOSTS f<u>i</u>le</label></div>
-		<div class="row atpub"><p class="loggedout danger">You must <a href="/login">log in</a> to the gateway service before you can add a public host.</p></div>
+		<div class="row atpub" id="acgwlogout"><p class="err">You must <a class="gwlogin" href="/login">log in</a> to the <span class="gwlogintxt"></span> gateway service before you can add a public host.</p></div>
+		<div class="row atpub" id="acprem">
+			<h4>Secure tunnel to localhost with the public gateway</h4>
+			<p>
+				<a href="https://netsleuth.io/gateway" target=_blank><img src="/img/c2l.svg" height=50 align=left></a>
+				Reserving a public *.netsleuth.io subdomain requires you to <span class="publoggedout"><a href="/login">log in</a> and</span> have a subscription to the <a href="https://netsleuth.io/gateway" target=_blank>Public Gateway service</a>.
+			</p>
+		</div>
 		<div class="row"><button type="submit" id="acadd"><img src="/img/elevate.png" width=16 height=16 id="acaddsu"> Add</button></div>
 	</form>
 

@@ -165,6 +165,7 @@ function setupHost(host, cb) {
 }
 
 function reload() {
+	cache = {};
 	config = rcfile.get();
 	server.opts.gateways = config.gateways;
 	console.log('reloaded config');
@@ -294,7 +295,7 @@ server.app.get('/ipc/gateways', isLocal, function(req, res) {
 	if (!config.gateways) config.gateways = {};
 	if (!config.gateways['netsleuth.io']) config.gateways['netsleuth.io'] = {};
 
-	var gws = {}, arr = [], gwdone = 0;
+	var gws = {}, arr = [], ops = 0, gwdone = 0;
 
 	for (var gw in config.gateways) {
 		arr.push(gws[gw] = {
@@ -306,17 +307,33 @@ server.app.get('/ipc/gateways', isLocal, function(req, res) {
 			defaultRegion: config.gateways[gw].defaultRegion
 		});
 
+		ops += 2;
+
 		getGatewayInfo(gw, 'domains', function(err, domains, gw) {
 			gws[gw].domains = domains;
-			if (++gwdone == arr.length*2) done();
+			if (++gwdone == ops) done();
 		});
 		getGatewayInfo(gw, 'regions', function(err, regions, gw) {
 			gws[gw].regions = regions && regions.map(function(region) {
 				return region.id;
 			});
 			
-			if (++gwdone == arr.length*2) done();
+			if (++gwdone == ops) done();
 		});
+
+		if (gw == 'netsleuth.io' && config.gateways[gw].token) {
+			++ops;
+			request({
+				url: 'https://netsleuth.io/user/subscription',
+				headers: {
+					Authorization: 'Bearer ' + config.gateways[gw].token
+				},
+				json: true
+			}, function(err, res, body) {
+				if (res && res.statusCode == 200) gws['netsleuth.io'].plan = true;
+				if (++gwdone == ops) done();
+			});
+		}
 	}
 
 	function done() {

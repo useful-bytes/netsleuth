@@ -57,3 +57,7 @@ small { display:block; color:#666; }
 #dico { margin-right:10px; }
 .acauth { display:none; margin-left:24px; }
 #acaddsu { display:none; }
+#acprem { background:linear-gradient(to bottom, #857aff 1%,#5C4FA5 100%); color:#fff; padding:9px; min-height:88px; }
+#acprem a { color:#fff; }
+#acprem img { margin:0 8px 0 0; }
+#acgwlogout { display:none; }
