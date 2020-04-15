@@ -619,7 +619,6 @@ Inspector.prototype.addTarget = function(id, opts) {
 
 	target.on('hostname', function(hostname, ip) {
 		self.name = hostname;
-		if (self.opts.port && self.opts.port != 80) self.name += ':' + self.opts.port;
 		self.emit('hostname', hostname, ip);
 	});
 
