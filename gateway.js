@@ -1,4 +1,5 @@
-var http = require('http'),
+var net = require('net'),
+	http = require('http'),
 	https = require('https'),
 	util = require('util'),
 	url = require('url'),
@@ -14,6 +15,7 @@ function GatewayServer(opts) {
 	var self = this;
 	opts = opts || {};
 	self.opts = opts;
+	self.servers = [];
 	self.apps = {};
 	self.hosts = {};
 	self.reqs = {};
@@ -41,6 +43,12 @@ function GatewayServer(opts) {
 		self.fwdhttps = {}; // see handleConnect
 		self.setupProxy(self.fwdhttp = http.createServer());
 	}
+
+	// self.addServer = function() {
+	// 	var server = http.createServer();
+	// 	setupServer(server);
+	// 	return server;
+	// };
 
 
 	function setupServer(server) {
@@ -907,10 +915,44 @@ GatewayServer.prototype.removeHost = function(hostname) {
 	}
 };
 
-GatewayServer.prototype.close = function() {
+GatewayServer.prototype.listen = function(port, ip) {
 	var self = this;
-	if (self.http) self.http.close();
-	if (self.https) self.https.close();
+	var server = net.createServer();
+	self.servers.push(server);
+	server.on('connection', function(socket) {
+		self.http.emit('connection', socket);
+	});
+	server.listen(port, ip);
+};
+GatewayServer.prototype.listenSecure = function(port, ip) {
+	var self = this;
+	var server = net.createServer();
+	self.servers.push(server);
+	server.on('connection', function(socket) {
+		self.https.emit('connection', socket);
+	});
+	server.listen(port, ip);
+};
+
+GatewayServer.prototype.close = function(cb) {
+	var self = this,
+		closed = 0,
+		servers = self.servers.length;
+
+	if (self.http) {
+		++servers;
+		self.http.close(ok);
+	}
+	if (self.https) {
+		++servers;
+		self.https.close(ok);
+	}
+	for (var i = 0; i < self.servers.length; i++) self.servers[i].close(ok);
+
+	if (servers == 0 && cb) cb();
+	function ok() {
+		if (++closed == servers && cb) cb();
+	}
 };
 
 GatewayServer.prototype[util.inspect.custom] = true; // instruct console.log to ignore the `inspect` property
