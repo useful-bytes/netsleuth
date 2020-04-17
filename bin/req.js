@@ -142,6 +142,18 @@ var yargs = exports.yargs = require('yargs')
 			group: 'Network Behavior',
 			describe: 'Validate TLS certificates using the CA certificate(s) in this file'
 		})
+		.option('client-cert', {
+			group: 'Network Behavior',
+			describe: 'Present TLS client certificate from this PEM or PFX file'
+		})
+		.option('client-key', {
+			group: 'Network Behavior',
+			describe: 'File containing key for PEM client-cert'
+		})
+		.option('client-key-pw', {
+			group: 'Network Behavior',
+			describe: 'Password for client certificate\'s private key'
+		})
 		.option('4', {
 			boolean: true,
 			group: 'Network Behavior',
@@ -564,7 +576,32 @@ function request(method, uri, isRedirect, noBody) {
 		opts.family = profile.family;
 		if (profile.gzip) argv.gzip = true;
 		if (profile.insecure) argv.insecure = true;
-		if (profile.ca) opts.ca = profile.ca;
+		if (profile.ca) opts.ca = fs.readFileSync(profile.ca, 'utf-8');
+		if (profile.clientCert) getClientCert(profile);
+	}
+
+	function getClientCert(config) {
+		var ext = path.extname(config.clientCert);
+		if (ext == '.pfx' || ext == '.p12') {
+			// PKCS#12
+			try {
+				var o = require('../lib/p12')(fs.readFileSync(config.clientCert), config.clientKeyPw);
+				opts.cert = o.cert;
+				opts.key = o.key;
+			} catch (ex) {
+				fatal('Unable to parse PKCS#12 client certificate: ' + ex.message);
+			}
+		} else {
+			// pem files
+			if (!config.clientKey) fatal('Must provide a key for your client certificate.');
+			try {
+				opts.cert = fs.readFileSync(config.clientCert);
+				opts.key = fs.readFileSync(config.clientKey);
+			} catch (ex) {
+				fatal('Unable to parse client certificate/key: ' + ex.message);
+			}
+		}
+		if (config.clientKeyPw) opts.passphrase = config.clientKeyPw;
 	}
 
 	if (!opts.protocol) opts.protocol = 'http:';
@@ -581,6 +618,7 @@ function request(method, uri, isRedirect, noBody) {
 
 	if (argv.insecure) opts.rejectUnauthorized = false;
 	if (cacert) opts.ca = cacert;
+	if (argv.clientCert) getClientCert(argv);
 
 	if (opts.auth && opts.auth.indexOf(':') == -1) {
 		opts.headers.Authorization = 'Bearer ' + opts.auth;

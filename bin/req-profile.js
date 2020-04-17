@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 var url = require('url'),
+	path = require('path'),
 	c = require('ansi-colors'),
 	rcfile = require('../lib/rcfile'),
 	Params = require('../lib/req-param');
@@ -45,6 +46,11 @@ exports.yargs = function(yargs) {
 		if (params.headers) prof.headers = params.headers;
 		if (params.query) prof.query = params.query;
 
+		if (argv.ca) prof.ca = path.resolve(process.cwd(), argv.ca);
+		if (argv.clientCert) prof.clientCert = path.resolve(process.cwd(), argv.clientCert);
+		if (argv.clientKey) prof.clientKey = path.resolve(process.cwd(), argv.clientKey);
+		if (argv.clientKeyPw) prof.clientKeyPw = argv.clientKeyPw;
+
 		if (argv.chromeCookies) {
 			getCookies(argv.url, function(err, cookies) {
 				if (cookies) {
@@ -82,6 +88,11 @@ exports.yargs = function(yargs) {
 
 		if (params.body) profile.body = Object.assign(profile.body || {}, params.body);
 		if (profile.body && params.deletedBody) for (var k in params.deletedBody) delete profile.body[k];
+
+		if (argv.ca) profile.ca = path.resolve(process.cwd(), argv.ca);
+		if (argv.clientCert) profile.clientCert = path.resolve(process.cwd(), argv.clientCert);
+		if (argv.clientKey) profile.clientKey = path.resolve(process.cwd(), argv.clientKey);
+		if (argv.clientKeyPw) profile.clientKeyPw = argv.clientKeyPw;
 
 		if (argv.chromeCookies) {
 			getCookies(profile.host, function(err, cookies) {
@@ -146,6 +157,22 @@ function profileOptions(yargs) {
 		alias: 'C',
 		boolean: true,
 		description: 'Save your browser\'s cookies to this profile'
+	})
+	.option('ca', {
+		group: 'Network Behavior',
+		describe: 'Validate TLS certificates using the CA certificate(s) in this file'
+	})
+	.option('client-cert', {
+		group: 'Network Behavior',
+		describe: 'Present TLS client certificate from this PEM or PFX file'
+	})
+	.option('client-key', {
+		group: 'Network Behavior',
+		describe: 'File containing key for PEM client-cert'
+	})
+	.option('client-key-pw', {
+		group: 'Network Behavior',
+		describe: 'Password for client certificate\'s private key'
 	});
 }
 
