@@ -233,83 +233,56 @@ function GatewayServer(opts) {
 				var info = self.ws[msg.id];
 				if (!info) return;
 
-				info.socket.removeAllListeners('error');
-				wss.handleUpgrade(info.req, info.socket, info.head, function(ws) {
-					// TODO: we're not passing any extra upgrade response headers back to clients
-					// wss emits headers(headers, req)
-
-					info.ws = ws;
-
-					// ws automatically responds to pings, which we do not want
-					ws._receiver.removeAllListeners('ping');
-					ws._receiver.on('ping', function(data) {
-						ws.emit('ping', data);
-					});
-
-
-					ws.on('message', function(data) {
-						if (typeof data == 'string') {
-							self.send(host.ws, {
-								m: 'wsm',
-								id: msg.id,
-								d: data
-							});
-						} else {
-							self.sendBin(host.ws, 3, msg.id, data);
+				var forwarder = new stream.Writable({
+					write: function(chunk, enc, cb) {
+						if (info._wsPause === true) {
+							info._wsPause = cb;
+							self.sendBin(host.ws, 3, msg.id, chunk);
 						}
-					});
+						else self.sendBin(host.ws, 3, msg.id, chunk, cb);
+					}
+				});
 
-					ws.on('close', function() {
-						self.send(host.ws, {
-							m: 'wsclose',
-							id: msg.id
-						});
-						delete self.ws[msg.id];
-						if (host.wsconn) delete host.wsconn[msg.id];
-						info.ws = null;
-					});
+				info.socket.pipe(forwarder);
 
-					ws.on('error', function(err) {
-						console.error('ws prox err', err);
-					});
+				info.socket.on('close', closed);
+				info.socket.on('end', closed);
+				info.socket.setTimeout(0);
 
-					ws.on('ping', function(data) {
-						self.send(host.ws, {
-							m: 'wsping',
-							id: msg.id,
-							d: data
-						});
+				function closed() {
+					self.send(host.ws, {
+						m: 'wsclose',
+						id: msg.id
 					});
+					delete self.ws[msg.id];
+				}
 
-					ws.on('pong', function(data) {
-						self.send(host.ws, {
-							m: 'wspong',
-							id: msg.id,
-							d: data
-						});
+				info.socket.on('drain', function() {
+					self.send(host.ws, {
+						m: 'wsr',
+						id: msg.id
 					});
 				});
 
+
 				break;
 
-			case 'wsm':
+			case 'wsp':
 				var info = self.ws[msg.id];
-				if (info && info.ws) info.ws.send(msg.d);
+				if (info && !info._wsPause) info._wsPause = true;
 				break;
 
-			case 'wsping':
+			case 'wsr':
 				var info = self.ws[msg.id];
-				if (info && info.ws) info.ws.ping(msg.d);
-				break;
-
-			case 'wspong':
-				var info = self.ws[msg.id];
-				if (info && info.ws) info.ws.pong(msg.d);
+				if (info) {
+					if (typeof info._wsPause == 'function') info._wsPause();
+					info._wsPause = false;
+				}
 				break;
 
 			case 'wsclose':
 				var info = self.ws[msg.id];
-				if (info && info.ws) info.ws.close();
+				if (info && info.socket) info.socket.end();
 				break;
 
 			case 'wserr':
@@ -388,27 +361,38 @@ function GatewayServer(opts) {
 
 				var type = data.readUInt8(0),
 					id = data.readUInt32LE(1);
-				var res = self.ress[id];
-				if (res) {
-					if (res.nshost != host) return self.removeHost(host);
-					if (!res.write(data.slice(5))) {
-						self.send(host.ws, {
-							m: 'pp',
-							id: id
-						});
-						if (res.socket._writableState.length > 1048576) {
-							res.socket.destroy();
-							var req = self.reqs[id];
-							if (req) req.emit('error', new Error('Inspector ignored flow control instruction.'));
+
+				if (type == 2) {
+					var res = self.ress[id];
+					if (res) {
+						if (res.nshost != host) return self.removeHost(host);
+						if (!res.write(data.slice(5))) {
+							self.send(host.ws, {
+								m: 'pp',
+								id: id
+							});
+							if (res.socket._writableState.length > 1048576) {
+								res.socket.destroy();
+								var req = self.reqs[id];
+								if (req) req.emit('error', new Error('Inspector ignored flow control instruction.'));
+							}
 						}
-					}
-					res.bytes += data.length;
-					res.expires = Date.now() + self.silenceTimeout;
-				} else {
+						res.bytes += data.length;
+						res.expires = Date.now() + self.silenceTimeout;
+					} 
+				} else if (type == 3) {
 					var info = self.ws[id];
 					if (info) {
 						var payload = data.slice(5);
-						info.ws.send(payload);
+						if (!info.socket.write(payload)) {
+							self.send(host.ws, {
+								m: 'wsp',
+								id: id
+							});
+							if (info.socket._writableState.length > 1048576) {
+								info.socket.destroy();
+							}
+						}
 					}
 				}
 			}
@@ -446,7 +430,12 @@ function GatewayServer(opts) {
 				self.ress[id].write(chunk, cb);
 				self.ress[id].bytes += chunk.length;
 			} else if (type == 3 && self.ws[id]) {
-				self.ws[id].ws.send(chunk, cb);
+				if (!self.ws[id].socket.write(chunk, cb)) {
+					self.send(host.ws, {
+						m: 'wsp',
+						id: id
+					});
+				}
 			}
 		});
 
@@ -751,15 +740,19 @@ GatewayServer.prototype.handleWs = function(req, socket, head) {
 		req.headers['forwarded'] = fwd + 'for="' + remote + ':' + req.socket.remotePort + '";host="' + reqHost + '";proto=' +  proto;
 	}
 
+	var rurl = req.url;
+	if (self.opts.forwardProxy) {
+		rurl = proto + '://' + ((req.socket._authority && req.socket._authority.host) || (req.socket._parent && req.socket._parent._authority && req.socket._parent._authority.host)) + req.url;
+	}
+
 	self.send(host.ws, {
 		m: 'ws',
 		id: id,
 		remoteIP: remote,
 		remotePort: req.socket.remotePort,
-		authority: (req.socket._authority && req.socket._authority.host) || (req.socket._parent && req.socket._parent._authority && req.socket._parent._authority.host),
 		proto: proto,
 		method: req.method,
-		url: req.url,
+		url: rurl,
 		headers: req.headers,
 		raw: req.rawHeaders
 	});

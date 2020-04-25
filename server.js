@@ -513,7 +513,7 @@ Inspector.prototype.addTarget = function(id, opts) {
 	});
 
 	target.on('ws-error', function(txn, err) {
-		self.console.source('network', txn.id).error('WebSocket error: ' + err);
+		self.console.source('network', txn.id).error('WebSocket error:', err);
 	});
 
 	target.on('ws-upgrade', function(txn) {
