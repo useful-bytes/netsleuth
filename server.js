@@ -1316,6 +1316,7 @@ InspectionServer.prototype.inspect = function(opts) {
 		self.monitorBroadcast({
 			m: 'new',
 			type: getInspectorType(inspector),
+			temp: inspector.opts.temp,
 			host: inspector.name,
 			target: href
 		});

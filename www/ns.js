@@ -454,6 +454,8 @@ $('#targets').on('click', 'a button', function(e) {
 	var host = hosts[did];
 	$('#dico').attr('src', '/inspect/' + host.host + '/favicon.ico');
 	$('#dhost').text(host.host);
+	$('#dkeep')[0].checked = false;
+	$('#dkeepr').vis(host.type == 1 && !host.temp);
 });
 $('#dclose,#dcancel').click(dclose);
 function dclose() {
@@ -470,7 +472,8 @@ $('#dok').click(function() {
 			'Content-Type': 'application/json'
 		},
 		body: JSON.stringify({
-			hosts: [hosts[did].host]
+			hosts: [hosts[did].host],
+			keepReservation: $('#dkeep')[0].checked
 		})
 	}).then(function(res) {
 		$('#deldlg').removeClass('disabled');

@@ -108,7 +108,7 @@ function setupHost(host, cb) {
 				var msg = 'Timed out waiting for host to come online.';
 				if (lastErr) msg += ' Last error: ' + lastErr.message;
 				ierr(new Error(msg));
-			}, 15000);
+			}, 20000);
 
 
 			inspector.on('error', ierr);
@@ -222,10 +222,11 @@ server.app.post('/ipc/rm', isLocal, function(req, res) {
 					if (err) console.error('error removing HOSTS entry for ' + insp.opts.host, err);
 				});
 			}
+			var hosted = insp.targets.main && insp.targets.main.hosted;
 			server.remove(host);
 			delete config.hosts[host];
 
-			if (insp.targets.main && insp.targets.main.hosted && !req.body.keepReservation) gw.unreserve(host, function(err) {
+			if (hosted && !req.body.keepReservation) gw.unreserve(host, function(err) {
 				if (err) console.error('error unreserving host', host);
 			});
 		});
