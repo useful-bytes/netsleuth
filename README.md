@@ -8,7 +8,7 @@
 
 <br>
 
-[netsleuth](https://netsleuth.io) brings the Chrome DevTools' Network tab to node.js with a native integration and anything else that speaks HTTP via proxy server.
+[netsleuth](https://netsleuth.io) brings the Chrome DevTools' Network tab to node.js with a native integration and to anything else that speaks HTTP via forward and reverse proxy server.
 
 The [public gateway](https://netsleuth.io/gateway) allows you to get publicly accessible URLs for your local development environment, with full TLS and no headaches.
 
@@ -32,5 +32,7 @@ if (process.env.NODE_ENV == 'dev') {
 ```
 
 …then open http://localhost:9000 to start inspecting your HTTP(S) requests.
+
+[**Read the full Getting Started Guide here.**](https://netsleuth.io/docs/getting-started)
 
 Full documentation is available on [the netsleuth website](https://netsleuth.io/docs).

@@ -33,6 +33,8 @@ Commands:
   start                        Start the inspection server daemon
   stop                         Stop the inspection server daemon
   restart                      Stop and restart the inspection server daemon
+  setup                        Run netsleuth system setup
+  ca                           Get the local netsleuth CA certificate
   project [path]               Run project autoconfiguration
 
 Options:
@@ -253,6 +255,54 @@ Usage: netsleuth start [options]
 Options:
   --version  Show version number                                       [boolean]
   --help     Show help                                                 [boolean]
+```
+
+### `setup` {#setup}
+
+This command runs netsleuth's system setup script, which sets up [privileged port access](https://netsleuth.io/docs/privileged-ports) and optionally installs your generated [TLS CA certificate](https://netsleuth.io/docs/tls).
+
+```term
+Usage: sudo netsleuth setup [options]
+
+Options:
+  --version    Show version number                                     [boolean]
+  --help       Show help                                               [boolean]
+  --ca         Install the proxy CA certificate as a trusted CA        [boolean]
+  --uninstall  Remove netsleuth's system modifications                 [boolean]
+```
+
+### `ca` {#ca}
+
+```term
+Usage: netsleuth ca
+
+Prints the local CA certificate in PEM format.
+
+Commands:
+  ca issue <common-name> [san..]  Issue a certificate for this DNS name
+```
+
+### `ca issue` {#ca-issue}
+
+```term
+Usage: netsleuth ca issue [options] <common-name> [san..]
+
+Using your netsleuth CA, issues a new certificate for the specified hostname(s).
+<common-name>
+  The certificate will be issued to this hostname.
+[san..]
+  The certificate will include these hostnames and/or IP addresses as Subject
+  Alternative Names.
+
+Options:
+  --version     Show version number                                    [boolean]
+  --help        Show help                                              [boolean]
+  --cert, -c    Where to save the certificate                     [default: "-"]
+  --key, -k     Where to save the private key                     [default: "-"]
+  --months, -m  Months of validity                                  [default: 1]
+
+The certificate and private key will be output in PEM format.  By default, they
+are printed on stdout; use -c and -k to save to files.
 ```
 
 ### `project` {#project}

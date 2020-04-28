@@ -783,7 +783,7 @@ var yargs = require('yargs')
 	})
 	.command('setup', 'Run netsleuth system setup', function(yargs) {
 		yargs
-		.usage('Usage: sudo $0 restart [options]')
+		.usage('Usage: sudo $0 setup [options]')
 		.option('ca', {
 			boolean: true,
 			describe: 'Install the proxy CA certificate as a trusted CA'
@@ -792,7 +792,7 @@ var yargs = require('yargs')
 			boolean: true,
 			describe: 'Remove netsleuth\'s system modifications'
 		})
-		.epilog('System setup is automatically run during netsleuth\'s installation.  You only need to run this command if setup did not complete.');
+		.epilog('Learn more at https://netsleuth.io/docs/privileged-ports');
 
 	}, function(argv) {
 
@@ -848,9 +848,10 @@ var yargs = require('yargs')
 
 	})
 	.command('ca', 'Get the local netsleuth CA certificate', function(yargs) {
-		yargs.usage('Usage: $0')
-		.command('issue <common-name>', 'Issue a certificate for this DNS name', function(yargs) {
+		yargs.usage('Usage: $0 ca\n\nPrints the local CA certificate in PEM format.')
+		.command('issue <common-name> [san..]', 'Issue a certificate for this DNS name', function(yargs) {
 			yargs
+			.usage('Usage: $0 ca issue [options] <common-name> [san..]\n\nUsing your netsleuth CA, issues a new certificate for the specified hostname(s).\n<common-name>\n  The certificate will be issued to this hostname.\n[san..]\n  The certificate will include these hostnames and/or IP addresses as Subject Alternative Names.')
 			.option('cert', {
 				alias: 'c',
 				describe: 'Where to save the certificate',
@@ -866,8 +867,9 @@ var yargs = require('yargs')
 				describe: 'Months of validity',
 				default: 1
 			})
+			.epilog('The certificate and private key will be output in PEM format.  By default, they are printed on stdout; use -c and -k to save to files.');
 		}, function(argv) {
-			getCa().issue({ cn: argv.commonName, months: argv.months }, function(err, r) {
+			getCa().issue({ cn: argv.commonName, months: argv.months, sans: argv.san }, function(err, r) {
 				if (err) {
 					console.error(err);
 					process.exit(1);

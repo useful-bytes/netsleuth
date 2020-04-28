@@ -1,5 +1,22 @@
 Changelog
 =========
+2.0.0 2020-04-27
+----------------
+- Major refactor of internals
+- Add local CA for automatic self-issued TLS certificates
+- Add support for local forward HTTP(S) proxy
+- Add support for self-issued HTTPS on local reverse proxy targets
+- Add UI for certificate trust (when a target presents an invalid certificate)
+- req: add support for TLS client certificates
+- Improved handling of large request/response bodies
+- Request replay UI
+- Add support for HTTP/2 requests in native node.js integration
+- Basic request/response modification scripting support
+- Network speed throttling (GUI and req CLI)
+- Better backpressure handling
+- Misc UI improvements and tweaks
+- Numerous bug fixes
+
 1.0.9 2020-03-20
 ----------------
 - Prevent `req` and `snode` from popping up a project init/login window

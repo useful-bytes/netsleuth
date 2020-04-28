@@ -47,7 +47,7 @@ function renderAll() {
 		fs.writeFileSync(path.join(outdir, process.argv[2] + '.txt'), renderDoc(mdplain, path.join(dir, process.argv[2]), true));
 	} else {
 		require('../bin/req').yargs.showHelp(function(optTxt) {
-			optTxt = optTxt.substr(optTxt.indexOf('\n\n')+2);
+			optTxt = optTxt.substr(optTxt.indexOf('req\n\n')+5);
 			
 			fs.writeFileSync(path.join(outdir, 'req-options.txt'), optTxt);
 
