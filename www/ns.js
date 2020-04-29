@@ -79,7 +79,10 @@ function addHost(h) {
 
 	if (h.type == 1) $('<img>').attr('src', '/img/cloud.svg').attr('title', 'Public gateway inspector').addClass('ttype').appendTo(a);
 	if (h.type == 3) $('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local reverse proxy inspector').addClass('ttype').appendTo(a);
-	if (h.type == 4) $('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local forward proxy inspector').addClass('ttype').appendTo(a);
+	if (h.type == 4) {
+		$('<img>').attr('src', '/img/proxy.svg').attr('title', 'Local forward proxy inspector').addClass('ttype').appendTo(a);
+		$('<span>').addClass('tdesc').text('Local forward proxy').appendTo(a);
+	}
 
 	if (h.target) $('<span>').addClass('target').text('→ ' + h.target).appendTo(a);
 
@@ -533,11 +536,11 @@ $('#acgateway').on('change', function() {
 	if (gateway.name == 'netsleuth.io') {
 		$('#acgwlogout').hide();
 		$('.publoggedout').vis(!gateway.loggedIn);
-		if (gateway.plan) $('#acprem').hide();
-		else $('#acprem').show();
+		if (gateway.plan) $('.nsprem').hide();
+		else $('.nsprem').show();
 		addOk = gateway.loggedIn && gateway.plan;
 	} else {
-		$('#acprem').hide();
+		$('.nsprem').hide();
 		$('#acgwlogout').vis(!gateway.loggedIn);
 		addOk = gateway.loggedIn;
 	}

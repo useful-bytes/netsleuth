@@ -24,7 +24,8 @@ h1 { margin:0; padding:10px; font-size:22px; display:inline-block; }
 .tico { width:32px; height:32px; object-fit:contain; float:left; margin:0 5px 0 0; }
 .ttype { width:16px; height:16px; margin:0 3px 0 0; vertical-align:bottom; }
 h3 { margin:0; }
-.target { font-size:0.7em; color:#555; }
+.target, .tdesc { font-size:0.7em; color:#555; }
+.tdesc { font-style:italic; }
 #targets a .unseen { display:none; position:absolute; top:5px; right:5px; background:red; color:#fff; padding:2px; border-radius:23px; min-width:18px; text-align:center; }
 
 .btn.login { background:#139713; color:#fff; font-size:2em; display:inline-block; margin:20px 0; padding:9px 30px; }
@@ -40,6 +41,7 @@ h3 { margin:0; }
 #empty i { display:block; text-align:center; margin:80px 0 0; }
 #getstart { margin:80px 0 0; }
 code.term { background:#000; color:#fff; padding:3px; border-radius:4px; }
+#startprem { margin-top:50px; }
 
 .dialog { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); min-width:400px; max-width:90%; max-height:90%; background:#fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.1); z-index:999; overflow:auto; }
 .closebtn { display:inline-block; position:absolute; top:10px; right:14px; font-size:20px; width:22px; height:22px; text-align:center; cursor:default; }
@@ -57,6 +59,7 @@ small { display:block; color:#666; }
 #dico { margin-right:10px; }
 .acauth { display:none; margin-left:24px; }
 #acaddsu, #acgwlogout, #acbadport { display:none; }
-#acprem { background:linear-gradient(to bottom, #857aff 1%,#5C4FA5 100%); color:#fff; padding:9px; min-height:88px; }
-#acprem a { color:#fff; }
-#acprem img { margin:0 8px 0 0; }
+.nsprem { background:linear-gradient(to bottom, #857aff 1%,#5C4FA5 100%); color:#fff; padding:9px; min-height:88px; }
+.nsprem h4 { margin:0; }
+.nsprem a { color:#fff; }
+.nsprem img { margin:0 8px 0 0; }

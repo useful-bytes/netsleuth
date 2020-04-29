@@ -42,15 +42,22 @@
 <ul>
 <li><a href="https://netsleuth.io/docs/snode" target=_blank>Run a node.js script with <code class="term">snode</code></a> instead of <code class="term">node</code> to make the process inspectable</li>
 <li><a href="https://netsleuth.io/docs/api" target=_blank>Use the API to integrate your node.js project</a></li>
+<li>Reconfigure your client to use the HTTP proxy running on 127.0.0.1:9000, then launch the inspector for :9000 (already setup above).</li>
 <li>Use the <a href="https://netsleuth.io/docs/cli" target=_blank>CLI</a> to add a target.
 	<ul>
 	<li>Public gateway to local dev env: <code class="term">netsleuth inspect http://localhost:3000 example.netsleuth.io</code></li>
-	<li>Local proxy to a server: <code class="term">netsleuth inspect -l https://example.com 127.0.0.2</code></li>
+	<li>Local reverse proxy to a server: <code class="term">netsleuth inspect -l https://example.com 127.0.0.2</code></li>
 	</ul>
 </li>
 <li>Click the <b>+</b> button on this page to add a target</li>
 </ul>
-<p class="loggedout">In order to use the public gateway service, you'll need to <a href="/login">login</a> first.</p>
+<div class="nsprem" id="startprem">
+	<h4>Secure tunnel to localhost with the public gateway</h4>
+	<p>
+		<a href="https://netsleuth.io/gateway" target=_blank><img src="/img/c2l.svg" height=50 align=left></a>
+		Reserving a public *.netsleuth.io subdomain requires you to <span class="publoggedout"><a href="/login">log in</a> and</span> have a subscription to the <a href="https://netsleuth.io/gateway" target=_blank>Public Gateway service</a>.
+	</p>
+</div>
 </div>
 </div>
 <div id="adddlg" class="dialog">
@@ -95,7 +102,7 @@
 		</div>
 		<div class="row atprox"><input type="checkbox" id="atproxhostsfile" accesskey="i"><label for="atproxhostsfile"> <img src="/img/elevate.png" width=16 height=16 title="Elevated privileges required"> Add hostname to system HOSTS f<u>i</u>le</label></div>
 		<div class="row atpub" id="acgwlogout"><p class="err">You must <a class="gwlogin" href="/login">log in</a> to the <span class="gwlogintxt"></span> gateway service before you can add a public host.</p></div>
-		<div class="row atpub" id="acprem">
+		<div class="row atpub nsprem" id="acprem">
 			<h4>Secure tunnel to localhost with the public gateway</h4>
 			<p>
 				<a href="https://netsleuth.io/gateway" target=_blank><img src="/img/c2l.svg" height=50 align=left></a>
