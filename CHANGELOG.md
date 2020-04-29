@@ -1,5 +1,9 @@
 Changelog
 =========
+2.0.1 2020-04-28
+----------------
+- UI tweaks
+
 2.0.0 2020-04-27
 ----------------
 - Major refactor of internals

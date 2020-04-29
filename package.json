@@ -1,6 +1,6 @@
 {
   "name": "netsleuth",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Use Chrome's Network Inspector with anything",
   "keywords": [
     "http",
