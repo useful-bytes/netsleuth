@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 var argv = require('yargs')
+	.usage('Usage: $0 [options] [script.js] [arguments]')
 	.option('sleuth-server', {
 		describe: 'URL of the inspection server',
 		default: 'ws://127.0.0.1:9000'
