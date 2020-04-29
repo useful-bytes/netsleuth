@@ -2,7 +2,7 @@ var fs = require('fs'),
 	path = require('path'),
 	child_process = require('child_process'),
 	MarkdownIt = require('markdown-it'),
-	term = markdownItTerminal = require('markdown-it-terminal'),
+	term = markdownItTerminal = require('@daguej/markdown-it-terminal'),
 	package = require('../package.json');
 
 var mdfancy = new MarkdownIt();
