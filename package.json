@@ -33,7 +33,7 @@
     "duplexer2": "^0.1.4",
     "express": "^4.17.1",
     "hosts-so-easy": "^1.2.8",
-    "jquery": "^3.4.1",
+    "jquery": "^3.5.0",
     "jsondiffpatch": "^0.3.11",
     "mime-types": "^2.1.22",
     "node-forge": "^0.9.1",
