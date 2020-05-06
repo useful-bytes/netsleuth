@@ -3,6 +3,7 @@ Changelog
 2.0.2 2020-05-05
 ----------------
 - Fix network bugs
+- Bump dependency
 
 2.0.1 2020-04-28
 ----------------
