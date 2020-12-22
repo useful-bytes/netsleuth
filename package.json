@@ -37,7 +37,7 @@
     "jsondiffpatch": "^0.3.11",
     "mime-types": "^2.1.22",
     "node-forge": "^0.9.1",
-    "node-notifier": "^5.4.0",
+    "node-notifier": "^8.0.1",
     "opn": "^5.1.0",
     "request": "^2.88.2",
     "sudo-prompt": "^9.1.1",
