@@ -206,6 +206,16 @@ var yargs = exports.yargs = require('yargs')
 			group: 'Output',
 			describe: 'Write request and response details to a HAR file located at this path, or - for stdout.  If the file already exists, data will be appended.'
 		})
+		.option('table', {
+			alias: 'T',
+			group: 'Output',
+			boolean: true,
+			describe: 'Print response data as a table'
+		})
+		.option('table-prop', {
+			group: 'Output',
+			describe: 'Print response data from this key as a table'
+		})
 		.option('diff', {
 			group: 'Display',
 			describe: 'Diff the request/response against one saved in this HAR file (or - for stdin, or ! for clipboard).  Use #entry to search request URLs or specify an entry index (like har: scheme, above; default 0)'
@@ -1039,7 +1049,7 @@ function request(method, uri, isRedirect, noBody) {
 
 						if (isJson) {
 							try {
-								outBody('respose', JSON.parse(resStr));
+								outBody('response', JSON.parse(resStr));
 							} catch (ex) {
 								process.stderr.write(c.bgRed('<unable to parse JSON>') + '\n');
 								outBody('response', resStr);
@@ -1171,6 +1181,16 @@ function request(method, uri, isRedirect, noBody) {
 
 
 			function printInspect(obj, line) {
+				if (type == 'response' && (argv.table || argv.tableProp)) {
+					var table = obj;
+					if (argv.tableProp) table = obj[argv.tableProp]
+					if (Array.isArray(table)) {
+						console.table(table)
+						return
+					} else {
+						process.stderr.write(c.bgRed('<response is not an array, cannot render as table>') + '\n');
+					}
+				}
 				
 				var nbody = argv.raw ? JSON.stringify(obj) : util.inspect(obj, {
 					depth: null,
