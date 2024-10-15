@@ -286,6 +286,11 @@ var yargs = require('yargs')
 			boolean: true,
 			describe: 'Login using your browser instead of by typing your username and password in this terminal.'
 		})
+		.option('browser-url', {
+			alias: 'B',
+			boolean: true,
+			describe: 'Login via a URL you visit manually instead of by typing your username and password in this terminal.'
+		})
 		.option('google', {
 			alias: 'G',
 			boolean: true,
@@ -307,7 +312,7 @@ var yargs = require('yargs')
 	}, function(argv) {
 
 		if (argv.google) return browserLogin(true);
-		if (argv.browser) return browserLogin();
+		if (argv.browser || argv.browserUrl) return browserLogin();
 
 		if (argv.verify) return gw.verify(argv.gateway, argv.verify, function(err) {
 			if (err) {
@@ -385,15 +390,20 @@ var yargs = require('yargs')
 			require('../lib/browser-login').login({
 				gateway: argv.gateway,
 				isDefault: argv.default,
-				google: google
+				google: google,
+				openBrowser: !argv.browserUrl
 			}, function(err, username) {
 				if (err) {
 					console.error('Unable to start callback server.');
 					console.error(err);
 					process.exit(1);
 				}
-				console.log('Hi, ' + username + '!  Successfully logged in.');
-				process.exit(0);
+				if (username.dest) {
+					console.log(username.dest)
+				} else {
+					console.log('Hi, ' + username + '!  Successfully logged in.');
+					process.exit(0);
+				}
 			});
 		}
 	})
